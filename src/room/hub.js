@@ -14,6 +14,7 @@ export const MAX_EVENTS = 20;
 export const MAX_TEST_CHARS = 1024;
 
 /**
+ * @typedef {{ kind: string, what: string, p?: string }} EventInfo
  * @typedef {{
  *   get(key: string): Promise<any>,
  *   put(key: string, value: any): Promise<void>,
@@ -76,11 +77,12 @@ export class RoomHub {
       }
       case 'addPatient': return this.apply(clientId, now, msg, (s) => this.doAdd(s, msg, now));
       case 'removePatient': return this.apply(clientId, now, msg, (s) => this.doRemove(s, msg));
-      case 'silence': return this.apply(clientId, now, msg, (s) => { s.alarms.silencedUntil = now + SILENCE_MS; return 'silence'; });
+      case 'silence': return this.apply(clientId, now, msg, (s) => { s.alarms.silencedUntil = now + SILENCE_MS; return { kind: 'silence', what: 'silence' }; });
+      case 'mark': return this.apply(clientId, now, msg, (s) => this.doMark(s, msg));
       case 'test': return this.apply(clientId, now, msg, (s) => {
         if (JSON.stringify(msg.value ?? null).length > MAX_TEST_CHARS) throw new BadPatch('test value too large');
         s.test = msg.value;
-        return 'test';
+        return { kind: 'test', what: 'test' };
       });
       default: return { reply: err('bad_json', `unknown type ${msg.t}`) };
     }
@@ -91,19 +93,19 @@ export class RoomHub {
    * @param {string} clientId
    * @param {number} now
    * @param {object} _msg
-   * @param {(s: RoomState) => string} change returns a short label for the event log
+   * @param {(s: RoomState) => EventInfo} change returns the event-log entry (kind, short text, patient id if any)
    * @returns {Promise<HubResult>}
    */
   async apply(clientId, now, _msg, change) {
     const before = await this.state();
     const next = structuredClone(before);
-    let what;
-    try { what = change(next); } catch (e) {
+    let info;
+    try { info = change(next); } catch (e) {
       if (e instanceof BadPatch) return { reply: err('bad_patch', e.message) };
       throw e;
     }
     next.rev = before.rev + 1;
-    next.events.push({ t: now, by: clientId, what });
+    next.events.push({ t: now, by: clientId, kind: info.kind, ...(info.p ? { p: info.p } : {}), what: info.what });
     if (next.events.length > MAX_EVENTS) next.events.splice(0, next.events.length - MAX_EVENTS);
     await this.storage.put('state', next);
     await this.storage.put('last', now);
@@ -148,7 +150,7 @@ export class RoomHub {
       }
       pt.glide = restartGlide(before, now, ms);
     }
-    return `set ${Object.keys(p).join(',')}`;
+    return { kind: p.patient && 'rhythm' in p.patient ? 'rhythm' : 'set', what: `set ${Object.keys(p).join(',')}`, p: pt.id };
   }
 
   /**
@@ -163,7 +165,7 @@ export class RoomHub {
     pt.nibpRead.sys = Math.round(d.sys);
     pt.nibpRead.dia = Math.round(d.dia);
     pt.nibpRead.at = now;
-    return 'nibp';
+    return { kind: 'nibp', what: 'nibp', p: pt.id };
   }
 
   /**
@@ -181,7 +183,7 @@ export class RoomHub {
     let n = 1;
     while (s.patients.some((x) => x.id === `p${n}`)) n++;
     s.patients.push(defaultPatient(`p${n}`, label, now));
-    return `add p${n}`;
+    return { kind: 'patient', what: `add p${n}`, p: `p${n}` };
   }
 
   /**
@@ -193,7 +195,18 @@ export class RoomHub {
     const i = s.patients.findIndex((x) => x.id === msg.p);
     if (i < 0) throw new BadPatch('unknown patient');
     s.patients.splice(i, 1);
-    return `remove ${msg.p}`;
+    return { kind: 'patient', what: `remove ${msg.p}`, p: msg.p };
+  }
+
+  /**
+   * Bookmark in the event log (for debriefs); `text` is optional, `p` names a patient.
+   * @param {RoomState} s
+   * @param {any} msg
+   */
+  doMark(s, msg) {
+    if (msg.text !== undefined && (typeof msg.text !== 'string' || msg.text.length > 200)) throw new BadPatch('text must be up to 200 characters');
+    if (msg.p !== undefined && !pick(s, msg.p)) throw new BadPatch('unknown patient');
+    return { kind: 'bookmark', what: msg.text ? `mark ${msg.text}` : 'mark', ...(msg.p ? { p: msg.p } : {}) };
   }
 
   /**

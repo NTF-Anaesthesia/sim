@@ -36,7 +36,7 @@ export const DEFAULT_MODULES = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp'];
  * }} Patient
  * @typedef {Record<string, [number, number]>} Limits
  * @typedef {{ limits: Limits, enabled: boolean, silencedUntil: number, latched: string[] }} Alarms
- * @typedef {{ t: number, by: string, what: string }} RoomEvent
+ * @typedef {{ t: number, by: string, kind: string, p?: string, what: string }} RoomEvent
  * @typedef {{
  *   schema: number, rev: number, patients: Patient[], modules: string[],
  *   alarms: Alarms, events: RoomEvent[], theme: string, themeJson?: object, test?: unknown

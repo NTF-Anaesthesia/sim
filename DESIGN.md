@@ -110,7 +110,7 @@ the **server** clock.
     "latched": []                  // ids of alarms the controller has acknowledged (reserved, v1 unused)
   },
   "events": [                      // newest last, max 20, for the controller's log; monitor ignores
-    { "t": 1760999950000, "by": "c-ab12", "what": "rhythm sinus -> vt" }
+    { "t": 1760999950000, "by": "c-ab12", "kind": "rhythm", "p": "p1", "what": "set patient" }
   ],
   "theme": "default"               // "default" or "custom"; custom JSON is in "themeJson" (S4)
 }
@@ -178,6 +178,7 @@ Client to server:
 | `nibp` | `p?`, `after?` | "measure now" for patient `p`: server sets `nibpRead.sys/dia` to the current glided `nibp` values and `nibpRead.at` = now. `rev` +1. |
 | `addPatient` | `label?` | adds a default patient (id `p<n>`, label default `Bed <count>`); max 8. |
 | `removePatient` | `p` | removes that patient; the last one cannot be removed. |
+| `mark` | `p?`, `text?` | bookmark in the event log (`kind: "bookmark"`, text up to 200 chars) for debriefs; V1 has no button for it. `rev` +1. |
 | `silence` | none | `alarms.silencedUntil` = now + 120000. |
 | `ping` | `n` | server replies `pong` with same `n`; used to measure delay and keep the connection alive. |
 | `test` | `value` | v1 shell: stores `value` (any JSON up to 1 KB) in `state.test`, broadcast. Removed by S2/S3. |
@@ -269,7 +270,10 @@ file, URL or paste (S4).
     ],
     "alarmBar": { "x": 8, "y": 0, "w": 4, "h": 1 }
   },
-  "waves": { "speedMmPerSec": 25, "lineWidth": 2, "sweepGapPx": 12, "fill": false },
+  "waves": { "speedMmPerSec": 25, "lineWidth": 2, "sweepGapPx": 12, "fill": false,
+            "ecg": { "speed": 25, "gain": 1 }, "spo2": { "speed": 25, "gain": 1 }, "etco2": { "speed": 25, "gain": 1 },
+            "abp": { "speed": 25, "gain": 1 } },        // per-wave speed (mm/s) and gain; fall back to speedMmPerSec and 1
+  "audio": { "alarm": { "volume": 1 }, "qrs": { "volume": 1 }, "spo2": { "volume": 1 } },   // 0-1 per channel (S2/S3 sound)
   "numerics": { "showLimits": true, "limitsPosition": "beside", "decimals": { "temp": 1 } },
   "labels": { "ecg": "HR", "spo2": "SpO2", "etco2": "EtCO2", "rr": "RR", "nibp": "NIBP", "temp": "Temp", "abp": "ABP",
               "units": { "hr": "/min", "etco2": "mmHg", "rr": "/min", "temp": "°C", "nibp": "mmHg", "abp": "mmHg" } },
@@ -324,7 +328,7 @@ Answers to questions a fresh reader asked; they override anything looser above.
   counts.
 - **Roles** are labels only in v1: any client may send any message. `id` is for the event log; duplicates are harmless.
   `hello` is optional and answered with `state`.
-- **Expiry** is extended only by accepted changes (`set`, `nibp`, `addPatient`, `removePatient`, `silence`, `test`), not by `ping`, `hello` or a
+- **Expiry** is extended only by accepted changes (`set`, `nibp`, `addPatient`, `removePatient`, `mark`, `silence`, `test`), not by `ping`, `hello` or a
   connection. On close code 4001 the client does not reconnect: it shows "room ended" with a link to start a new one.
   Code 4002 is sent after accepting the socket when 20 others are already connected.
 - **Errors:** `bad_json` (not JSON, no `t`, or unknown `t`), `too_big`, `rate`, `bad_patch`. At the rate limit, excess
@@ -338,7 +342,8 @@ Answers to questions a fresh reader asked; they override anything looser above.
   or HR > 150; plus asystole, VF, VT regardless of limits. Silencing is per monitor (its own `silencedUntil` is shared, but
   a "higher priority ends the silence" is evaluated locally), so monitors may differ for a moment. "Similar notices" for
   low priority: "NIBP not measured > 10 min" only in v1 (never raised if no reading has been taken yet).
-- **Event text** is `set <top-level keys>`, `nibp`, `add <id>`, `remove <id>`, `silence`, `test`. `baseRev` is accepted and ignored in v1.
+- **Events** carry `kind` (`set`, `rhythm`, `nibp`, `patient`, `alarm`, `silence`, `bookmark`, `shock`, `test`; `alarm` and `shock` are reserved for later features), the patient id `p` when one applies, and a short `what`. Only the last 20 are kept in the state; a longer log can later move to SQLite rows in the Room (rooms expire in 24 h, so no migration is needed).
+- **Event text** is `set <top-level keys>`, `nibp`, `add <id>`, `remove <id>`, `mark[ text]`, `silence`, `test`. `baseRev` is accepted and ignored in v1.
 - **Clock offset:** ping on open and every 10 s; keep the sample with the smallest round trip.
 - **Defaults (new room)** are exactly `defaultState()` in `src/shared/schema.js`.
 - **Patients.** `p` on `set`/`nibp` names a patient; an unknown `p` is `bad_patch`; no `p` means the first. New ids are the

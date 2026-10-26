@@ -178,3 +178,18 @@ test('patients: max 8, cannot remove the last, remove by id', async () => {
   assert.equal((await one.onMessage('c-1', msg({ t: 'removePatient', p: 'p1' }))).reply.code, 'bad_patch');
   assert.equal((await hub.onMessage('c-1', msg({ t: 'removePatient', p: 'nope' }))).reply.code, 'bad_patch');
 });
+
+test('events carry kind and patient id; mark adds a bookmark', async () => {
+  const { hub } = makeHub();
+  await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { rhythm: 'vf' } } }));
+  await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { hr: 90 } } }));
+  await hub.onMessage('c-1', msg({ t: 'mark', text: 'shock given' }));
+  await hub.onMessage('c-1', msg({ t: 'mark', p: 'p1' }));
+  const ev = (await hub.state()).events;
+  assert.deepEqual(ev.map((e) => e.kind), ['rhythm', 'set', 'bookmark', 'bookmark']);
+  assert.equal(ev[0].p, 'p1');
+  assert.equal(ev[2].what, 'mark shock given');
+  assert.equal(ev[2].p, undefined);
+  assert.equal((await hub.onMessage('c-1', msg({ t: 'mark', p: 'zz' }))).reply.code, 'bad_patch');
+  assert.equal((await hub.onMessage('c-1', msg({ t: 'mark', text: 'x'.repeat(201) }))).reply.code, 'bad_patch');
+});
