@@ -2,7 +2,7 @@
 // Room logic with no Cloudflare or DOM types: takes a storage object, returns what to send. The Durable Object
 // (worker/room.js) is a thin shell around this, so node can test it with a fake storage (DESIGN.md sections 2, 5).
 import {
-  DEVICE_CHOICES, MAX_PATIENTS, MAX_SCREENS, SCHEMA_VERSION, SCREEN_ID, SCREEN_KINDS, TARGETS, numericsOf, defaultPatient,
+  DEVICE_CHOICES, MAX_PATIENTS, MAX_SCREENS, SCHEMA_VERSION, SCREEN_ID, SCREEN_KINDS, SHOCK_JOULES, TARGETS, numericsOf, defaultPatient,
   defaultState, fillDefaults, screenName, validateIam, validatePatch,
 } from '../shared/schema.js';
 import { displayed, restartGlide } from '../engine/glide.js';
@@ -140,6 +140,7 @@ export class RoomHub {
         if (!v.ok) return { reply: err('bad_patch', v.msg) };
         return this.apply(clientId, now, msg, (s) => this.doDrug(s, v.drug, msg.p, now));
       }
+      case 'shock': return this.apply(clientId, now, msg, (s) => this.doShock(s, msg));
       case 'flush': return this.apply(clientId, now, msg, (s) => this.doFlush(s, msg));
       case 'test': return this.apply(clientId, now, msg, (s) => {
         if (JSON.stringify(msg.value ?? null).length > MAX_TEST_CHARS) throw new BadPatch('test value too large');
@@ -360,6 +361,24 @@ export class RoomHub {
   }
 
   /**
+   * A shock from a defib screen: one event (kind `shock`, `what` = energy and sync) so every screen of the bed and the
+   * log agree, then the patient's `postShock` rhythm applies at once (`none` = no change). Pads off blocks it.
+   * @param {RoomState} s
+   * @param {{ p?: string, energy?: unknown, sync?: unknown }} msg
+   * @returns {EventInfo}
+   */
+  doShock(s, msg) {
+    const pt = pick(s, msg.p);
+    if (!pt) throw new BadPatch('unknown patient');
+    const j = msg.energy;
+    if (typeof j !== 'number' || !Number.isInteger(j) || j < SHOCK_JOULES[0] || j > SHOCK_JOULES[1]) throw new BadPatch('energy must be a whole number of joules, 1 to 360');
+    if (pt.off?.pads) throw new BadPatch('pads are off: no shock delivered');
+    const sync = msg.sync === true;
+    if (pt.postShock && pt.postShock !== 'none') pt.rhythm = pt.postShock;
+    return { kind: 'shock', what: `${j}J${sync ? ' sync' : ''}`, p: pt.id };
+  }
+
+  /**
    * Start a scenario on one patient (replacing any running one): the first step runs after its own delay (at once at 0).
    * The steps are kept in storage, not in the broadcast state.
    * @param {RoomState} s
@@ -521,6 +540,7 @@ function applyScreen(s, id, sp) {
   const sc = s.screens?.[id];
   if (!sc || !SCREEN_ID.test(id)) throw new BadPatch(`unknown screen ${id}`);
   if (sp.p !== undefined && sp.p !== null && !s.patients.some((x) => x.id === sp.p)) throw new BadPatch('unknown patient');
+  if (sp.kind !== undefined) sc.kind = sp.kind;
   for (const k of ['name', 'p', 'modules']) {
     if (sp[k] === null) delete sc[/** @type {'p'} */ (k)];
     else if (sp[k] !== undefined) /** @type {any} */ (sc)[k] = sp[k];

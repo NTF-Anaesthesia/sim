@@ -22,7 +22,10 @@ export const ABP_DAMPINGS = ['normal', 'over', 'under'];
 /** CVP v wave: normal | giant (a large v wave, as with a leaking tricuspid valve). */
 export const CVP_VS = ['normal', 'giant'];
 /** Sensors that can be switched off per patient. */
-export const SENSORS = ['ecg', 'spo2', 'nibp', 'abp', 'etco2', 'cvp', 'abp2', 'bis'];
+export const SENSORS = ['ecg', 'spo2', 'nibp', 'abp', 'etco2', 'cvp', 'abp2', 'bis', 'pads'];
+/** Defib: what the rhythm becomes after a shock (`none` = no change; the phone sets it per patient), and the energy range in joules. */
+export const POST_SHOCK = ['none', 'sinus', 'sinus_brady', 'sinus_tachy', 'af', 'flutter', 'svt', 'vt', 'vf', 'asystole', 'pea'];
+export const SHOCK_JOULES = [1, 360];
 /** Below this signal quality the BIS number is not trusted: shown as dashes and not judged against limits. */
 export const BIS_MIN_SQI = 15;
 const BIS_KEYS = ['bis', 'bisSqi', 'bisEmg', 'bisSr'];
@@ -45,7 +48,7 @@ export const DEVICE_CHOICES = ['theme', 'p'];
  * @typedef {Numerics & {
  *   id: string, label: string, rhythm: string, glideMs: number, pulse: boolean, flutterRatio: number, st: number,
  *   pvcPerMin: number, ie: number, off: SensorOff, etco2Shape: string, spo2Quality: string, abpDamping: string,
- *   cvpV: string, ppv: number, abp2Label: string, bisSqi: number, bisEmg: number, bisSr: number,
+ *   cvpV: string, ppv: number, abp2Label: string, postShock: string, bisSqi: number, bisEmg: number, bisSr: number,
  *   glide: Glide, nibpRead: NibpReading
  * }} Patient
  * @typedef {Record<string, [number, number]>} Limits
@@ -68,7 +71,7 @@ export function defaultNumerics() {
 
 /** @returns {SensorOff} */
 function defaultOff() {
-  return { ecg: false, spo2: false, nibp: false, abp: false, etco2: false, cvp: false, abp2: false, bis: false };
+  return { ecg: false, spo2: false, nibp: false, abp: false, etco2: false, cvp: false, abp2: false, bis: false, pads: false };
 }
 
 /**
@@ -81,7 +84,7 @@ export function defaultPatient(id, label, now) {
   return {
     id, label, rhythm: 'sinus', ...defaultNumerics(), glideMs: 0, pulse: true, flutterRatio: 2, st: 0,
     pvcPerMin: 0, ie: 2, off: defaultOff(),
-    etco2Shape: 'normal', spo2Quality: 'good', abpDamping: 'normal', cvpV: 'normal', ppv: 0, abp2Label: '', bisSqi: 98, bisEmg: 5, bisSr: 0,
+    etco2Shape: 'normal', spo2Quality: 'good', abpDamping: 'normal', cvpV: 'normal', ppv: 0, abp2Label: '', bisSqi: 98, bisEmg: 5, bisSr: 0, postShock: 'none',
     glide: { startedAt: now, durationMs: 0, from: defaultNumerics() },
     nibpRead: { sys: 120, dia: 75, at: now, mode: 'manual', cycleSec: 0 },
   };
@@ -135,7 +138,7 @@ export const RANGES = {
   sys: [0, 350], dia: [0, 300], glideMs: [0, 600000], cycleSec: [0, 3600],
   pvcPerMin: [0, 30], ie: [0.5, 5], st: [-3, 3], cvp: [-5, 40], ppv: [0, 40], bis: [0, 100], bisSqi: [0, 100], bisEmg: [0, 100], bisSr: [0, 100],
 };
-const ENUMS = { etco2Shape: ETCO2_SHAPES, spo2Quality: SPO2_QUALITIES, abpDamping: ABP_DAMPINGS, cvpV: CVP_VS };
+const ENUMS = { etco2Shape: ETCO2_SHAPES, spo2Quality: SPO2_QUALITIES, abpDamping: ABP_DAMPINGS, cvpV: CVP_VS, postShock: POST_SHOCK };
 const TARGET_KEYS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'nibp', 'abp', 'cvp', 'abp2', 'bis'];
 /** Patient fields that are plain numbers with a range (everything but the objects and enums). */
 const NUMBER_KEYS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'glideMs', 'pvcPerMin', 'ie', 'st', 'cvp', 'ppv', 'bis', 'bisSqi', 'bisEmg', 'bisSr'];
@@ -305,8 +308,8 @@ export function screenName(v) {
 }
 
 /**
- * One screen's part of a `set` patch: `name`, `p`, `modules`, `theme`, `themeJson`. `null` clears a field (the
- * screen then follows its device's URL / the room). `kind` is fixed when the screen is made.
+ * One screen's part of a `set` patch: `name`, `kind`, `p`, `modules`, `theme`, `themeJson`. `null` clears a field (the
+ * screen then follows its device's URL / the room). `kind` is `monitor` or `defib` and can be changed.
  * @param {unknown} v
  * @param {string} id
  * @returns {{ ok: true, patch: Record<string, any> } | { ok: false, msg: string }}
@@ -322,6 +325,9 @@ export function validateScreenPatch(v, id) {
       const name = screenName(val);
       if (name === null) return { ok: false, msg: 'name must be 1-24 characters' };
       out.name = name;
+    } else if (k === 'kind') {
+      if (!SCREEN_KINDS.includes(val)) return { ok: false, msg: `screens.${id}.kind must be monitor or defib` };
+      out.kind = val;
     } else if (k === 'p') {
       if (val !== null && (typeof val !== 'string' || !val || val.length > 12)) return { ok: false, msg: `screens.${id}.p must be a patient id or null` };
       out.p = val;

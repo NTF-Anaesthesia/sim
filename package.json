@@ -17,7 +17,7 @@
     "check": "node tools/check.mjs && tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
     "test": "node --test test/*.test.mjs",
     "build": "vite build",
-    "e2e": "node test/e2e/two-devices.mjs && node test/e2e/controller.mjs && node test/e2e/monitor.mjs && node test/e2e/theme.mjs && node test/e2e/screens.mjs && node test/e2e/lines.mjs && node test/e2e/bis.mjs && node test/e2e/scenarios.mjs && node test/e2e/trends.mjs"
+    "e2e": "node test/e2e/two-devices.mjs && node test/e2e/controller.mjs && node test/e2e/monitor.mjs && node test/e2e/theme.mjs && node test/e2e/screens.mjs && node test/e2e/lines.mjs && node test/e2e/bis.mjs && node test/e2e/scenarios.mjs && node test/e2e/trends.mjs && node test/e2e/defib.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261026.1",

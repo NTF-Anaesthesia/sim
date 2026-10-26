@@ -106,6 +106,12 @@ Each cell places one part of one module:
   the cell stays where it is written.
 - A module that is off, or a part that does not exist, is skipped. Cells for modules the app does not know are skipped too.
 
+### Defib screen
+
+The defib screen (`kind: 'defib'`, DESIGN.md section 13) is not a layout cell and has no theme fields of its own. It uses
+`background`, `font`, `colors.ecg` and `colors.text`, `waves.pxPerMm`, `waves.lineWidth`, `waves.sweepGapPx` and the other
+`colors` as CSS variables, so a theme that styles the monitor styles it too.
+
 ## Example: a short theme
 
 ```json

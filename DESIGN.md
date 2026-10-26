@@ -20,6 +20,7 @@ monitor conventions, colours on black); no brand names or logos.
 10. Tests
 11. Settled details
 12. Scenarios and drug buttons (V2 S3)
+13. Defib screen (V2 S7)
 
 ## 1. Pieces and files
 
@@ -92,7 +93,7 @@ the **server** clock.
       "spo2Quality": "good",         // good | poor | none (poor = small, noisy; none = no pleth drawn)
       "abpDamping": "normal",        // normal | over | under
       // sensors: true = lead/probe/cuff/line off, that wave and numeric read "---"
-      "off": { "ecg": false, "spo2": false, "nibp": false, "abp": false, "etco2": false },
+      "off": { "ecg": false, "spo2": false, "nibp": false, "abp": false, "etco2": false },   // later sensors (cvp, abp2, pads) are also flags
       "glide": {                     // when this patient's latest change started and how long it takes
         "startedAt": 1761000000000,  // server ms
         "durationMs": 10000,
@@ -183,8 +184,8 @@ list; a named screen (section 4a) may carry its own list, which wins for that sc
 
 Each monitor can be a **named screen** the phone sets: its own bed, module list and theme (V2 S1).
 
-- **Ids** are server-made, `s1`, `s2`, ... (the lowest free number; max 12 per room). `kind` is `monitor` (`defib` is
-  reserved for the defib screen); it is set at creation and cannot be patched.
+- **Ids** are server-made, `s1`, `s2`, ... (the lowest free number; max 12 per room). `kind` is `monitor` or `defib` (the defib
+  screen, section 13). It is set at creation and the phone can change it in the Screens tab.
 - **Naming**: a monitor with no screen id shows a small card "Name this screen" at the top (never blocking; "Not now"
   hides it for this page load and the monitor follows the room). Saving sends `addScreen`; the reply `screenAdded`
   gives the id, kept per device and room in `localStorage` (`sim.settings.screenId.<code>`). `?s=<id>` in the monitor
@@ -484,3 +485,26 @@ to `{ sys?, dia? }` of the same ops. The new value is `current * mul + add`, cla
 `glideMs` defaults to 20000. A bad file is refused whole with a reason; nothing is imported. Built-in names cannot be
 replaced. Libraries live in this device's `localStorage` (`sim.scenarios`, `sim.drugs`); drug buttons are off by default
 and switched on in More (`sim.settings.drugs`). Built-ins are generic teaching examples with no doses.
+
+
+## 13. Defib screen (V2 S7)
+
+A screen with `kind: 'defib'` draws a defibrillator layout instead of the monitor (`src/defib/`): the ECG for the screen's
+bed, the heart rate, an energy selector, Charge, Shock and Sync, and a pads indicator. It uses the same wave registry and
+sweep lane as the monitor and the theme's colours (`--c-<key>`), so no new theme fields. Generic look, no brand marks.
+
+**State (additive, schema stays 1).** Patient `postShock` (`none` or a rhythm name, default `none`): the rhythm the bed
+takes after a shock. `off.pads` (default false): pads off. Pads off means no shock is delivered.
+
+**Message.** `{t:'shock', p, energy, sync?}`: `energy` is a whole number of joules, 1 to 360. The room refuses it with
+`bad_patch` when the bed is unknown, the energy is out of range or `off.pads` is true. Otherwise it sets the patient's
+rhythm to `postShock` (when not `none`) and records the event `kind: 'shock'` (`what` like `150J` or `150J sync`).
+Nothing else changes, so every screen of the bed and the log agree.
+
+**Artefact.** Each ECG and pleth draws a spike then decaying wander (ECG) or noise (pleth) for 1.6 s from the shock event
+time, on every screen of that bed (`WaveSource.shock`, set from `shock` events like `flush`).
+
+**Charge, sync and local state.** Energy, charge (2.5 s) and sync are local to the defib screen: a charge is disarmed
+after 30 s or a shock. With sync on, R waves are marked from beat events and the shock is held until the next
+non-dropped beat (message after 2.5 s if none comes). Touch and mouse both work; nothing is prompted or stored beyond
+the existing per-device settings. The phone sets `postShock` in More and a screen's kind in the Screens tab.

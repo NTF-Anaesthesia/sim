@@ -59,7 +59,7 @@ test('screens patch rejects unknown screens, fields, patients and bad values', a
   const { hub } = makeHub();
   await add(hub);
   for (const screens of [
-    { s2: { name: 'x' } }, { s1: { kind: 'defib' } }, { s1: { evil: 1 } }, { s1: { p: 'p9' } }, { s1: { name: '' } },
+    { s2: { name: 'x' } }, { s1: { kind: 'brand' } }, { s1: { evil: 1 } }, { s1: { p: 'p9' } }, { s1: { name: '' } },
     { s1: { modules: 'ecg' } }, { s1: { theme: 'brand' } }, { s1: { theme: 'custom' } }, { s1: { themeJson: { themeSchema: 99 } } },
     { x1: {} }, { s1: 'x' }, [],
   ]) {

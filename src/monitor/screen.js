@@ -17,6 +17,7 @@ import { createThemeStore, pickTheme } from '../theme/store.js';
 import { loadTheme } from '../theme/validate.js';
 import { AudioMixer } from './audio.js';
 import { Lane } from './lane.js';
+import { createDefib } from '../defib/index.js';
 import { createIdentity } from './identity.js';
 import { createModuleRegistry, registerBuiltinModules } from './modules.js';
 import { createSettings } from './settings.js';
@@ -65,6 +66,9 @@ export function mountScreen(root, opts) {
   /** @type {import('../shared/schema.js').Numerics | undefined} */
   let latestD;
   let flushSeen = 0;
+  let shockSeen = 0;
+  /** @type {ReturnType<typeof createDefib> | null} the defib screen, while this screen's kind is `defib` */
+  let defib = null;
   /** @type {WakeLockSentinel | null} */
   let wake = null;
   let wakeWanted = false;
@@ -139,11 +143,24 @@ export function mountScreen(root, opts) {
     return !!def.parts[cell.part] && !def.skip?.(cell.part, modsOn());
   }
 
-  /** A flush event from the phone starts the square wave on that line, timed from when it happened on the server. */
+  /**
+   * Flush and shock events from the room start their effect on this bed, timed from when they happened on the server: a
+   * flush test draws a square wave on the art line, a shock draws artefact on the ECG and pleth (and a defib screen
+   * says so).
+   */
   function pickFlush() {
     if (!state || !patient) return;
     const nowMs = client.serverNow();
     for (const e of state.events) {
+      if (e.kind === 'shock') {
+        if (e.t <= shockSeen || (e.p && e.p !== patient.id)) continue;
+        shockSeen = e.t;
+        if (nowMs - e.t > 4000) continue;
+        src.shock = performance.now() / 1000 - Math.max(0, nowMs - e.t) / 1000;
+        needRefill = true;
+        defib?.onShock(e);
+        continue;
+      }
       if (e.kind !== 'flush' || e.t <= flushSeen || (e.p && e.p !== patient.id)) continue;
       flushSeen = e.t;
       if (nowMs - e.t > 4000) continue;
@@ -212,6 +229,17 @@ export function mountScreen(root, opts) {
     const np = pickPatient();
     if (np?.id !== patient?.id) { nibp = new NibpMachine(theme.nibp); viewKey = ''; }
     patient = np;
+    if (screen?.kind === 'defib') {
+      if (!defib) {
+        view = null;
+        viewKey = '';
+        lanes = [];
+        defib = createDefib(root, { client, settings, waves, src, onFull: toggleFull, makeContext: opts.makeContext });
+      }
+      defib.update({ patient, theme, themeKey, name: screen.name });
+      return;
+    }
+    if (defib) { defib.destroy(); defib = null; viewKey = ''; }
     const k = JSON.stringify([modsOn(), patient?.id, screenPick()]) + themeKey;
     if (k !== viewKey) { viewKey = k; rebuild(); }
     if (view && identity.nameEl.parentElement !== view.chip.parentElement) view.chip.before(identity.nameEl);
@@ -355,7 +383,7 @@ export function mountScreen(root, opts) {
   /** @param {number} perfNow */
   function frame(perfNow) {
     requestAnimationFrame(frame);
-    if (!state || !patient || !view) return;
+    if (!state || !patient || (!view && !defib)) return;
     const t = perfNow / 1000;
     const dd = displayed(patient, client.serverNow());
     latestD = dd;
@@ -367,6 +395,11 @@ export function mountScreen(root, opts) {
       }
     }
     lastBeepT = t;
+    if (defib) {
+      if (needRefill) { needRefill = false; defib.refill(t); }
+      defib.frame(t, perfNow);
+      return;
+    }
     if (needRefill) {
       needRefill = false;
       for (const l of lanes) l.lane.refill(t);
