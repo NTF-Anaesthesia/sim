@@ -54,7 +54,7 @@ export const DEVICE_CHOICES = ['theme', 'p'];
  * @typedef {{
  *   schema: number, rev: number, patients: Patient[], modules: string[],
  *   alarms: Alarms, events: RoomEvent[], theme: string, themeJson?: object, test?: unknown,
- *   screens?: Record<string, Screen>
+ *   screens?: Record<string, Screen>, scenario?: import('./scenario.js').ScenarioRun
  * }} RoomState
  */
 
@@ -127,7 +127,7 @@ export function newCode(rand) {
 }
 
 /** Allowed ranges for numeric targets: [min, max]. */
-const RANGES = {
+export const RANGES = {
   hr: [0, 300], spo2: [0, 100], etco2: [0, 100], rr: [0, 60], temp: [25, 43],
   sys: [0, 350], dia: [0, 300], glideMs: [0, 600000], cycleSec: [0, 3600],
   pvcPerMin: [0, 30], ie: [0.5, 5], st: [-3, 3], cvp: [-5, 40], ppv: [0, 40],

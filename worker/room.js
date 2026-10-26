@@ -87,7 +87,13 @@ export class Room extends DurableObject {
   }
 
   async alarm() {
-    const { expired } = await this.hub.onAlarm();
+    const { expired, broadcast } = await this.hub.onAlarm();
     if (expired) for (const ws of this.ctx.getWebSockets()) ws.close(4001, 'room expired');
+    if (broadcast) {
+      const text = JSON.stringify(broadcast);
+      for (const peer of this.ctx.getWebSockets()) {
+        try { peer.send(text); } catch { /* socket closing */ }
+      }
+    }
   }
 }

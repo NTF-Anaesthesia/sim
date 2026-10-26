@@ -28,6 +28,12 @@ export function makeActions(client, currentPatient) {
     /** Flush test of an art line. @param {'abp' | 'abp2'} line @param {string} [p] */
     flush: (line, p) => client.send({ t: 'flush', line, p: p ?? currentPatient() }),
     silence: () => client.send({ t: 'silence' }),
+    /** Start a scenario on a patient; the room runs it. @param {object} scenario @param {string} [p] */
+    scenarioStart: (scenario, p) => client.send({ t: 'scenarioStart', scenario, p: p ?? currentPatient() }),
+    /** @param {'scenarioPause' | 'scenarioResume' | 'scenarioNext' | 'scenarioStop'} t */
+    scenarioControl: (t) => client.send({ t }),
+    /** A drug button: its relative change on a patient. @param {object} drug @param {string} [p] */
+    drug: (drug, p) => client.send({ t: 'drug', drug, p: p ?? currentPatient() }),
     /** @param {string} [label] */
     addPatient: (label) => client.send(label ? { t: 'addPatient', label } : { t: 'addPatient' }),
     /** @param {string} p */

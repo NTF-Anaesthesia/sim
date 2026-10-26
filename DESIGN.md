@@ -18,6 +18,7 @@ monitor conventions, colours on black); no brand names or logos.
 9. Build rules
 10. Tests
 11. Settled details
+12. Scenarios and drug buttons (V2 S3)
 
 ## 1. Pieces and files
 
@@ -113,6 +114,7 @@ the **server** clock.
   "events": [                      // newest last, max 20, for the controller's log; monitor ignores
     { "t": 1760999950000, "by": "c-ab12", "kind": "rhythm", "p": "p1", "what": "set patient" }
   ],
+  "scenario": { "id": "n7", "name": "Slow bleed", "p": "p1", "step": 1, "total": 3, "nextAt": 1761000000000, "waiting": false, "pausedAt": 0, "done": false, "startedAt": 1760999900000 },  // optional, section 12
   "theme": "default",              // "default" or "custom"; custom JSON is in "themeJson" (S4)
   "screens": {                     // named screens (section 4a); absent or {} in a new room; max 12
     "s1": { "name": "Left", "kind": "monitor",       // id server-made (s1, s2, ...), name 1-24 chars; kind monitor | defib
@@ -218,6 +220,9 @@ Client to server:
 | `iam` | `s` (id or null), `dev` (list of `theme`, `p`) | a monitor says which screen it is and which device choices it has; kept with the socket, sent out in `presence`. Not stored. |
 | `identify` | `s` | the server sends `identify` to every socket (the monitor for `s` shows its name). Not stored. |
 | `clearDevice` | `s`, `what` (`theme` or `p`) | the server sends `clearDevice`; that monitor drops its own choice. Not stored. |
+| `scenarioStart` | `p?`, `scenario` | starts a timed scenario on bed `p` (validated like a library file entry, section 12); replaces a running one. `rev` +1. |
+| `scenarioPause` / `scenarioResume` / `scenarioNext` / `scenarioStop` | none | pause, resume, run the next step now (skips a countdown or answers a tap), or stop. Error `bad_patch` "no scenario is running" when none runs. |
+| `drug` | `p?`, `drug` | applies a drug button's relative change to bed `p` with a glide (section 12). `rev` +1. |
 | `test` | `value` | v1 shell: stores `value` (any JSON up to 1 KB) in `state.test`, broadcast. Removed by S2/S3. |
 
 Server to client:
@@ -410,7 +415,7 @@ Answers to questions a fresh reader asked; they override anything looser above.
   or HR > 150; plus asystole, VF, VT regardless of limits. Silencing is per monitor (its own `silencedUntil` is shared, but
   a "higher priority ends the silence" is evaluated locally), so monitors may differ for a moment. "Similar notices" for
   low priority: "NIBP not measured > 10 min" only in v1 (never raised if no reading has been taken yet).
-- **Events** carry `kind` (`set`, `rhythm`, `nibp`, `patient`, `alarm`, `silence`, `bookmark`, `shock`, `test`; `alarm` and `shock` are reserved for later features), the patient id `p` when one applies, and a short `what`. Only the last 20 are kept in the state; a longer log can later move to SQLite rows in the Room (rooms expire in 24 h, so no migration is needed).
+- **Events** carry `kind` (`set`, `rhythm`, `nibp`, `patient`, `alarm`, `silence`, `bookmark`, `shock`, `scenario`, `drug`, `test`; `alarm` and `shock` are reserved for later features), the patient id `p` when one applies, and a short `what`. Only the last 20 are kept in the state; a longer log can later move to SQLite rows in the Room (rooms expire in 24 h, so no migration is needed).
 - **Event text** is `set <top-level keys>`, `nibp`, `add <id>`, `remove <id>`, `mark[ text]`, `silence`, `test`. `baseRev` is accepted and ignored in v1.
 - **Clock offset:** ping on open and every 10 s; keep the sample with the smallest round trip.
 - **Defaults (new room)** are exactly `defaultState()` in `src/shared/schema.js`.
@@ -419,3 +424,24 @@ Answers to questions a fresh reader asked; they override anything looser above.
   patchable. Alarm limits and modules are room-wide, not per patient.
 - **Schema stays v1.** All additions are new fields with defaults; a stored room from before this change is not migrated
   (rooms expire after 24 h and nothing was deployed with the old shape).
+
+## 12. Scenarios and drug buttons (V2 S3)
+
+**State.** Additive field `scenario?` (schema stays 1): `{ id, name, p, step, total, startedAt, pausedAt, nextAt, waiting, done }`.
+Only one scenario runs per room. `nextAt` is the server time the next step is due (0 while `waiting` for a tap or
+while paused). The step list itself is kept in Room storage (`scenarioSteps`), not in the broadcast state.
+Removing the scenario's bed removes the scenario.
+
+**Running.** The Room runs steps on its own clock, so a scenario goes on with every phone closed. It shares the one
+storage alarm with idle expiry: the alarm is set to the earlier of the two (`alarmAt`), and when it fires the Room runs
+every step that is due, in order (a late alarm catches up), then broadcasts. A step's `atSec` is seconds after the
+previous step; `onTap: true` waits for `scenarioNext`. A step patch may only hold `patient` and `alarms` keys and uses
+the normal `set` rules and the step's `glideMs`. Each step appends a `scenario` event; a drug appends a `drug` event.
+
+**Files.** One library file holds scenarios and drugs: `{ "sim": "library", "version": 1, "scenarios": [...], "drugs": [...] }`
+(max 32 KB, 20 scenarios, 20 drugs, 30 steps of up to 3600 s each). A drug is `{ name, note?, glideMs?, effects }`
+where `effects` maps `hr spo2 etco2 rr temp cvp` to `{ mul?, add? }` (mul 0 to 5, add -300 to 300) and `nibp abp abp2`
+to `{ sys?, dia? }` of the same ops. The new value is `current * mul + add`, clamped to the field's range and rounded;
+`glideMs` defaults to 20000. A bad file is refused whole with a reason; nothing is imported. Built-in names cannot be
+replaced. Libraries live in this device's `localStorage` (`sim.scenarios`, `sim.drugs`); drug buttons are off by default
+and switched on in More (`sim.settings.drugs`). Built-ins are generic teaching examples with no doses.
