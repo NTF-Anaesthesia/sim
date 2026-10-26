@@ -2,6 +2,7 @@
 // Entry `controller`: the phone controller (DESIGN.md sections 5-6). No work on import; `mountController` does it all.
 import { RoomClient, newClientId, roomUrl } from '../room/client.js';
 import { RHYTHMS, SENSORS, MODULE_IDS } from '../shared/schema.js';
+import { macFraction } from '../engine/gas.js';
 import { BUILTIN_THEMES } from '../theme/builtin.js';
 import { createThemePanel } from '../theme/panel.js';
 import { pickTheme } from '../theme/store.js';
@@ -12,7 +13,7 @@ import { LibraryStore } from './library.js';
 import { PresetStore, runPreset, presetFromPatient } from './presets.js';
 import { Settings, browserStorage } from './settings.js';
 import {
-  paramList, LIMIT_PARAMS, GLIDE_CHOICES, NIBP_INTERVALS, buildPatch, pendingCount, stepPercent, clampDisplay,
+  paramList, LIMIT_PARAMS, GLIDE_CHOICES, NIBP_INTERVALS, TOF_INTERVALS, hasModule, buildPatch, pendingCount, stepPercent, clampDisplay,
   glideProgress, formatValue, intervalLabel, moveDisplay,
 } from './params.js';
 
@@ -21,8 +22,8 @@ const RHYTHM_LABELS = /** @type {Record<string, string>} */ ({
   vt: 'VT', vf: 'VF', asystole: 'Asystole', pea: 'PEA', first_degree_block: '1st degree block', mobitz1: 'Mobitz I',
   mobitz2: 'Mobitz II', chb: 'Complete heart block', torsades: 'Torsades', paced: 'Paced',
 });
-const SENSOR_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG leads', spo2: 'SpO₂ probe', nibp: 'NIBP cuff', abp: 'Art line', etco2: 'CO₂ line', cvp: 'CVP line', abp2: 'Second art line' });
-const MODULE_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG', spo2: 'Pleth', etco2: 'EtCO₂ and RR', nibp: 'NIBP', rr: 'RR', temp: 'Temp', abp: 'Arterial line', cvp: 'CVP', abp2: 'Second arterial line' });
+const SENSOR_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG leads', spo2: 'SpO₂ probe', nibp: 'NIBP cuff', abp: 'Art line', etco2: 'CO₂ line', cvp: 'CVP line', abp2: 'Second art line', gas: 'Gas line' });
+const MODULE_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG', spo2: 'Pleth', etco2: 'EtCO₂ and RR', nibp: 'NIBP', rr: 'RR', temp: 'Temp', abp: 'Arterial line', cvp: 'CVP', abp2: 'Second arterial line', gas: 'Gas (agent, N₂O, O₂)', o2: 'O₂ only', tof: 'TOF' });
 const TABS = [['vitals', 'Vitals'], ['alarms', 'Alarms'], ['presets', 'Presets'], ['scenarios', 'Scenarios'], ['screens', 'Screens'], ['trends', 'Trends'], ['more', 'More']];
 const esc = (/** @type {unknown} */ s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
 
@@ -174,7 +175,7 @@ export function mountController(root, opts) {
   function viewVitals() {
     const s = /** @type {NonNullable<ReturnType<typeof state>>} */ (state());
     const pt = /** @type {NonNullable<ReturnType<typeof patient>>} */ (patient());
-    const list = paramList(units()).filter((sp) => !sp.needs && !sp.id.startsWith('abp') || s.modules.includes(sp.needs ?? 'abp'));
+    const list = paramList(units()).filter((sp) => !sp.limitOnly && hasModule(sp.needs ?? (sp.id.startsWith('abp') ? 'abp' : undefined), s.modules));
     const rhythm = typeof pend().rhythm === 'string' ? String(pend().rhythm) : pt.rhythm;
     return `
       <label class="field">Rhythm
@@ -192,8 +193,29 @@ export function mountController(root, opts) {
       <div class="glide" role="group" aria-label="NIBP interval"><span class="label">Interval</span>
         ${NIBP_INTERVALS.map((sec) => `<button type="button" class="pill" data-nibp-int="${sec}" aria-pressed="${(pt.nibpRead.mode === 'cycle' ? pt.nibpRead.cycleSec : 0) === sec}">${intervalLabel(sec)}</button>`).join('')}
       </div>
-      <p class="hint">Last reading ${pt.nibpRead.sys}/${pt.nibpRead.dia}</p>`;
+      <p class="hint">Last reading ${pt.nibpRead.sys}/${pt.nibpRead.dia}</p>
+      ${viewGas(s, pt)}`;
   }
+
+  /** Gas and TOF extras: agent in use, MAC readout, TOF now and interval. Off until the modules are switched on. */
+  function viewGas(/** @type {NonNullable<ReturnType<typeof state>>} */ s, /** @type {NonNullable<ReturnType<typeof patient>>} */ pt) {
+    const gas = s.modules.includes('gas');
+    const tof = s.modules.includes('tof');
+    const agents = [['none', 'No agent'], ['sevo', 'Sevoflurane'], ['des', 'Desflurane'], ['iso', 'Isoflurane']];
+    return `<div class="sw-row"><span>Gas</span>${toggle('mod-gas', gas, 'Gas')}</div>
+      <div class="sw-row"><span>TOF</span>${toggle('mod-tof', tof, 'TOF')}</div>
+      ${gas ? `<label class="field">Agent<select id="agent" data-testid="agent">${agents.map(([v, l]) => `<option value="${v}"${v === pt.agent ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+        <p class="hint" data-testid="mac-hint">Et ${mac(pt).toFixed(2)} MAC at age ${pt.age}</p>` : ''}
+      ${tof ? `<h2>TOF</h2>
+        <div class="row"><button type="button" class="wide" data-act="tof-now" data-testid="tof-now">Measure TOF now</button></div>
+        <div class="glide" role="group" aria-label="TOF interval"><span class="label">Interval</span>
+          ${TOF_INTERVALS.map((sec) => `<button type="button" class="pill" data-tof-int="${sec}" aria-pressed="${(pt.tofRead.mode === 'cycle' ? pt.tofRead.cycleSec : 0) === sec}">${sec ? intervalLabel(sec) : 'On demand'}</button>`).join('')}
+        </div>
+        <p class="hint">Last reading ${pt.tofRead.count}/4, ratio ${pt.tofRead.ratio}%</p>` : ''}`;
+  }
+
+  /** @param {NonNullable<ReturnType<typeof patient>>} pt */
+  function mac(pt) { return macFraction(pt, pt.etag, pt.etn2o); }
 
   /** Line extras: damping, flush test, CVP v waves. Modules are off until switched on (More tab or here). */
   function viewLines(/** @type {NonNullable<ReturnType<typeof state>>} */ s, /** @type {NonNullable<ReturnType<typeof patient>>} */ pt) {
@@ -221,7 +243,7 @@ export function mountController(root, opts) {
     return `
       <div class="sw-row"><span>Alarms on</span>${toggle('alarms-on', s.alarms.enabled, 'Alarms on')}</div>
       <div class="row"><button type="button" class="wide" data-act="silence" data-testid="silence">Silence 2 min${left > 0 ? ` (${Math.ceil(left / 1000)} s left)` : ''}</button></div>
-      ${LIMIT_PARAMS.filter((l) => !l.needs || s.modules.includes(l.needs)).map((l) => {
+      ${LIMIT_PARAMS.filter((l) => hasModule(l.needs, s.modules)).map((l) => {
         const sp = /** @type {import('./params.js').ParamSpec} */ (specs.get(l.spec));
         const [lo, hi] = s.alarms.limits[l.name] ?? [sp.min, sp.max];
         return `<div class="lim" data-limit="${l.name}"><span class="prm-name" style="color:${sp.color}">${l.label}</span>
@@ -530,6 +552,11 @@ export function mountController(root, opts) {
       return;
     }
     if (d.lstep) { const row = /** @type {HTMLElement} */ (t.closest('.lim')); stepLimit(row, /** @type {'lo' | 'hi'} */ (/** @type {HTMLElement} */ (t.closest('.lim-end')).dataset.end), Number(d.lstep)); return; }
+    if (d.tofInt !== undefined) {
+      const sec = Number(d.tofInt);
+      act({ tof: sec ? { mode: 'cycle', cycleSec: sec } : { mode: 'manual' } }, undefined, pt.id);
+      return;
+    }
     if (d.nibpInt !== undefined) {
       const sec = Number(d.nibpInt);
       act({ nibp: sec ? { mode: 'cycle', cycleSec: sec } : { mode: 'manual' } }, undefined, pt.id);
@@ -555,6 +582,7 @@ export function mountController(root, opts) {
       case 'apply': apply(); break;
       case 'cancel': delete ui.pending[pt.id]; render(); break;
       case 'nibp-now': actions.nibpNow(pt.id); break;
+      case 'tof-now': actions.tofNow(pt.id); break;
       case 'flush-abp': actions.flush('abp', pt.id); break;
       case 'flush-abp2': actions.flush('abp2', pt.id); break;
       case 'silence': actions.silence(); break;
@@ -642,6 +670,8 @@ export function mountController(root, opts) {
       const v = /** @type {HTMLSelectElement} */ (t).value;
       if (v === pt.rhythm) delete pend().rhythm; else pend().rhythm = v;
       renderDock();
+    } else if (t.id === 'agent' && pt) {
+      act({ patient: { agent: /** @type {HTMLSelectElement} */ (t).value } }, undefined, pt.id);
     } else if ((t.id === 'damping' || t.id === 'cvpv') && pt) {
       act({ patient: t.id === 'damping' ? { abpDamping: /** @type {HTMLSelectElement} */ (t).value } : { cvpV: /** @type {HTMLSelectElement} */ (t).value } }, undefined, pt.id);
     } else if (t.id === 'libfile') {
