@@ -124,19 +124,27 @@ export function createDefib(root, opts) {
   }
 
   /** Pacing is set by the learner on this screen; the room holds it so every screen of the bed shows the spikes. */
+  /** Steps tapped before the room echoes the last one: build on the value already sent, not the one on screen. */
+  const sent = { rate: /** @type {number | null} */ (null), ma: /** @type {number | null} */ (null) };
+  const PACE_BUTTONS = ['pace', 'pmode', 'rate-', 'rate+', 'ma-', 'ma+'];
   function sendPace(/** @type {string} */ what) {
     if (!patient) return;
+    const step = what.endsWith('+') ? 5 : -5;
     if (what === 'pace') client.send({ t: 'pace', p: patient.id, on: !patient.paceOn });
     else if (what === 'pmode') client.send({ t: 'pace', p: patient.id, mode: patient.paceMode === 'fixed' ? 'demand' : 'fixed' });
-    else if (what === 'rate-' || what === 'rate+') {
-      client.send({ t: 'pace', p: patient.id, rate: Math.max(PACE_RATE[0], Math.min(PACE_RATE[1], patient.paceRate + (what === 'rate+' ? 5 : -5))) });
-    } else client.send({ t: 'pace', p: patient.id, ma: Math.max(PACE_MA[0], Math.min(PACE_MA[1], patient.paceMa + (what === 'ma+' ? 5 : -5))) });
+    else if (what.startsWith('rate')) {
+      sent.rate = Math.max(PACE_RATE[0], Math.min(PACE_RATE[1], (sent.rate ?? patient.paceRate) + step));
+      client.send({ t: 'pace', p: patient.id, rate: sent.rate });
+    } else {
+      sent.ma = Math.max(PACE_MA[0], Math.min(PACE_MA[1], (sent.ma ?? patient.paceMa) + step));
+      client.send({ t: 'pace', p: patient.id, ma: sent.ma });
+    }
   }
 
   root.addEventListener('click', (e) => {
     const what = /** @type {HTMLElement} */ (e.target).closest('button')?.dataset.d;
     if (!what) return;
-    if (what === 'pace' || what === 'pmode' || what.startsWith('rate') || what.startsWith('ma')) { sendPace(what); return; }
+    if (PACE_BUTTONS.includes(what)) { sendPace(what); return; }
     const now = performance.now();
     if (what === 'up') model.step(1);
     else if (what === 'down') model.step(-1);
@@ -192,6 +200,8 @@ export function createDefib(root, opts) {
     el.shock.dataset.armed = model.phase === 'ready' ? '1' : '';
     el.mode.textContent = model.sync ? 'SYNC' : 'ASYNC';
     el.pacer.setAttribute('aria-pressed', String(!!patient?.paceOn));
+    if (sent.rate === patient?.paceRate) sent.rate = null;
+    if (sent.ma === patient?.paceMa) sent.ma = null;
     el.prate.textContent = `${patient?.paceRate ?? 70} /min`;
     el.pma.textContent = `${patient?.paceMa ?? 0} mA`;
     el.pmode.textContent = patient?.paceMode === 'fixed' ? 'Fixed' : 'Demand';

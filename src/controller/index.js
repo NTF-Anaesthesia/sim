@@ -384,7 +384,7 @@ export function mountController(root, opts) {
       <h2>Pacing (${esc(pt.label)})</h2>
       <p class="hint">${pt.paceOn ? `Pacer on: ${pt.paceRate}/min, ${pt.paceMa} mA, ${pt.paceMode}.` : 'Pacer off.'} The learner sets rate, mA and mode on the defib screen; you decide when it captures.</p>
       <label class="field">Capture threshold
-        <select id="pace-threshold" data-testid="pace-threshold">${[20, 40, 60, 80, 100, 120, 150, 200, 250].map((v) => `<option value="${v}"${v === pt.paceThreshold ? ' selected' : ''}>${v} mA${v === 250 ? ' (never captures)' : ''}</option>`).join('')}</select></label>
+        <select id="pace-threshold" data-testid="pace-threshold">${[...new Set([20, 40, 60, 80, 100, 120, 150, 200, 250, pt.paceThreshold])].sort((a, b) => a - b).map((v) => `<option value="${v}"${v === pt.paceThreshold ? ' selected' : ''}>${v} mA${v === 250 ? ' (never captures)' : ''}</option>`).join('')}</select></label>
       <div class="sw-row"><span>Fails to sense</span>${toggle('pace-nosense', !!pt.paceNoSense, 'Pacer fails to sense')}</div>
       <p class="hint">Capture needs the mA at or above the threshold (wide complex and a pulse); below it you see spikes only. Fails to sense makes a demand pacer fire at its rate whatever the heart does.</p>
       <h2>Show on monitor</h2>

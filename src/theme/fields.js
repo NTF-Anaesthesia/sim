@@ -28,6 +28,7 @@ export const LABEL_PATTERN = /^[^<>\\{}]{0,24}$/;
 export const FIELDS = [
   { path: 'background', label: 'Background', group: 'Colours', type: 'color' },
   ...PARAMS.map((p) => /** @type {Field} */ ({ path: `colors.${p}`, label: PARAM_NAMES[p], group: 'Colours', type: 'color' })),
+  { path: 'colors.ecg2', label: 'Second ECG lead', group: 'Colours', type: 'color' },
   { path: 'colors.alarmHigh', label: 'Alarm high', group: 'Colours', type: 'color' },
   { path: 'colors.alarmMed', label: 'Alarm medium', group: 'Colours', type: 'color' },
   { path: 'colors.alarmLow', label: 'Alarm low', group: 'Colours', type: 'color' },

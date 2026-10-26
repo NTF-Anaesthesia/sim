@@ -90,6 +90,7 @@ export class BeatScheduler {
     /** pacer: time of its last stimulus and of the last complex of any origin (seconds) */
     this.lastSpike = -1e9;
     this.lastQrs = -1e9;
+    this.lastPaced = -1e9;
     this.pacing = false;
   }
 
@@ -142,7 +143,7 @@ export class BeatScheduler {
       const tp = pace ? this.spikeDue(pace, until) : Infinity;
       if (Math.min(ti, tp) > until) break;
       if (ti <= tp) {
-        if (pace && ti - this.lastQrs < REFRACTORY) this.next = ti + period; // lands in the refractory period of a paced beat
+        if (pace && ti - this.lastPaced < REFRACTORY) this.next = ti + period; // lands in the refractory period of a paced beat
         else this.make(ti, period, p, info, added);
       } else if (pace) this.spike(tp, period, p, pace, intrinsic, added);
     }
@@ -176,6 +177,7 @@ export class BeatScheduler {
     };
     this.insert(beat);
     added.push(beat);
+    if (captured) this.lastPaced = t;
     // a captured beat resets the heart's own clock when the pacer is the faster one
     if (captured && intrinsic && 60 / pace.rate < period) this.next = t + period;
   }

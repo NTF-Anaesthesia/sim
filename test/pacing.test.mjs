@@ -130,3 +130,28 @@ test('second ECG lead: module, wave and theme labels exist', () => {
   assert.ok(reg.get('ecg2'));
   assert.equal(DEFAULT_THEME.labels.wave.ecg2, 'V1');
 });
+
+test('a fast intrinsic rhythm is not thinned by a pacer that does not capture', () => {
+  const off = new BeatScheduler(6);
+  run(off, params({ rhythm: 'svt', hr: 220 }), 0, 30);
+  const on = new BeatScheduler(6);
+  run(on, params({ rhythm: 'svt', hr: 220, pace: { rate: 60, capture: false, fixed: true } }), 0, 30);
+  const n = (s) => s.beats.filter((b) => b.kind !== 'spike' && b.kind !== 'dropped').length;
+  assert.ok(Math.abs(n(on) - n(off)) <= 3, `${n(on)} vs ${n(off)}`);
+});
+
+test('failure to sense: spikes keep their own rate over an intrinsic rhythm; a captured beat never lands in the refractory period', () => {
+  const s = new BeatScheduler(7);
+  run(s, params({ hr: 90, pace: { rate: 60, capture: true, fixed: true } }), 0, 40);
+  const sp = s.beats.filter((b) => b.kind === 'spike' || b.kind === 'paced');
+  assert.ok(sp.length >= 35 && sp.length <= 45, `spikes ${sp.length}`);
+  const qrs = s.beats.filter((b) => b.kind !== 'spike' && b.kind !== 'dropped');
+  for (let i = 1; i < qrs.length; i++) assert.ok(qrs[i].t - qrs[i - 1].t >= 0.29, `gap ${qrs[i].t - qrs[i - 1].t}`);
+});
+
+test('hub: changing the rate with the pacer off is not logged as off', async () => {
+  const { hub } = makeHub();
+  await hub.onMessage('c-1', msg({ t: 'pace', p: 'p1', rate: 90 }));
+  const s = (await hub.onMessage('c-1', msg({ t: 'hello' }))).reply.state;
+  assert.match(s.events.at(-1).what, /^set 90\/min/);
+});

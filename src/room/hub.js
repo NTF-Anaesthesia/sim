@@ -405,7 +405,7 @@ export class RoomHub {
    * Pacing set from a defib screen: rate, mA, mode, on/off. One event (kind `pace`) so every screen and the log agree.
    * Pads off blocks turning it on. The capture threshold and failure to sense stay with the phone.
    * @param {RoomState} s
-   * @param {{ p?: string }} msg
+   * @param {{ p?: string, on?: boolean }} msg
    * @returns {EventInfo}
    */
   doPace(s, msg) {
@@ -415,7 +415,8 @@ export class RoomHub {
     if (!v.ok) throw new BadPatch(v.msg);
     if (v.patch.paceOn && pt.off?.pads) throw new BadPatch('pads are off: pacing cannot start');
     Object.assign(pt, v.patch);
-    const what = pt.paceOn ? `on ${pt.paceRate}/min ${pt.paceMa}mA ${pt.paceMode}` : 'off';
+    const set = `${pt.paceRate}/min ${pt.paceMa}mA ${pt.paceMode}`;
+    const what = pt.paceOn ? `${msg.on ? 'on' : 'set'} ${set}` : msg.on === false ? 'off' : `set ${set} (pacer off)`;
     return { kind: 'pace', what, p: pt.id };
   }
 
