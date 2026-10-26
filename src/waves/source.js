@@ -18,6 +18,7 @@ export class WaveSource {
   get beats() { return this.beatSched.beats; }
   get breaths() { return this.breathSched.breaths; }
   get base() { return this.beatSched.base; }
+  get atrial() { return this.beatSched.atrial; }
 
   /**
    * @param {number} tSec display time
@@ -29,7 +30,7 @@ export class WaveSource {
     this.breathSched.advance(tSec + LOOKAHEAD, { rr: d.rr, ie: p.ie, etco2: d.etco2, shape: p.etco2Shape });
     return this.beatSched.advance(tSec + LOOKAHEAD, {
       rhythm: p.rhythm, hr: d.hr, flutterRatio: p.flutterRatio, pvcPerMin: p.pvcPerMin, st: p.st,
-      pulse: !pulseless(p), sbp: d.abp.sys, dbp: d.abp.dia, rr: d.rr,
+      pulse: !pulseless(p), sbp: d.abp.sys, dbp: d.abp.dia, sbp2: d.abp2?.sys, dbp2: d.abp2?.dia, rr: d.rr,
     });
   }
 }

@@ -18,21 +18,24 @@ export const PULSELESS_RHYTHMS = ['vf', 'asystole', 'pea'];
 export const ETCO2_SHAPES = ['normal', 'obstructive', 'curare', 'rebreathing', 'none'];
 export const SPO2_QUALITIES = ['good', 'poor', 'none'];
 export const ABP_DAMPINGS = ['normal', 'over', 'under'];
+/** CVP v wave: normal | giant (a large v wave, as with a leaking tricuspid valve). */
+export const CVP_VS = ['normal', 'giant'];
 /** Sensors that can be switched off per patient. */
-export const SENSORS = ['ecg', 'spo2', 'nibp', 'abp', 'etco2'];
+export const SENSORS = ['ecg', 'spo2', 'nibp', 'abp', 'etco2', 'cvp', 'abp2'];
 export const MAX_PATIENTS = 8;
-export const MODULE_IDS = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp', 'abp'];
+export const MODULE_IDS = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp', 'abp', 'cvp', 'abp2'];
 export const DEFAULT_MODULES = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp'];
 
 /**
  * @typedef {{ sys: number, dia: number }} Pressure
- * @typedef {{ hr: number, spo2: number, etco2: number, rr: number, temp: number, nibp: Pressure, abp: Pressure }} Numerics
+ * @typedef {{ hr: number, spo2: number, etco2: number, rr: number, temp: number, nibp: Pressure, abp: Pressure, cvp: number, abp2: Pressure }} Numerics
  * @typedef {Record<string, boolean>} SensorOff
  * @typedef {{ startedAt: number, durationMs: number, from: Numerics }} Glide
  * @typedef {{ sys: number, dia: number, at: number, mode: 'manual' | 'cycle', cycleSec: number }} NibpReading
  * @typedef {Numerics & {
  *   id: string, label: string, rhythm: string, glideMs: number, pulse: boolean, flutterRatio: number, st: number,
  *   pvcPerMin: number, ie: number, off: SensorOff, etco2Shape: string, spo2Quality: string, abpDamping: string,
+ *   cvpV: string, ppv: number, abp2Label: string,
  *   glide: Glide, nibpRead: NibpReading
  * }} Patient
  * @typedef {Record<string, [number, number]>} Limits
@@ -46,7 +49,12 @@ export const DEFAULT_MODULES = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp'];
 
 /** @returns {Numerics} */
 export function defaultNumerics() {
-  return { hr: 80, spo2: 98, etco2: 38, rr: 14, temp: 36.8, nibp: { sys: 120, dia: 75 }, abp: { sys: 120, dia: 75 } };
+  return { hr: 80, spo2: 98, etco2: 38, rr: 14, temp: 36.8, nibp: { sys: 120, dia: 75 }, abp: { sys: 120, dia: 75 }, cvp: 8, abp2: { sys: 120, dia: 75 } };
+}
+
+/** @returns {SensorOff} */
+function defaultOff() {
+  return { ecg: false, spo2: false, nibp: false, abp: false, etco2: false, cvp: false, abp2: false };
 }
 
 /**
@@ -58,8 +66,8 @@ export function defaultNumerics() {
 export function defaultPatient(id, label, now) {
   return {
     id, label, rhythm: 'sinus', ...defaultNumerics(), glideMs: 0, pulse: true, flutterRatio: 2, st: 0,
-    pvcPerMin: 0, ie: 2, off: { ecg: false, spo2: false, nibp: false, abp: false, etco2: false },
-    etco2Shape: 'normal', spo2Quality: 'good', abpDamping: 'normal',
+    pvcPerMin: 0, ie: 2, off: defaultOff(),
+    etco2Shape: 'normal', spo2Quality: 'good', abpDamping: 'normal', cvpV: 'normal', ppv: 0, abp2Label: '',
     glide: { startedAt: now, durationMs: 0, from: defaultNumerics() },
     nibpRead: { sys: 120, dia: 75, at: now, mode: 'manual', cycleSec: 0 },
   };
@@ -78,7 +86,7 @@ export function defaultState(now) {
     alarms: {
       limits: {
         hr: [50, 120], spo2: [90, 100], etco2: [30, 50], rr: [8, 30],
-        nibpSys: [90, 180], temp: [35.5, 38.5], abpSys: [90, 180],
+        nibpSys: [90, 180], temp: [35.5, 38.5], abpSys: [90, 180], cvp: [2, 14], abp2Sys: [90, 180],
       },
       enabled: true,
       silencedUntil: 0,
@@ -111,12 +119,14 @@ export function newCode(rand) {
 const RANGES = {
   hr: [0, 300], spo2: [0, 100], etco2: [0, 100], rr: [0, 60], temp: [25, 43],
   sys: [0, 350], dia: [0, 300], glideMs: [0, 600000], cycleSec: [0, 3600],
-  pvcPerMin: [0, 30], ie: [0.5, 5], st: [-3, 3],
+  pvcPerMin: [0, 30], ie: [0.5, 5], st: [-3, 3], cvp: [-5, 40], ppv: [0, 40],
 };
-const ENUMS = { etco2Shape: ETCO2_SHAPES, spo2Quality: SPO2_QUALITIES, abpDamping: ABP_DAMPINGS };
-const TARGET_KEYS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'nibp', 'abp'];
+const ENUMS = { etco2Shape: ETCO2_SHAPES, spo2Quality: SPO2_QUALITIES, abpDamping: ABP_DAMPINGS, cvpV: CVP_VS };
+const TARGET_KEYS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'nibp', 'abp', 'cvp', 'abp2'];
 /** Patient fields that are plain numbers with a range (everything but the objects and enums). */
-const NUMBER_KEYS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'glideMs', 'pvcPerMin', 'ie', 'st'];
+const NUMBER_KEYS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'glideMs', 'pvcPerMin', 'ie', 'st', 'cvp', 'ppv'];
+/** Second art line name shown on the monitor: up to 8 letters, digits, spaces and . - / (empty = the theme's label). */
+export const ABP2_LABEL = /^[A-Za-z0-9 ./-]{0,8}$/;
 
 /**
  * @param {unknown} v
@@ -170,7 +180,10 @@ export function validatePatch(patch) {
         } else if (k in ENUMS) {
           if (!ENUMS[/** @type {keyof typeof ENUMS} */ (k)].includes(x)) return { ok: false, msg: `unknown ${k}` };
           pt[k] = x;
-        } else if (k === 'nibp' || k === 'abp') {
+        } else if (k === 'abp2Label') {
+          if (typeof x !== 'string' || !ABP2_LABEL.test(x)) return { ok: false, msg: 'abp2Label must be up to 8 letters, digits or . - /' };
+          pt.abp2Label = x.trim();
+        } else if (k === 'nibp' || k === 'abp' || k === 'abp2') {
           if (!isObj(x)) return { ok: false, msg: `${k} must be an object` };
           pt[k] = {};
           for (const kk of Object.keys(x)) {
@@ -182,7 +195,7 @@ export function validatePatch(patch) {
           if (!inRange(x, /** @type {[number, number]} */ (RANGES[/** @type {keyof typeof RANGES} */ (k)]))) {
             return { ok: false, msg: `${k} out of range` };
           }
-          pt[k] = k === 'temp' ? Math.round(x * 10) / 10 : k === 'pvcPerMin' ? Math.round(x) : x;
+          pt[k] = k === 'temp' ? Math.round(x * 10) / 10 : k === 'pvcPerMin' ? Math.round(x) : k === 'cvp' || k === 'ppv' ? Math.round(x * 2) / 2 : x;
         } else return { ok: false, msg: `unknown field patient.${k}` };
       }
       out.patient = pt;
@@ -247,5 +260,29 @@ export function numericsOf(/** @type {Numerics} */ o) {
   return {
     hr: o.hr, spo2: o.spo2, etco2: o.etco2, rr: o.rr, temp: o.temp,
     nibp: { sys: o.nibp.sys, dia: o.nibp.dia }, abp: { sys: o.abp.sys, dia: o.abp.dia },
+    cvp: o.cvp, abp2: { sys: o.abp2.sys, dia: o.abp2.dia },
   };
+}
+
+/**
+ * Add fields a room saved by an older build does not have yet (additive changes keep `schema: 1`). Changes the state in place.
+ * @param {RoomState} s
+ * @returns {RoomState}
+ */
+export function fillDefaults(s) {
+  const now = 0;
+  for (const p of s.patients) {
+    const d = defaultPatient(p.id, p.label, now);
+    for (const k of Object.keys(d)) {
+      const key = /** @type {keyof Patient} */ (k);
+      if (p[key] === undefined && k !== 'glide' && k !== 'nibpRead') /** @type {any} */ (p)[k] = d[key];
+    }
+    p.off = { ...defaultOff(), ...p.off };
+    for (const k of /** @type {const} */ (['cvp', 'abp2'])) {
+      if (p.glide.from[k] === undefined) /** @type {any} */ (p.glide.from)[k] = p[k];
+    }
+  }
+  const lim = defaultState(now).alarms.limits;
+  for (const k of Object.keys(lim)) if (s.alarms.limits[k] === undefined) s.alarms.limits[k] = lim[k];
+  return s;
 }
