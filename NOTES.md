@@ -15,7 +15,7 @@ Lasting rules live in `AGENTS.md`. Points worth remembering go here.
   ahead on the display clock (`performance.now()`), so a rhythm change shows at the next beat. Glide, silence and NIBP use
   the server clock (`client.serverNow()`). The schedulers run in real time: tests step them like frames (a jump of more than
   a couple of seconds counts as a pause and restarts them).
-- Monitor code adapted from the owner's private notes and the `ot` repo (read-only reference): lane sweep, synth tones,
+- Monitor code adapted from the `ot` repo (read-only reference): lane sweep, synth tones,
   alarm tones, rhythm model, numerics jitter. Rewritten as plain modules with the theme and registries; no code is shared.
 - The monitor keeps a hidden `data-testid="value"` element with the S1 test value until S3 drops the controller test input.
 - Monitor e2e: `CHROMIUM_PATH=<chrome> node test/e2e/monitor.mjs` (screenshots go to `test/e2e/out/`, ignored by git).
