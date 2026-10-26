@@ -1,6 +1,7 @@
 # sim: status
 
 ## Now
+- S3 (PR): phone controller at `/c/<code>` (tabs Vitals / Alarms / Presets / More), `presence` message, client `wake()`. S2 (monitor) in parallel.
 - S1 (this PR): repo, Worker + Durable Object rooms, test shell (monitor and controller exchange a test value), DESIGN.md, CI.
 
 ## Waiting on the owners
