@@ -4,6 +4,7 @@ import { RoomClient, newClientId, roomUrl } from '../room/client.js';
 import { RHYTHMS, SENSORS, MODULE_IDS } from '../shared/schema.js';
 import { BUILTIN_THEMES } from '../theme/builtin.js';
 import { createThemePanel } from '../theme/panel.js';
+import { pickTheme } from '../theme/store.js';
 import { loadTheme } from '../theme/validate.js';
 import { makeActions } from './actions.js';
 import { PresetStore, runPreset, presetFromPatient } from './presets.js';
@@ -20,7 +21,7 @@ const RHYTHM_LABELS = /** @type {Record<string, string>} */ ({
 });
 const SENSOR_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG leads', spo2: 'SpO₂ probe', nibp: 'NIBP cuff', abp: 'Art line', etco2: 'CO₂ line', cvp: 'CVP line', abp2: 'Second art line' });
 const MODULE_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG', spo2: 'Pleth', etco2: 'EtCO₂ and RR', nibp: 'NIBP', rr: 'RR', temp: 'Temp', abp: 'Arterial line', cvp: 'CVP', abp2: 'Second arterial line' });
-const TABS = [['vitals', 'Vitals'], ['alarms', 'Alarms'], ['presets', 'Presets'], ['more', 'More']];
+const TABS = [['vitals', 'Vitals'], ['alarms', 'Alarms'], ['presets', 'Presets'], ['screens', 'Screens'], ['more', 'More']];
 const esc = (/** @type {unknown} */ s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
 
 /**
@@ -39,6 +40,7 @@ export function mountController(root, opts) {
     /** pending edits per patient id, wire units */
     pending: /** @type {Record<string, Record<string, number | string>>} */ ({}),
     dragging: false, note: '', io: '',
+    scr: '', // screen the per-screen theme panel is open for
   };
   const actions = makeActions(client, () => ui.p);
 
@@ -68,6 +70,36 @@ export function mountController(root, opts) {
     return actions.act(t ? { theme: 'custom', themeJson: t } : { theme: 'default' });
   }
   const { act } = actions;
+
+  // Theme for one named screen (Screens tab): `ui.scr` is the screen the panel is open for.
+  const screenTheme = () => {
+    const sc = state()?.screens?.[ui.scr];
+    const st = state();
+    return loadTheme(st ? pickTheme(null, st, sc ?? null).raw : undefined).theme;
+  };
+  /** @type {ReturnType<typeof createThemePanel> | null} made on first use, so the room's panel stays the only one until then */
+  let screenPanel = null;
+  /** @param {string} id */
+  function openScreenPanel(id) {
+    ui.scr = id;
+    if (!screenPanel) {
+      const panel = createThemePanel({
+        title: 'Theme (one screen)',
+        getTheme: screenTheme,
+        onApply: (t) => {
+          if (client.status !== 'open') { panel.say('Not connected: the theme was not sent.'); return false; }
+          return setScreen(ui.scr, { theme: 'custom', themeJson: t });
+        },
+        doc: root.ownerDocument,
+      });
+      root.ownerDocument.body.append(panel.el);
+      screenPanel = panel;
+    }
+    themePanel.close();
+    screenPanel.open();
+  }
+  /** @param {string} id @param {Record<string, any>} patch */
+  const setScreen = (id, patch) => act({ screens: { [id]: patch } });
   /** @type {{ cancel: () => void } | null} */
   let scenario = null;
   /** @type {Map<string, any>} */
@@ -214,6 +246,50 @@ export function mountController(root, opts) {
       <p class="hint" id="note">${esc(ui.note)}</p>`;
   }
 
+  function viewScreens() {
+    const s = /** @type {NonNullable<ReturnType<typeof state>>} */ (state());
+    const pr = client.presence;
+    const online = new Map((pr?.screens ?? []).map((x) => [x.s, x.dev]));
+    const ids = Object.keys(s.screens ?? {}).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+    const unnamed = Math.max(0, (pr?.monitors ?? 0) - ids.filter((id) => online.has(id)).length);
+    /** @param {string} id @param {string} what @param {string} text */
+    const shadow = (id, what, text) => (online.get(id)?.includes(what)
+      ? `<p class="hint shadow" data-testid="shadow-${id}-${what}">${text} <button type="button" class="small" data-scr-act="clear-${what}" data-s="${id}" data-testid="clear-${id}-${what}">Clear it</button></p>` : '');
+    return `
+      <p class="hint">Each laptop or tablet can be a named screen with its own bed, modules and theme. A monitor asks for a
+        name the first time it opens.${unnamed ? ` ${unnamed} monitor${unnamed === 1 ? ' is' : 's are'} open without a name.` : ''}</p>
+      ${ids.length ? '' : '<p class="hint">No named screens yet.</p>'}
+      ${ids.map((id) => {
+        const sc = /** @type {import('../shared/schema.js').Screen} */ (s.screens?.[id]);
+        const on = online.has(id);
+        const themeId = sc.theme ?? '';
+        return `<section class="scr" data-scr="${id}" data-testid="screen-${id}">
+          <h2><span class="dot" data-on="${on}" title="${on ? 'online' : 'offline'}" data-testid="online-${id}"></span>${esc(sc.name)}
+            <span class="hint">${on ? 'online' : 'offline'}</span></h2>
+          <div class="row"><input id="scrname-${id}" maxlength="24" value="${esc(sc.name)}" aria-label="Name of ${esc(sc.name)}" data-testid="scrname-${id}">
+            <button type="button" data-scr-act="rename" data-s="${id}" data-testid="rename-${id}">Rename</button></div>
+          <label class="field">Bed
+            <select data-scr-sel="p" data-s="${id}" data-testid="scrbed-${id}">
+              <option value="">Its own choice (default: first bed)</option>
+              ${s.patients.map((x) => `<option value="${esc(x.id)}"${x.id === sc.p ? ' selected' : ''}>${esc(x.label)}</option>`).join('')}
+            </select></label>
+          ${shadow(id, 'p', 'This screen\'s address picks its own bed, which wins.')}
+          <div class="sw-row"><span>Modules: same as the room</span>${toggle(`scrfollow-${id}`, !sc.modules, 'Modules same as the room')}</div>
+          ${sc.modules ? MODULE_IDS.map((k) => `<div class="sw-row sub"><span>${MODULE_LABELS[k]}</span>${toggle(`scrmod-${id}-${k}`, /** @type {string[]} */ (sc.modules).includes(k), MODULE_LABELS[k])}</div>`).join('') : ''}
+          <label class="field">Theme
+            <select data-scr-sel="theme" data-s="${id}" data-testid="scrtheme-${id}">
+              <option value="">Same as the room</option>
+              ${BUILTIN_THEMES.map((b) => `<option value="${b.id}"${b.id === themeId ? ' selected' : ''}>${esc(b.theme.name)}</option>`).join('')}
+              <option value="custom"${themeId === 'custom' ? ' selected' : ''}>Imported…</option>
+            </select></label>
+          ${shadow(id, 'theme', 'This screen picked its own theme, which wins.')}
+          <div class="row"><button type="button" data-scr-act="identify" data-s="${id}" data-testid="identify-${id}"${on ? '' : ' disabled'}>Identify</button>
+            <button type="button" data-scr-act="theme-import" data-s="${id}">Import theme…</button>
+            <button type="button" data-scr-act="forget" data-s="${id}" data-testid="forget-${id}">Forget</button></div>
+        </section>`;
+      }).join('')}`;
+  }
+
   function viewMore() {
     const s = /** @type {NonNullable<ReturnType<typeof state>>} */ (state());
     const pt = /** @type {NonNullable<ReturnType<typeof patient>>} */ (patient());
@@ -238,7 +314,7 @@ export function mountController(root, opts) {
     const view = $('view');
     if (!state()) { view.innerHTML = '<p class="hint">Joining the room…</p>'; return; }
     const scroll = window.scrollY;
-    view.innerHTML = ({ vitals: viewVitals, alarms: viewAlarms, presets: viewPresets, more: viewMore }[/** @type {'vitals'} */ (ui.tab)] ?? viewVitals)();
+    view.innerHTML = ({ vitals: viewVitals, alarms: viewAlarms, presets: viewPresets, screens: viewScreens, more: viewMore }[/** @type {'vitals'} */ (ui.tab)] ?? viewVitals)();
     window.scrollTo(0, scroll);
   }
 
@@ -264,7 +340,8 @@ export function mountController(root, opts) {
 
   function render() {
     renderStatus(); renderBeds(); renderDock(); renderProgress();
-    if (!ui.dragging) renderView();
+    // do not rebuild the page under a finger that is dragging a slider, or while a screen name is being typed
+    if (!ui.dragging && !(ui.tab === 'screens' && root.ownerDocument.activeElement?.matches('#view input'))) renderView();
   }
 
   // ---- edits ------------------------------------------------------------------------------------------------------
@@ -363,6 +440,7 @@ export function mountController(root, opts) {
     if (d.tab) { ui.tab = d.tab; render(); return; }
     if (d.bed) { ui.p = d.bed; render(); return; }
     if (!s || !pt) return;
+    if (d.scrAct && d.s) { onScreenAct(d.scrAct, d.s); return; }
     if (d.glide !== undefined) { ui.glideMs = Number(d.glide); settings.set('glideMs', ui.glideMs); renderView(); return; }
     if (d.step || d.pct) {
       const row = /** @type {HTMLElement} */ (t.closest('.prm'));
@@ -407,8 +485,34 @@ export function mountController(root, opts) {
     }
   });
 
+  /** @param {string} what @param {string} id screen id */
+  function onScreenAct(what, id) {
+    const sc = state()?.screens?.[id];
+    if (!sc) return;
+    if (what === 'rename') {
+      const name = /** @type {HTMLInputElement} */ ($(`scrname-${id}`)).value.trim();
+      if (name && name !== sc.name) setScreen(id, { name });
+      /** @type {HTMLElement} */ (root.ownerDocument.activeElement)?.blur?.();
+      renderView();
+    } else if (what === 'identify') client.send({ t: 'identify', s: id });
+    else if (what === 'forget') { if (window.confirm(`Forget ${sc.name}? Its settings go; that monitor asks for a name again.`)) client.send({ t: 'forgetScreen', s: id }); }
+    else if (what === 'clear-theme' || what === 'clear-p') client.send({ t: 'clearDevice', s: id, what: what.slice(6) });
+    else if (what === 'theme-import') openScreenPanel(id);
+  }
+
   /** @param {string} id @param {boolean} on @param {NonNullable<ReturnType<typeof state>>} s @param {NonNullable<ReturnType<typeof patient>>} pt */
   function onSwitch(id, on, s, pt) {
+    if (id.startsWith('scrfollow-')) {
+      const sid = id.slice(10);
+      setScreen(sid, { modules: on ? null : [...s.modules] }); // a screen's own list starts as a copy of the room's
+      return;
+    }
+    if (id.startsWith('scrmod-')) {
+      const [sid, m] = id.slice(7).split('-');
+      const cur = s.screens?.[sid]?.modules ?? s.modules;
+      setScreen(sid, { modules: on ? [...new Set([...cur, m])] : cur.filter((x) => x !== m) });
+      return;
+    }
     if (id === 'abp-module' || id.startsWith('mod-')) {
       const m = id === 'abp-module' ? 'abp' : id.slice(4);
       setModules(on ? [...new Set([...s.modules, m])] : s.modules.filter((x) => x !== m));
@@ -419,6 +523,15 @@ export function mountController(root, opts) {
   root.addEventListener('change', (ev) => {
     const t = /** @type {HTMLElement} */ (ev.target);
     const pt = patient();
+    const sd = t.dataset;
+    if (sd.scrSel && sd.s) {
+      const v = /** @type {HTMLSelectElement} */ (t).value;
+      if (sd.scrSel === 'p') setScreen(sd.s, { p: v || null });
+      else if (v === 'custom') {
+        if (state()?.screens?.[sd.s]?.theme !== 'custom') { openScreenPanel(sd.s); renderView(); }
+      } else setScreen(sd.s, { theme: v || null });
+      return;
+    }
     if (t.id === 'rhythm' && pt) {
       const v = /** @type {HTMLSelectElement} */ (t).value;
       if (v === pt.rhythm) delete pend().rhythm; else pend().rhythm = v;
@@ -443,8 +556,8 @@ export function mountController(root, opts) {
 
   // ---- connection -------------------------------------------------------------------------------------------------
   client.on('status', renderStatus);
-  client.on('presence', renderStatus);
-  client.on('state', () => { render(); if (themePanel.isOpen) themePanel.refresh(); });
+  client.on('presence', () => { renderStatus(); if (ui.tab === 'screens' && !ui.dragging) render(); });
+  client.on('state', () => { render(); if (themePanel.isOpen) themePanel.refresh(); if (screenPanel?.isOpen) screenPanel.refresh(); });
   client.on('error', (e) => {
     $('status').title = e?.msg ?? '';
     if (e?.code === 'schema') $('view').innerHTML = '<p class="hint">Update needed: reload this page.</p>';

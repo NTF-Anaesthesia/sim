@@ -10,6 +10,7 @@ monitor conventions, colours on black); no brand names or logos.
 2. Rooms: lifetime, codes, URLs
 3. State schema (v1)
 4. Modules
+   4a. Named screens
 5. Message protocol
 6. Glide model
 7. Alarm model
@@ -112,7 +113,13 @@ the **server** clock.
   "events": [                      // newest last, max 20, for the controller's log; monitor ignores
     { "t": 1760999950000, "by": "c-ab12", "kind": "rhythm", "p": "p1", "what": "set patient" }
   ],
-  "theme": "default"               // "default" or "custom"; custom JSON is in "themeJson" (S4)
+  "theme": "default",              // "default" or "custom"; custom JSON is in "themeJson" (S4)
+  "screens": {                     // named screens (section 4a); absent or {} in a new room; max 12
+    "s1": { "name": "Left", "kind": "monitor",       // id server-made (s1, s2, ...), name 1-24 chars; kind monitor | defib
+            "p": "p2",                                // optional: the bed this screen shows
+            "modules": ["ecg", "spo2"],               // optional: this screen's modules (absent = the room's)
+            "theme": "light", "themeJson": "{...}" }  // optional: built-in id, or "custom" with themeJson
+  }
 }
 ```
 
@@ -163,9 +170,30 @@ A module is a named block of one screen, switched on or off from the controller.
 **Lines (S2).** `cvp` (mean, -5 to 40), `cvpV` (`normal` or `giant`), `ppv` (0 to 40 %: pulse pressure swings with the breath on `abp` and `abp2`), `abp2` and `abp2Label` (up to 8 characters) are patient fields; `off.cvp` and `off.abp2` are sensor flags. CVP has no a wave without atrial contraction (AF, VF) and shows cannon a waves when the atria beat against a closed valve (complete heart block, VT). The **flush test** is the message `{t:'flush', line:'abp'|'abp2', p}`: the room only records an event (`kind: 'flush'`); each monitor draws a square wave then ringing that matches `abpDamping` (normal 2-3 oscillations, over none, under many) from the event time, for 3 s. Limits `cvp` and `abp2Sys`; alarms `CVP HIGH/LOW`, `ABP2 SYS`.
 
 Later (reserved ids, not drawn yet): `pap`. A client ignores module ids it does not know.
-**Every** module can be hidden, ECG included (a screen may show only the EtCO2 wave). The list in `state.modules` is the truth for **every** screen in the room. Per-screen module lists (two monitors
-showing different things) are Later; v1 reserves `screens: { "<screenId>": { "modules": [...] } }` in state and ignores
-it.
+**Every** module can be hidden, ECG included (a screen may show only the EtCO2 wave). `state.modules` is the room's
+list; a named screen (section 4a) may carry its own list, which wins for that screen.
+
+## 4a. Named screens
+
+Each monitor can be a **named screen** the phone sets: its own bed, module list and theme (V2 S1).
+
+- **Ids** are server-made, `s1`, `s2`, ... (the lowest free number; max 12 per room). `kind` is `monitor` (`defib` is
+  reserved for the defib screen); it is set at creation and cannot be patched.
+- **Naming**: a monitor with no screen id shows a small card "Name this screen" at the top (never blocking; "Not now"
+  hides it for this page load and the monitor follows the room). Saving sends `addScreen`; the reply `screenAdded`
+  gives the id, kept per device and room in `localStorage` (`sim.settings.screenId.<code>`). `?s=<id>` in the monitor
+  address overrides the stored id for that visit (never saved). A stored id the room no longer has (forgotten, or the room expired) is dropped and
+  the card comes back.
+- **Settings** go through `set` with `patch.screens.<id>.{name, p, modules, theme, themeJson}`; `null` clears `p`,
+  `modules` or the theme (back to the room). A built-in `theme` drops `themeJson`; `themeJson` alone means `custom`.
+  Removing a bed clears it from any screen that showed it.
+- **Precedence** on a monitor, for bed, modules and theme: the device's own choice (`?p=`, the monitor's theme pick)
+  \> the screen setting > the room > the default. The monitor reports its device choices with `iam`; the phone shows
+  them under the screen ("this screen's own choice wins") with a button that sends `clearDevice`.
+- **Identify** shows the screen's name full screen on that monitor for 3 s. Nothing is stored.
+- **Forget** (`forgetScreen`) deletes the entry; that monitor asks for a name again and follows the room.
+- The phone's **Screens** tab lists the screens (online dot from presence), with rename, bed, modules (same as the room,
+  or a per-module list), theme (same as the room, a built-in, or an imported file), Identify and Forget.
 
 ## 5. Message protocol
 
@@ -185,6 +213,11 @@ Client to server:
 | `mark` | `p?`, `text?` | bookmark in the event log (`kind: "bookmark"`, text up to 200 chars) for debriefs; V1 has no button for it. `rev` +1. |
 | `silence` | none | `alarms.silencedUntil` = now + 120000. |
 | `ping` | `n` | server replies `pong` with same `n`; used to measure delay and keep the connection alive. |
+| `addScreen` | `name?`, `kind?` | adds a named screen (section 4a; id `s<n>`, name default `Screen <n>`); the sender gets `screenAdded`. `rev` +1. |
+| `forgetScreen` | `s` | deletes screen `s`. `rev` +1. |
+| `iam` | `s` (id or null), `dev` (list of `theme`, `p`) | a monitor says which screen it is and which device choices it has; kept with the socket, sent out in `presence`. Not stored. |
+| `identify` | `s` | the server sends `identify` to every socket (the monitor for `s` shows its name). Not stored. |
+| `clearDevice` | `s`, `what` (`theme` or `p`) | the server sends `clearDevice`; that monitor drops its own choice. Not stored. |
 | `test` | `value` | v1 shell: stores `value` (any JSON up to 1 KB) in `state.test`, broadcast. Removed by S2/S3. |
 
 Server to client:
@@ -194,7 +227,10 @@ Server to client:
 | `state` | `state`, `now` | full state, sent to a client right after it connects (a late joiner gets the current state) and after any change; `now` is the server clock for offset correction |
 | `error` | `code`, `msg` | `bad_json`, `too_big`, `rate`, `bad_patch` |
 | `pong` | `n`, `now` | |
-| `presence` | `monitors`, `controllers` | counts of connected sockets by role, sent to every socket when one joins or leaves (S3). Not stored, not in `state`; a client keeps the last one. The controller shows "N monitors". |
+| `presence` | `monitors`, `controllers`, `screens` | counts of connected sockets by role, and `screens: [{s, dev}]` for monitors that sent `iam` with an id (one entry per screen, device choices merged), sent to every socket when one joins, leaves or sends `iam` (S3, V2 S1). Not stored, not in `state`; a client keeps the last one. The controller shows "N monitors". |
+| `screenAdded` | `s` | reply to `addScreen`, to the sender only |
+| `identify` | `s`, `ms` | show screen `s`'s name for `ms` |
+| `clearDevice` | `s`, `what` | screen `s` drops its own `theme` or `p` choice |
 
 Rules:
 - Every accepted change is broadcast as a full `state` to **all** sockets (including the sender) in one go; total state

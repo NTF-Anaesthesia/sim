@@ -1,7 +1,10 @@
 // @ts-check
 // Room logic with no Cloudflare or DOM types: takes a storage object, returns what to send. The Durable Object
 // (worker/room.js) is a thin shell around this, so node can test it with a fake storage (DESIGN.md sections 2, 5).
-import { MAX_PATIENTS, SCHEMA_VERSION, TARGETS, numericsOf, defaultPatient, defaultState, fillDefaults, validatePatch } from '../shared/schema.js';
+import {
+  DEVICE_CHOICES, MAX_PATIENTS, MAX_SCREENS, SCHEMA_VERSION, SCREEN_ID, SCREEN_KINDS, TARGETS, numericsOf, defaultPatient,
+  defaultState, fillDefaults, screenName, validateIam, validatePatch,
+} from '../shared/schema.js';
 import { displayed, restartGlide } from '../engine/glide.js';
 
 /** @typedef {import('../shared/schema.js').RoomState} RoomState */
@@ -12,6 +15,7 @@ export const MAX_PER_SECOND = 30;
 export const SILENCE_MS = 120000;
 export const MAX_EVENTS = 20;
 export const MAX_TEST_CHARS = 1024;
+export const IDENTIFY_MS = 3000;
 
 /**
  * @typedef {{ kind: string, what: string, p?: string }} EventInfo
@@ -21,7 +25,8 @@ export const MAX_TEST_CHARS = 1024;
  *   setAlarm(ms: number): Promise<void>,
  *   deleteAll(): Promise<void>
  * }} HubStorage
- * @typedef {{ reply?: object, broadcast?: object }} HubResult
+ * @typedef {{ reply?: object, broadcast?: object, iam?: { s: string | null, dev: string[] } }} HubResult
+ *   `iam`: the socket's screen and device choices changed; the Durable Object keeps them with the socket and sends `presence`
  */
 
 export class RoomHub {
@@ -79,6 +84,27 @@ export class RoomHub {
       case 'removePatient': return this.apply(clientId, now, msg, (s) => this.doRemove(s, msg));
       case 'silence': return this.apply(clientId, now, msg, (s) => { s.alarms.silencedUntil = now + SILENCE_MS; return { kind: 'silence', what: 'silence' }; });
       case 'mark': return this.apply(clientId, now, msg, (s) => this.doMark(s, msg));
+      case 'addScreen': {
+        let id = '';
+        const out = await this.apply(clientId, now, msg, (s) => { id = this.doAddScreen(s, msg); return { kind: 'screen', what: `add ${id}` }; });
+        if (out.broadcast) out.reply = { t: 'screenAdded', s: id };
+        return out;
+      }
+      case 'forgetScreen': return this.apply(clientId, now, msg, (s) => this.doForgetScreen(s, msg));
+      case 'iam': {
+        const v = validateIam(msg);
+        if (!v.ok) return { reply: err('bad_patch', v.msg) };
+        return { iam: { s: v.s, dev: v.dev } };
+      }
+      case 'identify':
+      case 'clearDevice': {
+        // sent on to every socket, the named screen acts on it; nothing is stored
+        const st = await this.state();
+        if (typeof msg.s !== 'string' || !st.screens?.[msg.s]) return { reply: err('bad_patch', 'unknown screen') };
+        if (msg.t === 'identify') return { broadcast: { t: 'identify', s: msg.s, ms: IDENTIFY_MS } };
+        if (!DEVICE_CHOICES.includes(msg.what)) return { reply: err('bad_patch', 'what must be theme or p') };
+        return { broadcast: { t: 'clearDevice', s: msg.s, what: msg.what } };
+      }
       case 'flush': return this.apply(clientId, now, msg, (s) => this.doFlush(s, msg));
       case 'test': return this.apply(clientId, now, msg, (s) => {
         if (JSON.stringify(msg.value ?? null).length > MAX_TEST_CHARS) throw new BadPatch('test value too large');
@@ -146,6 +172,7 @@ export class RoomHub {
       if (p.theme === 'default') delete s.themeJson; // back to the default for every monitor
     }
     if (p.themeJson) s.themeJson = p.themeJson;
+    if (p.screens) for (const [id, sp] of Object.entries(p.screens)) applyScreen(s, id, sp);
 
     if (p.patient && TARGETS.some((k) => k in p.patient)) {
       let ms = pt.glideMs;
@@ -200,6 +227,7 @@ export class RoomHub {
     const i = s.patients.findIndex((x) => x.id === msg.p);
     if (i < 0) throw new BadPatch('unknown patient');
     s.patients.splice(i, 1);
+    for (const sc of Object.values(s.screens ?? {})) if (sc.p === msg.p) delete sc.p; // back to the device's own bed
     return { kind: 'patient', what: `remove ${msg.p}`, p: msg.p };
   }
 
@@ -212,6 +240,41 @@ export class RoomHub {
     if (msg.text !== undefined && (typeof msg.text !== 'string' || msg.text.length > 200)) throw new BadPatch('text must be up to 200 characters');
     if (msg.p !== undefined && !pick(s, msg.p)) throw new BadPatch('unknown patient');
     return { kind: 'bookmark', what: msg.text ? `mark ${msg.text}` : 'mark', ...(msg.p ? { p: msg.p } : {}) };
+  }
+
+  /**
+   * A new named screen: id `s<n>` (lowest free), name default `Screen <n>`, kind default `monitor`. The sender gets
+   * `screenAdded` with the id (kept on that device) as well as the new state.
+   * @param {RoomState} s
+   * @param {any} msg
+   * @returns {string} the new id
+   */
+  doAddScreen(s, msg) {
+    const screens = (s.screens ??= {});
+    if (Object.keys(screens).length >= MAX_SCREENS) throw new BadPatch(`at most ${MAX_SCREENS} screens`);
+    const kind = msg.kind ?? 'monitor';
+    if (!SCREEN_KINDS.includes(kind)) throw new BadPatch('unknown screen kind');
+    let n = 1;
+    while (`s${n}` in screens) n++;
+    let name = `Screen ${n}`;
+    if (msg.name !== undefined && msg.name !== '') {
+      const t = screenName(msg.name);
+      if (t === null) throw new BadPatch('name must be 1-24 characters');
+      name = t;
+    }
+    screens[`s${n}`] = { name, kind };
+    return `s${n}`;
+  }
+
+  /**
+   * Forget a screen: its settings go; a monitor still using the id asks for a name again.
+   * @param {RoomState} s
+   * @param {any} msg
+   */
+  doForgetScreen(s, msg) {
+    if (typeof msg.s !== 'string' || !s.screens?.[msg.s]) throw new BadPatch('unknown screen');
+    delete s.screens[msg.s];
+    return { kind: 'screen', what: `forget ${msg.s}` };
   }
 
   /**
@@ -260,6 +323,32 @@ export class RoomHub {
 }
 
 class BadPatch extends Error {}
+
+/**
+ * Merge one screen's validated patch: `null` removes a field (follow the device / room again).
+ * @param {RoomState} s
+ * @param {string} id
+ * @param {Record<string, any>} sp
+ */
+function applyScreen(s, id, sp) {
+  const sc = s.screens?.[id];
+  if (!sc || !SCREEN_ID.test(id)) throw new BadPatch(`unknown screen ${id}`);
+  if (sp.p !== undefined && sp.p !== null && !s.patients.some((x) => x.id === sp.p)) throw new BadPatch('unknown patient');
+  for (const k of ['name', 'p', 'modules']) {
+    if (sp[k] === null) delete sc[/** @type {'p'} */ (k)];
+    else if (sp[k] !== undefined) /** @type {any} */ (sc)[k] = sp[k];
+  }
+  if (sp.themeJson && sp.theme === undefined) sp.theme = 'custom';
+  if (sp.theme !== undefined) {
+    if (sp.theme === null) { delete sc.theme; delete sc.themeJson; }
+    else {
+      sc.theme = sp.theme;
+      if (sp.theme !== 'custom') delete sc.themeJson;
+    }
+  }
+  if (sp.themeJson) sc.themeJson = sp.themeJson;
+  if (sc.theme === 'custom' && !sc.themeJson) throw new BadPatch('a custom screen theme needs themeJson');
+}
 
 /**
  * @param {RoomState} s

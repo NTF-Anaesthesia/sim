@@ -16,6 +16,7 @@ import { createThemeStore, pickTheme } from '../theme/store.js';
 import { loadTheme } from '../theme/validate.js';
 import { AudioMixer } from './audio.js';
 import { Lane } from './lane.js';
+import { createIdentity } from './identity.js';
 import { createModuleRegistry, registerBuiltinModules } from './modules.js';
 import { createSettings } from './settings.js';
 import { buildView } from './view.js';
@@ -27,8 +28,8 @@ const positive = (x, fallback) => (typeof x === 'number' && Number.isFinite(x) &
 /**
  * @param {HTMLElement} root
  * @param {{
- *   client: import('../room/client.js').RoomClient, code: string, pick?: string | null,
- *   settings?: import('./settings.js').Settings, makeContext?: () => AudioContext
+ *   client: import('../room/client.js').RoomClient, code: string, pick?: string | null, screenParam?: string | null,
+ *   onClearPick?: () => void, settings?: import('./settings.js').Settings, makeContext?: () => AudioContext
  * }} opts
  */
 export function mountScreen(root, opts) {
@@ -66,14 +67,29 @@ export function mountScreen(root, opts) {
   /** @type {WakeLockSentinel | null} */
   let wake = null;
   let wakeWanted = false;
+  /** @type {import('../shared/schema.js').Screen | null} this monitor's named screen (set from the phone) */
+  let screen = null;
+  let pick = opts.pick ?? null; // bed chosen on this device (`?p=`)
 
   const audio = new AudioMixer({
     volume: (ch) => (theme.audio?.[ch]?.volume ?? 1) * settings.get(`vol.${ch}`, 1),
     makeContext: opts.makeContext,
   });
 
-  // Theme: a choice made on this device wins, else the room's theme (sent from a phone), else the default.
+  // Theme: a choice made on this device wins, else its screen's theme, else the room's theme (sent from a phone), else
+  // the default.
   const themeStore = createThemeStore(settings);
+  // Named screen: device choices (theme, `?p=` bed) win over the screen's settings; the phone can clear them.
+  const identity = createIdentity({
+    client, code: opts.code, settings, param: opts.screenParam, doc: root.ownerDocument,
+    deviceChoices: () => [...(themeStore.get() ? ['theme'] : []), ...(pick ? ['p'] : [])],
+    onChange: () => applyState(),
+    onClear: (what) => {
+      if (what === 'theme') themeStore.followRoom();
+      if (what === 'p') { pick = null; opts.onClearPick?.(); }
+      applyState();
+    },
+  });
   const panel = createThemePanel({
     title: 'Theme (this device)',
     getTheme: () => theme,
@@ -88,16 +104,17 @@ export function mountScreen(root, opts) {
       if (id === 'room') themeStore.followRoom();
       else if (id === 'custom') themeStore.setCustom(theme);
       else themeStore.setBuiltin(id);
+      identity.report();
       applyState();
     },
-    onApply: (t) => { themeStore.setCustom(t); applyState(); },
+    onApply: (t) => { themeStore.setCustom(t); identity.report(); applyState(); },
     extras: [],
     screen: { get: screenPick, set: (m) => { settings.set('screen', m); applyState(); } },
     doc: root.ownerDocument,
   });
   root.ownerDocument.body.append(panel.el);
 
-  const modsOn = () => state?.modules ?? [];
+  const modsOn = () => screen?.modules ?? state?.modules ?? [];
   /** @param {import('../theme/layout.js').Cell} cell */
   function isShown(cell) {
     const def = modules.get(cell.module);
@@ -121,7 +138,7 @@ export function mountScreen(root, opts) {
 
   function pickPatient() {
     const ps = state?.patients ?? [];
-    return ps.find((p) => p.id === opts.pick) ?? ps[0] ?? null;
+    return ps.find((p) => p.id === pick) ?? ps.find((p) => p.id === screen?.p) ?? ps[0] ?? null;
   }
 
   function rebuild() {
@@ -165,7 +182,8 @@ export function mountScreen(root, opts) {
 
   function applyState() {
     if (!state) return;
-    const { raw } = pickTheme(themeStore.get(), state);
+    screen = identity.sync(state);
+    const { raw } = pickTheme(themeStore.get(), state, screen);
     const key = JSON.stringify(raw ?? null);
     if (key !== themeKey) {
       themeKey = key;
@@ -177,9 +195,11 @@ export function mountScreen(root, opts) {
     const np = pickPatient();
     if (np?.id !== patient?.id) { nibp = new NibpMachine(theme.nibp); viewKey = ''; }
     patient = np;
-    const k = JSON.stringify([state.modules, patient?.id, screenPick()]) + themeKey;
+    const k = JSON.stringify([modsOn(), patient?.id, screenPick()]) + themeKey;
     if (k !== viewKey) { viewKey = k; rebuild(); }
+    if (view && identity.nameEl.parentElement !== view.chip.parentElement) view.chip.before(identity.nameEl);
     if (view) view.testValue.textContent = state.test === undefined ? '--' : String(state.test);
+    if (view) view.testValue.dataset.patient = patient?.id ?? '';
   }
 
   function renderChips() {

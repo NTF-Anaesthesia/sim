@@ -39,14 +39,14 @@ export class RoomClient {
     this.pings = new Map();
     /** @type {Map<string, Set<(arg: any) => void>>} */
     this.handlers = new Map();
-    /** @type {{ monitors: number, controllers: number } | null} who is connected, from the server's `presence` message */
+    /** @type {{ monitors: number, controllers: number, screens: { s: string, dev: string[] }[] } | null} who is connected, from the server's `presence` message */
     this.presence = null;
     this.lastPongAt = 0;
     this.wakeTimer = null;
   }
 
   /**
-   * @param {'state' | 'status' | 'error' | 'presence'} name
+   * @param {'state' | 'status' | 'error' | 'presence' | 'screen'} name
    * @param {(arg: any) => void} fn
    * @returns {() => void} unsubscribe
    */
@@ -110,7 +110,10 @@ export class RoomClient {
       if (this.bestRtt === Infinity && typeof msg.now === 'number') this.offsetMs = msg.now - this.now();
       this.emit('state', msg.state);
     } else if (msg.t === 'presence') {
-      this.presence = { monitors: Number(msg.monitors) || 0, controllers: Number(msg.controllers) || 0 };
+      const screens = Array.isArray(msg.screens)
+        ? msg.screens.filter((/** @type {any} */ x) => typeof x?.s === 'string').map((/** @type {any} */ x) => ({ s: x.s, dev: Array.isArray(x.dev) ? x.dev.map(String) : [] }))
+        : [];
+      this.presence = { monitors: Number(msg.monitors) || 0, controllers: Number(msg.controllers) || 0, screens };
       this.emit('presence', this.presence);
     } else if (msg.t === 'pong') {
       this.lastPongAt = this.now();
@@ -124,6 +127,8 @@ export class RoomClient {
       }
     } else if (msg.t === 'error') {
       this.emit('error', msg);
+    } else if (msg.t === 'screenAdded' || msg.t === 'identify' || msg.t === 'clearDevice') {
+      this.emit('screen', msg); // named screens (DESIGN.md section 4a)
     }
   }
 

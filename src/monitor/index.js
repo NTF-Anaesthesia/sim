@@ -11,8 +11,13 @@ import { mountScreen } from './screen.js';
 export function mountMonitor(root, opts) {
   const loc = opts.location ?? window.location;
   const client = new RoomClient({ url: roomUrl(loc, opts.code, 'monitor', newClientId('monitor')) });
-  const pick = new URLSearchParams(loc.search ?? '').get('p');
-  mountScreen(root, { client, code: opts.code, pick });
+  const q = new URLSearchParams(loc.search ?? '');
+  // `?p=` picks the bed on this device, `?s=` which named screen it is; the phone can clear `?p=` (it shadows the screen's bed)
+  const onClearPick = () => {
+    if (loc !== window.location) return;
+    try { const u = new URL(location.href); u.searchParams.delete('p'); history.replaceState(null, '', u); } catch { /* no history here */ }
+  };
+  mountScreen(root, { client, code: opts.code, pick: q.get('p'), screenParam: q.get('s'), onClearPick });
   client.connect();
   return client;
 }

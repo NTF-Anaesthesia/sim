@@ -1,6 +1,7 @@
 // @ts-check
-// Which theme a monitor shows. A device choice (kept in `sim.settings.theme`) wins; with none, the room's theme
-// (`theme: 'custom'` plus `themeJson`, sent from a phone) is used; with neither, the default. Pure given a settings object.
+// Which theme a monitor shows. A device choice (kept in `sim.settings.theme`) wins; then its named screen's theme (set
+// from the phone); then the room's theme (`theme: 'custom'` plus `themeJson`, sent from a phone); else the default.
+// Pure given a settings object.
 import { builtinTheme } from './builtin.js';
 
 /**
@@ -17,13 +18,17 @@ export function cleanPick(v) {
 }
 
 /**
- * The raw theme to draw (not yet validated), and where it came from.
+ * The raw theme to draw (not yet validated), and where it came from: this device's choice, else its named screen's
+ * setting from the phone (`theme`: built-in id or `custom` with `themeJson`), else the room's, else the default.
  * @param {DevicePick} pick
  * @param {{ theme?: string, themeJson?: object } | null | undefined} room
- * @returns {{ raw: object | undefined, source: 'device' | 'room' | 'default' }}
+ * @param {{ theme?: string, themeJson?: object } | null | undefined} [screen]
+ * @returns {{ raw: object | undefined, source: 'device' | 'screen' | 'room' | 'default' }}
  */
-export function pickTheme(pick, room) {
+export function pickTheme(pick, room, screen) {
   if (pick) return { raw: pick.id === 'custom' ? pick.json : (builtinTheme(pick.id) ?? undefined), source: 'device' };
+  if (screen?.theme === 'custom' && screen.themeJson) return { raw: screen.themeJson, source: 'screen' };
+  if (screen?.theme && builtinTheme(screen.theme)) return { raw: builtinTheme(screen.theme) ?? undefined, source: 'screen' };
   if (room?.theme === 'custom' && room.themeJson) return { raw: room.themeJson, source: 'room' };
   return { raw: undefined, source: 'default' };
 }

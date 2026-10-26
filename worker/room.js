@@ -46,6 +46,10 @@ export class Room extends DurableObject {
     const meta = ws.deserializeAttachment() ?? { id: 'anon' };
     const out = await this.hub.onMessage(meta.id, typeof message === 'string' ? message : '');
     if (out.reply) ws.send(JSON.stringify(out.reply));
+    if (out.iam && meta.role === 'monitor') {
+      ws.serializeAttachment({ ...meta, s: out.iam.s, dev: out.iam.dev });
+      this.broadcastPresence();
+    }
     if (out.broadcast) {
       const text = JSON.stringify(out.broadcast);
       for (const peer of this.ctx.getWebSockets()) {
@@ -55,7 +59,8 @@ export class Room extends DurableObject {
   }
 
   /**
-   * Tell every socket how many monitors and controllers are connected (not stored; each client keeps the last one).
+   * Tell every socket how many monitors and controllers are connected and which named screens are online (not stored;
+   * each client keeps the last one).
    * @param {WebSocket} [leaving] a socket that is closing and must not be counted
    */
   broadcastPresence(leaving) {

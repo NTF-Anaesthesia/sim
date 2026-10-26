@@ -83,9 +83,11 @@ try {
 
   // monitor: import by file and by URL, bad file keeps the theme, live edit, export
   await mon.getByTestId('theme-file').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{"themeSchema":9,"colors":{}}') });
+  await mon.waitForFunction(() => /schema 9/.test(document.querySelector('[data-testid="theme-error"]')?.textContent ?? ''), null, { timeout: 1000 }).catch(() => {});
   check(/schema 9/.test(await mon.getByTestId('theme-error').textContent()) && await bg(mon) === 'rgb(243, 241, 234)', 'monitor: a newer schema is refused, the old theme stays');
   const dark = readFileSync(new URL('../../themes/generic-dark.json', import.meta.url));
   await mon.getByTestId('theme-file').setInputFiles({ name: 'dark.json', mimeType: 'application/json', buffer: dark });
+  await mon.waitForFunction(() => getComputedStyle(document.querySelector('#app')).backgroundColor === 'rgb(0, 0, 0)', null, { timeout: 1000 }).catch(() => {});
   check(await bg(mon) === 'rgb(0, 0, 0)', 'monitor: file import applies at once, no reload');
   await mon.getByTestId('theme-url').fill(`${BASE}/themes/generic-light.json`);
   await mon.getByTestId('theme-url-load').click();

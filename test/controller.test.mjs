@@ -134,7 +134,7 @@ test('settings use the sim.settings.* namespace and fall back when storage is bl
 });
 
 test('presence counts monitors and controllers', () => {
-  assert.deepEqual(presenceMessage([{ role: 'monitor' }, { role: 'monitor' }, { role: 'controller' }, null]), { t: 'presence', monitors: 2, controllers: 2 });
+  assert.deepEqual(presenceMessage([{ role: 'monitor' }, { role: 'monitor' }, { role: 'controller' }, null]), { t: 'presence', monitors: 2, controllers: 2, screens: [] });
 });
 
 class FakeWS {
@@ -159,7 +159,7 @@ test('client keeps the last presence message', () => {
   c.connect();
   FakeWS.all[0].open();
   FakeWS.all[0].recv({ t: 'presence', monitors: 2, controllers: 1 });
-  assert.deepEqual(c.presence, { monitors: 2, controllers: 1 });
+  assert.deepEqual(c.presence, { monitors: 2, controllers: 1, screens: [] });
   assert.equal(seen.length, 1);
 });
 
