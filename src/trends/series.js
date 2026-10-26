@@ -23,6 +23,7 @@ export const TREND_GROUPS = [
   { id: 'abp', label: 'Art line', unit: 'mmHg', color: '#b3261e', module: 'abp', series: [{ key: 'abpSys', get: (d) => d.abp.sys }, { key: 'abpDia', get: (d) => d.abp.dia }] },
   { id: 'abp2', label: 'Art line 2', unit: 'mmHg', color: '#c25a00', module: 'abp2', series: [{ key: 'abp2Sys', get: (d) => d.abp2.sys }, { key: 'abp2Dia', get: (d) => d.abp2.dia }] },
   { id: 'cvp', label: 'CVP', unit: 'mmHg', color: '#1d78c1', module: 'cvp', series: [{ key: 'cvp', get: (d) => d.cvp }] },
+  { id: 'bis', label: 'BIS', unit: '', color: '#7a4bc0', module: 'bis', series: [{ key: 'bis', get: (d) => d.bis }] },
 ];
 
 /**

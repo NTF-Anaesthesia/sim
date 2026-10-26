@@ -41,7 +41,7 @@ test('units change the display only; patches stay mmHg and C', () => {
 test('every step range stays inside the schema ranges', () => {
   for (const s of paramList(DEFAULT_UNITS)) {
     for (const wire of [s.from(s.min), s.from(s.max)]) {
-      const patch = buildPatch({ [s.id]: wire }, { ...pt(), hr: -1, spo2: -1, etco2: -1, rr: -1, temp: -1, nibp: { sys: -1, dia: -1 }, abp: { sys: -1, dia: -1 }, abp2: { sys: -1, dia: -1 }, cvp: -99, ppv: -1 }, DEFAULT_UNITS);
+      const patch = buildPatch({ [s.id]: wire }, { ...pt(), hr: -1, spo2: -1, etco2: -1, rr: -1, temp: -1, nibp: { sys: -1, dia: -1 }, abp: { sys: -1, dia: -1 }, abp2: { sys: -1, dia: -1 }, cvp: -99, ppv: -1, bis: -1, bisSqi: -1, bisEmg: -1, bisSr: -1 }, DEFAULT_UNITS);
       assert.ok(validatePatch(patch).ok, `${s.id} ${wire}`);
     }
   }

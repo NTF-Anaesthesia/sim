@@ -187,8 +187,8 @@ test('bad drugs are refused with a reason', async () => {
 });
 
 test('drugPatch clamps and rounds', () => {
-  const p = { hr: 3, temp: 36.8, cvp: 8, nibp: { sys: 10, dia: 5 } };
-  assert.deepEqual(drugPatch(p, { hr: { add: -10 }, temp: { add: 0.34 }, cvp: { add: 0.7 }, nibp: { sys: { mul: 0.5 } } }), { hr: 0, temp: 37.1, cvp: 8.5, nibp: { sys: 5 } });
+  const p = { hr: 3, temp: 36.8, cvp: 8, bis: 95, nibp: { sys: 10, dia: 5 } };
+  assert.deepEqual(drugPatch(p, { hr: { add: -10 }, temp: { add: 0.34 }, cvp: { add: 0.7 }, bis: { add: -40.4 }, nibp: { sys: { mul: 0.5 } } }), { hr: 0, temp: 37.1, cvp: 8.5, bis: 55, nibp: { sys: 5 } });
 });
 
 test('library files: valid, and refused whole with a reason', () => {
