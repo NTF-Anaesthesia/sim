@@ -126,6 +126,21 @@ try {
   }, null, { timeout: 3000 }).then(() => true, () => false);
   check(inked, 'editor: scale lines are drawn on the CO2 wave');
   await mon.getByTestId('f-cells.border.width').fill('0');
+  // fixed screen: same cell proportions at two window sizes of the same shape
+  await mon.getByTestId('f-screen.mode').selectOption('fixed');
+  const ratio = () => mon.evaluate(() => { const r = document.querySelector('.cell[data-module="ecg"][data-part="wave"]').getBoundingClientRect(); const s = document.querySelector('.screen').getBoundingClientRect(); return [r.width / r.height, r.width / s.width]; });
+  await mon.setViewportSize({ width: 1280, height: 800 });
+  await mon.waitForTimeout(300);
+  const r1 = await ratio();
+  await mon.setViewportSize({ width: 1024, height: 640 });
+  await mon.waitForTimeout(300);
+  const r2 = await ratio();
+  check(Math.abs(r1[0] - r2[0]) < 0.02 * r1[0] && Math.abs(r1[1] - r2[1]) < 0.01, 'fixed screen: cells keep their proportions at 1280 and 1024 wide windows');
+  await mon.getByTestId('f-screen.mode').selectOption('fill');
+  await mon.getByTestId('theme-screen').selectOption('fixed');
+  check(await mon.evaluate(() => !!document.querySelector('.screen')), 'device override: fixed size beats the theme');
+  await mon.getByTestId('theme-screen').selectOption('theme');
+  check(await mon.evaluate(() => !document.querySelector('.screen')), 'device override: back to the theme (fill)');
   await mon.getByTestId('theme-fill').click();
   const boxed = await mon.getByTestId('theme-text').inputValue();
   check(/"themeSchema": 1/.test(boxed) && boxed.includes('#ff00ff'), 'export: the current theme (with the edit) is shown as JSON');

@@ -10,6 +10,7 @@ export class Lane {
    * @param {{
    *   pxPerSec: number, color: string, lineWidth: number, gapPx: number, lo: number, hi: number,
    *   sample: (t: number) => number | null,
+   *   zoom?: () => number,
    *   scale?: { canvas: HTMLCanvasElement, lines: number[], font: string, px: number }
    * }} opts
    */
@@ -23,6 +24,7 @@ export class Lane {
     this.hi = opts.hi;
     this.sample = opts.sample;
     this.scale = opts.scale;
+    this.zoom = opts.zoom ?? (() => 1);
     /** @type {number | null} */
     this.last = null;
     /** @type {number | null} */
@@ -39,7 +41,8 @@ export class Lane {
 
   /** Size the backing store to the element (device pixels, capped at 2x). True when it changed. */
   fit() {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const z = this.zoom();
+    const dpr = Math.min(2 * Math.max(1, z), (window.devicePixelRatio || 1) * z);
     const w = this.c.clientWidth;
     const h = this.c.clientHeight;
     if (!w || !h) return false;

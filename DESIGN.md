@@ -300,7 +300,8 @@ complete. The Room validates `themeJson` with the same code and stores the compl
 **Later theme fields (all optional, defaults keep the look, `themeSchema` stays 1):** `numerics.limitsPosition: "left"`,
 `numerics.meanPosition` (`below`/`inline`), `labels.colorMode` (`parameter` = how captions were always drawn, `text`),
 `font.waveLabelScale`, `waves.<abp|etco2|ecg>.scaleLines` (0-4 reference lines in the wave's units, drawn on a second canvas
-so the sweep never erases them), and `cells.border.{color,width,radius}` plus optional `cells.background`. Documented in THEMES.md.
+so the sweep never erases them), and `cells.border.{color,width,radius}` plus optional `cells.background`, and `screen.{mode,width,height}` (`fill` = today; `fixed` scales a
+fixed-size layout evenly into the window; device override `sim.settings.screen` = theme/fill/fixed). Documented in THEMES.md.
 
 **S2 additions (all optional, defaulted in `src/theme/default.js`, which is the in-code source of the default theme):**
 `colors.grid` and `colors.flashText`; `waves.pxPerMm` (pixels per mm, so speed 25 mm/s is 100 px/s at 4), `waves.grid`

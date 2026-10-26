@@ -6,6 +6,7 @@ html, body { margin: 0; height: 100%; background: var(--m-bg, #000); color: var(
 .hint { padding: 16px; }
 .mon { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--m-bg); }
 .mon .stage { position: relative; flex: 1; min-height: 0; }
+.mon .screen { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .cell, .alarmbar { position: absolute; padding: var(--m-gap); }
 .cell { container-type: size; color: var(--c); overflow: hidden; border: var(--m-cell-bw, 0) solid var(--m-cell-bc, transparent); border-radius: var(--m-cell-br, 0); background-color: var(--m-cell-bg, transparent); }
 .wave canvas { position: absolute; inset: var(--m-gap); width: calc(100% - 2 * var(--m-gap)); height: calc(100% - 2 * var(--m-gap)); }

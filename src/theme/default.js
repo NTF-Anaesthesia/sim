@@ -41,6 +41,8 @@ export const DEFAULT_THEME = {
     ecg: { speed: 25, gain: 1, scaleLines: [] }, spo2: { speed: 25, gain: 1 }, etco2: { speed: 12.5, gain: 1, scaleLines: [] },
     abp: { speed: 25, gain: 1, scaleLines: [] },
   },
+  // screen.mode 'fill' stretches the layout to the window (today); 'fixed' draws it at width x height and scales it evenly
+  screen: { mode: 'fill', width: 1280, height: 800 },
   // `background` (optional, #rrggbb) is the colour behind each cell and is absent here so it follows the screen colour
   cells: { border: { color: '#404040', width: 0, radius: 0 } },
   audio: { alarm: { volume: 1 }, qrs: { volume: 0.5 }, spo2: { volume: 0.5 } },

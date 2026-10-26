@@ -37,6 +37,7 @@ const CSS = `
  *   current?: () => string,
  *   onChoose?: (id: string) => void,
  *   extras?: { label: string, testid: string, run: () => void }[],
+ *   screen?: { get: () => string, set: (mode: string) => void },
  *   editor?: boolean,
  *   fetchImpl?: typeof fetch,
  *   doc?: Document,
@@ -93,6 +94,15 @@ export function createThemePanel(opts) {
     for (const c of opts.choices) pickSel.append(make('option', { value: c.id }, c.label));
     pickSel.addEventListener('change', () => { say(); opts.onChoose?.(/** @type {HTMLSelectElement} */ (pickSel).value); api.refresh(); });
     pickRow.append(pickSel);
+  }
+  /** @type {HTMLSelectElement | null} */
+  let screenSel = null;
+  if (opts.screen) {
+    const scr = opts.screen;
+    screenSel = /** @type {HTMLSelectElement} */ (make('select', { 'data-testid': 'theme-screen', 'aria-label': 'Screen size' }));
+    for (const [v, l] of [['theme', 'Screen: as theme'], ['fill', 'Screen: fill window'], ['fixed', 'Screen: fixed size']]) screenSel.append(make('option', { value: v }, l));
+    screenSel.addEventListener('change', () => { say(); scr.set(/** @type {HTMLSelectElement} */ (screenSel).value); });
+    pickRow.append(screenSel);
   }
   for (const x of opts.extras ?? []) pickRow.append(button(x.label, x.testid, () => { say(); x.run(); }));
 
@@ -229,6 +239,7 @@ export function createThemePanel(opts) {
     refresh() {
       nameLine.textContent = `Current: ${themeName(opts.getTheme())}`;
       if (pickSel && opts.current) pickSel.value = opts.current();
+      if (screenSel && opts.screen) screenSel.value = opts.screen.get();
       fillEditor();
     },
     open() { api.refresh(); el.hidden = false; },

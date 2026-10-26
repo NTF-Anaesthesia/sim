@@ -15,6 +15,7 @@ Schema version: `themeSchema: 1` (see "Versions" below). Full examples: [themes/
   back.
 - **On the phone** (`/c/<code>`, More, **Theme for all monitors**): the same import, then the theme is sent into the room
   and every monitor that has no choice of its own shows it, within a second, with no reload. **Reset all to default** clears it.
+- **Screen size**: the Theme panel also has Screen: *as theme* (default), *fill window* or *fixed size*; this is a device setting (`sim.settings.screen`) and wins over `screen.mode`. A theme sent from the phone carries its own `screen.mode`.
 - Order of use on a monitor: its own device choice, else the room's theme, else the default.
 - A web address must allow other sites to read it (CORS) or be on the same site; it is fetched without cookies.
 - A file that is refused changes nothing: the monitor keeps the theme it had and the panel says why (not JSON, bigger
@@ -49,6 +50,8 @@ Every example value is the default unless stated. Ranges are enforced; a value o
 | `colors.text` | `"#c0c0c0"` | The toolbar and sensor-off text; also captions, units and limits when `labels.colorMode` is `text`. |
 | `colors.grid` | `"#16301a"` | Grid lines behind the waves (only when `waves.grid` is true). |
 | `colors.flashText` | `"#000000"` | Text colour on a coloured alarm bar. |
+| `screen.mode` | `"fill"` | `fill`: the layout stretches to the window. `fixed`: the layout is drawn at `screen.width` x `screen.height` and scaled evenly to fit, with bars in `background`, so a theme looks the same on any tablet. Pixel values (gap, line width, borders, px/mm) scale with it. |
+| `screen.width`, `screen.height` | `1280`, `800` | Size of the fixed screen in pixels, 320 to 3840 and 240 to 2160. Only used when `screen.mode` is `fixed`. |
 | `layout.grid.columns`, `rows` | `12`, `12` | Grid size, 1 to 48. Cells are placed on this grid. |
 | `layout.grid.gap` | `6` | Gap between cells in pixels, 0 to 40. |
 | `layout.cells[]` | see below | One entry per module part. At most 60. |

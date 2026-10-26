@@ -244,3 +244,16 @@ test('a top-level cells key is not mistaken for layout.cells', () => {
   assert.equal(t.cells.border.width, 4);
   assert.ok(t.layout.cells.length > 0);
 });
+
+test('screen fields default to filling the window and are range checked', () => {
+  const t = resolveTheme({ themeSchema: 1 }).theme;
+  assert.deepEqual(t.screen, { mode: 'fill', width: 1280, height: 800 });
+  const ok = validateTheme({ themeSchema: 1, screen: { mode: 'fixed', width: 1024, height: 768 } });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.warnings, []);
+  assert.equal(ok.theme.screen.mode, 'fixed');
+  const bad = validateTheme({ themeSchema: 1, screen: { mode: 'zoom', width: 100, height: 5000 } });
+  assert.equal(bad.ok, true);
+  for (const p of ['screen.mode', 'screen.width', 'screen.height']) assert.ok(bad.warnings.some((w) => w.includes(p)), p);
+  assert.deepEqual(bad.theme.screen, { mode: 'fill', width: 1280, height: 800 });
+});

@@ -175,6 +175,11 @@
       "scaleLines": []
     }
   },
+  "screen": {
+    "mode": "fill",
+    "width": 1280,
+    "height": 800
+  },
   "cells": {
     "border": {
       "color": "#404040",
