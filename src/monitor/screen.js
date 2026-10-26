@@ -300,7 +300,9 @@ export function mountScreen(root, opts) {
       hr: s.hr, spo2: s.spo2, etco2: s.etco2, rr: s.rr, temp: s.temp,
       nibpSys: nb.phase === 'result' ? nb.sys : null, abpSys: s.abp ? s.abp.sys : null,
       cvp: s.cvp, abp2Sys: s.abp2 ? s.abp2.sys : null,
-      fio2: s.fio2, etagMac: mac,
+      fio2: s.fio2,
+      // no agent delivered yet (Fi and Et both 0): nothing to judge, so choosing an agent does not alarm before wash-in
+      etagMac: (s.fiag ?? 0) > 0 || (s.etag ?? 0) > 0 ? mac : null,
     }, nowMs);
     const av = tracker.update(alarms, { enabled: state.alarms.enabled, silencedUntil: state.alarms.silencedUntil }, nowMs);
 

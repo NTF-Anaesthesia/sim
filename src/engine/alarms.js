@@ -94,7 +94,7 @@ export function evaluateAlarms(p, state, v, now) {
     else limit('cvp', 'cvp', 'CVP', v.cvp ?? null, 'cvp');
   }
   if (mods.includes('gas') || mods.includes('o2')) {
-    if (off.gas) add('gas-off', 'gas', PRIORITY.low, 'GAS LINE OFF');
+    if (off.gas) add('gas-off', 'fio2', PRIORITY.low, 'GAS LINE OFF');
     else {
       const fi = v.fio2 ?? null;
       if (fi !== null && fi < 21) add('fio2-hypoxic', 'fio2', PRIORITY.high, 'FIO2 LOW');

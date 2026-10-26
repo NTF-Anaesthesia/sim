@@ -205,7 +205,7 @@ export function mountController(root, opts) {
     return `<div class="sw-row"><span>Gas</span>${toggle('mod-gas', gas, 'Gas')}</div>
       <div class="sw-row"><span>TOF</span>${toggle('mod-tof', tof, 'TOF')}</div>
       ${gas ? `<label class="field">Agent<select id="agent" data-testid="agent">${agents.map(([v, l]) => `<option value="${v}"${v === pt.agent ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-        <p class="hint" data-testid="mac-hint">Et ${mac(pt).toFixed(2)} MAC at age ${pt.age}</p>` : ''}
+        ${pt.agent !== 'none' ? `<p class="hint" data-testid="mac-hint">Et ${mac(pt).toFixed(2)} MAC at age ${pt.age}</p>` : ''}` : ''}
       ${tof ? `<h2>TOF</h2>
         <div class="row"><button type="button" class="wide" data-act="tof-now" data-testid="tof-now">Measure TOF now</button></div>
         <div class="glide" role="group" aria-label="TOF interval"><span class="label">Interval</span>
