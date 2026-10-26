@@ -5,3 +5,4 @@ export * as waves from './waves/index.js';
 export * as theme from './theme/index.js';
 export * as monitor from './monitor/index.js';
 export * as controller from './controller/index.js';
+export * as trends from './trends/index.js';

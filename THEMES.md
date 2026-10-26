@@ -30,6 +30,7 @@ Schema version: `themeSchema: 1` (see "Versions" below). Full examples: [themes/
 3. Unknown keys are kept and ignored. Keys named `css`, `style`, `script`, `html`, `js` or starting with `on` are refused,
    and so is any text containing `<`, `url(`, `@import`, `javascript:`, `expression(` or a backslash.
 4. Device settings (units, wave speed and gain, volumes made on this device) win over the theme's values.
+5. The Trends button, overlay and panel (V2 S4) have a fixed generic look: they add no theme cells or fields, and the theme format is unchanged.
 
 ## Fields
 

@@ -43,7 +43,7 @@
 .ctl textarea { width: 100%; font: 14px monospace; background: #151515; color: var(--fg); border: 1px solid #444; border-radius: 8px; }
 .ctl .dock { position: fixed; left: 0; right: 0; bottom: 0; background: #0a0a0a; border-top: 1px solid #333; padding-bottom: env(safe-area-inset-bottom); }
 .ctl .tabs { display: flex; }
-.ctl .tabs button { flex: 1; border-radius: 0; border: 0; min-height: 52px; background: transparent; }
+.ctl .tabs button { flex: 1 1 0; min-width: 0; padding: 0 2px; font-size: .85rem; border-radius: 0; border: 0; min-height: 52px; background: transparent; }
 .ctl .tabs [aria-current="true"] { color: var(--accent); box-shadow: inset 0 3px var(--accent); }
 .ctl .applybar { display: flex; gap: 8px; padding: 8px 12px; }
 .ctl .apply { flex: 1; min-height: 56px; background: var(--accent); color: #000; font-weight: 700; font-size: 1.1rem; }
@@ -61,3 +61,10 @@
 .ctl .dot[data-on="true"] { background: #3c3; }
 .ctl .sw-row.sub { padding-left: 14px; }
 .ctl .shadow { margin: 4px 0; }
+.ctl .mark { min-height: 44px; padding: 4px 16px; border-color: var(--accent); color: var(--accent); }
+.ctl .trend-svg { width: 100%; height: auto; }
+.ctl .trend-table { width: 100%; border-collapse: collapse; font-size: .8rem; font-variant-numeric: tabular-nums; }
+.ctl .trend-table th, .ctl .trend-table td { padding: 3px 4px; border-bottom: 1px solid #222; text-align: right; }
+.ctl .trend-table th:first-child, .ctl .trend-table td:first-child { text-align: left; }
+.ctl .trend-expiry[data-warn="true"] { color: var(--warn); }
+.ctl .trends .row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }

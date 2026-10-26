@@ -11,6 +11,7 @@ import { createWaveRegistry, registerBuiltinWaves, WaveSource } from '../waves/i
 import { layoutCells } from '../theme/layout.js';
 import { BUILTIN_THEMES } from '../theme/builtin.js';
 import { createThemePanel } from '../theme/panel.js';
+import { mountTrends } from '../trends/panel.js';
 import { resolveTheme, waveSettings } from '../theme/resolve.js';
 import { createThemeStore, pickTheme } from '../theme/store.js';
 import { loadTheme } from '../theme/validate.js';
@@ -114,6 +115,21 @@ export function mountScreen(root, opts) {
   });
   root.ownerDocument.body.append(panel.el);
 
+  // Trends overlay: closed by default; opening it asks the room for its log (nothing is kept on this device).
+  const trendsEl = root.ownerDocument.createElement('div');
+  trendsEl.className = 'trends-overlay';
+  trendsEl.hidden = true;
+  trendsEl.dataset.testid = 'trends-overlay';
+  trendsEl.innerHTML = '<div class="trends-bar"><b>Trends</b><button type="button" data-testid="trends-close">Close</button></div><div class="trends-host"></div>';
+  const trendsHost = /** @type {HTMLElement} */ (trendsEl.querySelector('.trends-host'));
+  const trendsPanel = mountTrends(trendsHost, { client, code: opts.code, patientId: () => patient?.id });
+  trendsEl.querySelector('button')?.addEventListener('click', () => { trendsEl.hidden = true; });
+  root.ownerDocument.body.append(trendsEl);
+  function toggleTrends() {
+    trendsEl.hidden = !trendsEl.hidden;
+    if (!trendsEl.hidden) trendsPanel.refresh();
+  }
+
   const modsOn = () => screen?.modules ?? state?.modules ?? [];
   /** @param {import('../theme/layout.js').Cell} cell */
   function isShown(cell) {
@@ -151,6 +167,7 @@ export function mountScreen(root, opts) {
       onFull: toggleFull,
       onWake: toggleWake,
       onTheme: () => (panel.isOpen ? panel.close() : panel.open()),
+      onTrends: toggleTrends,
       screenMode: screenPick() === 'theme' ? theme.screen.mode : screenPick(),
       onFit: () => { needRefill = true; },
     });

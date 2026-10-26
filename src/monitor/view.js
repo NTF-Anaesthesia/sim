@@ -38,7 +38,7 @@ function applyTheme(theme, /** @type {HTMLElement} */ root) {
  * @param {HTMLElement} root the element that becomes the monitor
  * @param {Record<string, any>} theme
  * @param {import('../theme/layout.js').Cell[]} cells
- * @param {{ onSilence: () => void, onSound: () => void, onFull: () => void, onWake: () => void, onTheme: () => void, code: string, screenMode?: string, onFit?: () => void }} act
+ * @param {{ onSilence: () => void, onSound: () => void, onFull: () => void, onWake: () => void, onTheme: () => void, onTrends?: () => void, code: string, screenMode?: string, onFit?: () => void }} act
  */
 export function buildView(root, theme, cells, act) {
   applyTheme(theme, root);
@@ -128,11 +128,11 @@ export function buildView(root, theme, cells, act) {
   const tools = document.createElement('div');
   tools.className = 'tools';
   tools.innerHTML = '<button type="button" data-t="sound">Sound</button><button type="button" data-t="full">Full screen</button>'
-    + '<button type="button" data-t="wake">Keep awake</button><button type="button" data-t="theme" data-testid="theme-open">Theme</button><span class="chip" id="status" data-status="connecting">connecting</span>'
+    + '<button type="button" data-t="wake">Keep awake</button><button type="button" data-t="theme" data-testid="theme-open">Theme</button><button type="button" data-t="trends" data-testid="trends-open">Trends</button><span class="chip" id="status" data-status="connecting">connecting</span>'
     + '<span class="code">Room <b></b></span><span class="hidden-test" data-testid="value"></span>';
   /** @type {HTMLElement} */ (tools.querySelector('.code b')).textContent = act.code;
   /** @type {Record<string, () => void>} */
-  const handlers = { sound: act.onSound, full: act.onFull, wake: act.onWake, theme: act.onTheme };
+  const handlers = { sound: act.onSound, full: act.onFull, wake: act.onWake, theme: act.onTheme, trends: act.onTrends ?? (() => {}) };
   tools.addEventListener('click', (e) => {
     const t = /** @type {HTMLElement} */ (e.target).closest('button')?.dataset.t;
     if (t) handlers[t]?.();
