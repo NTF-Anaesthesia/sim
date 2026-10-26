@@ -6,21 +6,27 @@
 import { mulberry32 } from './rng.js';
 
 /**
- * kind: normal | pvc | pac | paced | dropped (a P with no QRS) | mech (a pulse with no ECG complex, torsades)
+ * kind: normal | pvc | pac | paced (pacing spike then a wide complex: captured) | spike (a pacing stimulus with no
+ * response: no complex, no pulse) | dropped (a P with no QRS) | mech (a pulse with no ECG complex, torsades)
+ * `inv`: the P wave is retrograde (junctional), drawn inverted after the QRS.
  * @typedef {{
  *   t: number, kind: string, rr: number, pr: number | null, qrsWidth: number, amp: number, st: number,
- *   pulse: boolean, sbp: number, dbp: number, sbp2: number, dbp2: number
+ *   pulse: boolean, sbp: number, dbp: number, sbp2: number, dbp2: number, inv?: boolean
  * }} Beat
  * @typedef {{ type: string, since: number, atrialRate: number } | null} Base
  * @typedef {{ rate: number } | null} Atrial atrial activity that runs on its own clock (AV dissociation), per minute
+ * @typedef {{ rate: number, capture: boolean, fixed: boolean }} PaceParams pacer on; per minute; stimulus at or above
+ *   the capture threshold; `fixed` = fires at the rate whether or not it senses a beat (fixed mode, or demand that fails to sense)
  * @typedef {{
  *   rhythm: string, hr: number, flutterRatio: number, pvcPerMin: number, st: number, pulse: boolean,
- *   sbp: number, dbp: number, rr: number, sbp2?: number, dbp2?: number
+ *   sbp: number, dbp: number, rr: number, sbp2?: number, dbp2?: number, pace?: PaceParams | null
  * }} BeatParams
  */
 
 const NARROW = 0.09;
 const WIDE = 0.16;
+/** Heart muscle does not answer a pacing spike this soon after a complex, seconds. */
+const REFRACTORY = 0.3;
 
 /**
  * Per rhythm: `clock` regular | irregular | none | mech; `pr` PR interval in seconds or null (no P wave); `wide` QRS;
@@ -43,7 +49,12 @@ export const RHYTHM_INFO = {
   chb: { label: 'Complete block', clock: 'regular', pr: null, wide: true, pvc: false },
   torsades: { label: 'Torsades', clock: 'mech', pr: null, wide: true, pvc: false },
   paced: { label: 'Paced', clock: 'regular', pr: null, wide: true, pvc: false },
+  junctional: { label: 'Junctional', clock: 'regular', pr: null, wide: false, pvc: true },
+  bigeminy: { label: 'Bigeminy', clock: 'regular', pr: 0.16, wide: false, pvc: false },
+  trigeminy: { label: 'Trigeminy', clock: 'regular', pr: 0.16, wide: false, pvc: false },
 };
+/** Where the early beat of a bigeminy / trigeminy comes, as a share of the beat interval. */
+const COUPLING = 0.62;
 
 /** Wenckebach cycle: PR seconds for each conducted beat, then one dropped P. */
 export const WENCKEBACH_PR = [0.16, 0.24, 0.32, 0.4];
@@ -76,6 +87,20 @@ export class BeatScheduler {
     /** @type {string} */
     this.baseType = '';
     this.baseSince = 0;
+    /** pacer: time of its last stimulus and of the last complex of any origin (seconds) */
+    this.lastSpike = -1e9;
+    this.lastQrs = -1e9;
+    this.lastPaced = -1e9;
+    this.pacing = false;
+  }
+
+  /** Insert keeping the list sorted by time (an early beat can be made before a later one is). @param {Beat} beat */
+  insert(beat) {
+    let i = this.beats.length;
+    while (i > 0 && this.beats[i - 1].t > beat.t) i--;
+    this.beats.splice(i, 0, beat);
+    this.lastT = Math.max(this.lastT, beat.t);
+    if (beat.kind !== 'spike' && beat.kind !== 'dropped') this.lastQrs = Math.max(this.lastQrs, beat.t);
   }
 
   /** Respiratory sinus arrhythmia: the interval breathes a little with the respiratory rate. */
@@ -103,20 +128,58 @@ export class BeatScheduler {
     this.base = base;
     this.atrial = p.rhythm === 'chb' || p.rhythm === 'vt' ? { rate: CHB_ATRIAL_RATE } : null;
     const ok = Number.isFinite(p.hr) && p.hr > 0;
-    if (info.clock === 'none' || !ok) {
-      this.next = Math.max(this.next, until);
-      return added;
-    }
-    const period = 60 / p.hr;
-    // a clearly faster rate pulls the next beat in; a slower one waits for the beat already due
-    if (period < this.nominal * 0.8) this.next = Math.min(this.next, this.anchor + period * 1.1);
-    if (this.next < until - 2) this.next = until;
-    while (this.next <= until) {
-      const t = this.next;
-      this.make(t, period, p, info, added);
+    const intrinsic = info.clock !== 'none' && ok;
+    const pace = p.pace ?? null;
+    if (!pace) this.pacing = false;
+    else if (!this.pacing) { this.pacing = true; this.lastSpike = Math.max(this.lastSpike, this.lastQrs); }
+    const period = ok ? 60 / p.hr : 0;
+    if (intrinsic) {
+      // a clearly faster rate pulls the next beat in; a slower one waits for the beat already due
+      if (period < this.nominal * 0.8) this.next = Math.min(this.next, this.anchor + period * 1.1);
+      if (this.next < until - 2) this.next = until;
+    } else this.next = Math.max(this.next, until);
+    for (;;) {
+      const ti = intrinsic ? this.next : Infinity;
+      const tp = pace ? this.spikeDue(pace, until) : Infinity;
+      if (Math.min(ti, tp) > until) break;
+      if (ti <= tp) {
+        if (pace && ti - this.lastPaced < REFRACTORY) this.next = ti + period; // lands in the refractory period of a paced beat
+        else this.make(ti, period, p, info, added);
+      } else if (pace) this.spike(tp, period, p, pace, intrinsic, added);
     }
     if (this.beats.length > 500) this.beats.splice(0, this.beats.length - 400);
     return added;
+  }
+
+  /**
+   * When the pacer fires next. Demand mode times from the last complex it saw (or its own last stimulus when that
+   * did not capture); fixed mode, and demand with failure to sense, time from its own last stimulus only.
+   * @param {PaceParams} pace @param {number} until
+   */
+  spikeDue(pace, until) {
+    const ref = pace.fixed ? this.lastSpike : Math.max(this.lastSpike, this.lastQrs);
+    const due = ref + 60 / pace.rate;
+    return due < until - 2 ? until : Math.max(due, this.lastT + 0.02);
+  }
+
+  /**
+   * One pacing stimulus: always a spike; a wide complex with a pulse when it captures and the muscle is not refractory.
+   * @param {number} t @param {number} period intrinsic interval (0 = none) @param {BeatParams} p
+   * @param {PaceParams} pace @param {boolean} intrinsic @param {Beat[]} added
+   */
+  spike(t, period, p, pace, intrinsic, added) {
+    this.lastSpike = t;
+    const captured = pace.capture && t - this.lastQrs >= REFRACTORY;
+    /** @type {Beat} */
+    const beat = {
+      t, kind: captured ? 'paced' : 'spike', rr: 60 / pace.rate, pr: null, qrsWidth: WIDE, amp: 1, st: p.st,
+      pulse: captured, sbp: p.sbp, dbp: p.dbp, sbp2: p.sbp2 ?? p.sbp, dbp2: p.dbp2 ?? p.dbp,
+    };
+    this.insert(beat);
+    added.push(beat);
+    if (captured) this.lastPaced = t;
+    // a captured beat resets the heart's own clock when the pacer is the faster one
+    if (captured && intrinsic && 60 / pace.rate < period) this.next = t + period;
   }
 
   /**
@@ -133,9 +196,8 @@ export class BeatScheduler {
         kind: 'normal', rr: period, pr: info.pr, qrsWidth: info.wide ? WIDE : NARROW, amp: 1, st: p.st,
         pulse: p.pulse, sbp: p.sbp, dbp: p.dbp, sbp2: p.sbp2 ?? p.sbp, dbp2: p.dbp2 ?? p.dbp, ...b,
       };
-      this.beats.push(beat);
+      this.insert(beat);
       added.push(beat);
-      this.lastT = Math.max(this.lastT, beat.t);
     };
     let step = period;
     this.anchor = t;
@@ -165,6 +227,23 @@ export class BeatScheduler {
       case 'vt':
         push({ t, amp: 0.8 });
         break;
+      case 'junctional':
+        step = period * this.rsa(t, p.rr);
+        push({ t, rr: step, inv: true });
+        if (p.pvcPerMin > 0 && this.rand() < p.pvcPerMin / p.hr) {
+          push({ t: t + COUPLING * step, kind: 'pvc', pr: null, qrsWidth: WIDE, amp: 0.55, rr: COUPLING * step });
+          step *= 2;
+        }
+        break;
+      case 'bigeminy':
+      case 'trigeminy': {
+        // every 2nd / 3rd beat is an early wide one, followed by a pause, so the average rate stays `hr`
+        const n = p.rhythm === 'bigeminy' ? 2 : 3;
+        for (let k = 0; k < n - 1; k++) push({ t: t + k * period, rr: period });
+        push({ t: t + (n - 2 + COUPLING) * period, kind: 'pvc', pr: null, qrsWidth: WIDE, amp: 0.55, rr: COUPLING * period });
+        step = n * period;
+        break;
+      }
       case 'chb':
         push({ t, amp: 0.8 });
         break;
@@ -173,7 +252,7 @@ export class BeatScheduler {
         push({ t, rr: step });
         if (info.pvc && p.pvcPerMin > 0 && this.rand() < p.pvcPerMin / p.hr) {
           // an early wide beat with a full compensatory pause
-          push({ t: t + 0.62 * step, kind: 'pvc', pr: null, qrsWidth: WIDE, amp: 0.55, rr: 0.62 * step });
+          push({ t: t + COUPLING * step, kind: 'pvc', pr: null, qrsWidth: WIDE, amp: 0.55, rr: COUPLING * step });
           step *= 2;
         }
       }

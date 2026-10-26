@@ -30,17 +30,30 @@ export function upper(arr, t) {
 /** Longest time before a beat (PR) and after it (T wave) that can still touch a sample, seconds. */
 export const BEAT_REACH = { before: 0.55, after: 0.6 };
 
+/** A pacing stimulus: a tall, very narrow spike just before where the complex would start. */
+const pacingSpike = (/** @type {number} */ x) => 1.1 * g(x, -0.02, 0.0025);
+
 /**
- * ECG lead II in mV around one beat (x seconds from its R peak).
- * @param {number} x @param {Beat} b
+ * ECG in mV around one beat (x seconds from its R peak). `lead` ii is the usual lead; v1 is a second view of the same
+ * beat (small r, deep S, upright P, flatter T) for the second ECG lane.
+ * @param {number} x @param {Beat} b @param {string} [lead]
  */
-export function ecgBeat(x, b) {
+export function ecgBeat(x, b, lead = 'ii') {
   if (b.kind === 'mech') return 0;
+  if (b.kind === 'spike') return lead === 'v1' ? 0.7 * pacingSpike(x) : pacingSpike(x);
   const s = Math.sqrt(Math.min(1.5, Math.max(0.3, b.rr)));
   const wide = b.qrsWidth > 0.12;
   let v = 0;
   if (b.pr !== null) v += 0.12 * g(x, -b.pr, 0.022);
+  if (b.inv) v -= 0.1 * g(x, 0.1, 0.022); // retrograde P just after the QRS
   if (b.kind === 'dropped') return v;
+  if (lead === 'v1') {
+    v *= 0.6;
+    if (wide) v += 0.25 * g(x, 0.01, 0.03) - 0.85 * g(x, 0.07, 0.035) + 0.3 * g(x, 0.17 * s, 0.07 * s);
+    else v += 0.28 * g(x, -0.004, 0.009) - 0.85 * g(x, 0.024, 0.011) + 0.06 * g(x, 0.24 * s, 0.05 * s);
+    if (b.kind === 'paced') v += 0.7 * pacingSpike(x);
+    return v;
+  }
   if (wide) {
     v += -0.1 * g(x, -0.02, 0.02) + 0.95 * g(x, 0.012, 0.028) - 0.35 * g(x, 0.065, 0.03);
     v += -0.45 * g(x, 0.15 * s, 0.07 * s);
@@ -50,7 +63,7 @@ export function ecgBeat(x, b) {
     // ST shift: 1 mm = 0.1 mV, a plateau between the QRS and the end of the T wave
     if (b.st) v += b.st * 0.1 * (sig((x - 0.03) / 0.012) - sig((x - 0.3 * s) / 0.03));
   }
-  if (b.kind === 'paced') v += 1.1 * g(x, -0.02, 0.0025);
+  if (b.kind === 'paced') v += pacingSpike(x);
   return v;
 }
 
@@ -78,13 +91,13 @@ export function ecgBase(base, t) {
   }
 }
 
-/** @param {WaveSrc} src @param {number} t */
-export function ecgSample(src, t) {
+/** @param {WaveSrc} src @param {number} t @param {string} [lead] */
+export function ecgSample(src, t, lead = 'ii') {
   let v = src.base ? ecgBase(src.base, t) : 0;
   const b = src.beats;
   const i = upper(b, t + BEAT_REACH.before);
-  for (let k = Math.max(0, i - 5); k < i; k++) {
-    if (t - b[k].t < BEAT_REACH.after) v += ecgBeat(t - b[k].t, b[k]);
+  for (let k = Math.max(0, i - 8); k < i; k++) { // spikes between the beats can double the count in the reach
+    if (t - b[k].t < BEAT_REACH.after) v += ecgBeat(t - b[k].t, b[k], lead);
   }
   return v;
 }
@@ -105,7 +118,7 @@ export function plethSample(src, t, quality) {
   const b = src.beats;
   const i = upper(b, t - PLETH_DELAY);
   let v = 0;
-  for (let k = Math.max(0, i - 4); k < i; k++) {
+  for (let k = Math.max(0, i - 8); k < i; k++) {
     if (!b[k].pulse) continue;
     const pp = Math.max(0, b[k].sbp - b[k].dbp);
     v += plethBeat(t - PLETH_DELAY - b[k].t) * Math.min(1.3, pp / 45) * b[k].amp;
@@ -161,7 +174,9 @@ export function abpSample(src, t, damping, opts = {}) {
   const sys = (/** @type {Beat} */ x) => (second ? x.sbp2 ?? x.sbp : x.sbp);
   let best = 0;
   let pulsed = false;
-  for (let k = Math.max(0, i - 2); k < i; k++) {
+  let from = i; // the last two beats, not counting pacing spikes that got no response
+  for (let seen = 0; from > 0 && seen < 2;) if (b[--from].kind !== 'spike') seen++;
+  for (let k = from; k < i; k++) {
     if (!b[k].pulse) continue;
     pulsed = true;
     const pp = (sys(b[k]) - dia(b[k])) * b[k].amp * (damping === 'over' ? 0.85 : 1) * ppvFactor(src.breaths, b[k].t, opts.ppv ?? 0);

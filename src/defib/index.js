@@ -2,10 +2,14 @@
 // The defib screen (a named screen of kind `defib`): ECG from the pads, energy select, charge, shock, sync with R-wave
 // markers. Touch and mouse (plain buttons). The shock itself is a room message, so every screen of the bed and the log
 // agree; charge, energy and sync are local to this screen. Colours come from the theme; the look is generic.
+import { RANGES } from '../shared/schema.js';
 import { shown } from '../engine/rhythm.js';
 import { Lane } from '../monitor/lane.js';
 import { waveSettings } from '../theme/resolve.js';
 import { DefibModel } from './model.js';
+
+const PACE_RATE = RANGES.paceRate;
+const PACE_MA = RANGES.paceMa;
 
 /** How long a "Shock delivered" line stays, ms. */
 const NOTE_MS = 4000;
@@ -59,6 +63,14 @@ export function createDefib(root, opts) {
       <button type="button" class="d-big d-charge" data-d="charge" data-testid="defib-charge">CHARGE</button>
       <button type="button" class="d-big d-shock" data-d="shock" data-testid="defib-shock" disabled>SHOCK</button>
       <button type="button" class="d-big d-sync" data-d="sync" data-testid="defib-sync" aria-pressed="false">SYNC</button>
+    </div>
+    <div class="d-pace" data-testid="defib-pace">
+      <button type="button" class="d-big d-pacer" data-d="pace" data-testid="pace-toggle" aria-pressed="false">PACER</button>
+      <div class="d-energy"><span class="d-lbl">Rate</span><button type="button" data-d="rate-" aria-label="Lower pacing rate" data-testid="pace-rate-down">−</button>
+        <output class="d-j" data-testid="pace-rate"></output><button type="button" data-d="rate+" aria-label="Higher pacing rate" data-testid="pace-rate-up">+</button></div>
+      <div class="d-energy"><span class="d-lbl">Output</span><button type="button" data-d="ma-" aria-label="Lower pacing output" data-testid="pace-ma-down">−</button>
+        <output class="d-j" data-testid="pace-ma"></output><button type="button" data-d="ma+" aria-label="Higher pacing output" data-testid="pace-ma-up">+</button></div>
+      <button type="button" class="d-small" data-d="pmode" data-testid="pace-mode">Demand</button>
     </div>`;
   const q = (/** @type {string} */ s) => /** @type {HTMLElement} */ (root.querySelector(s));
   const canvas = /** @type {HTMLCanvasElement} */ (q('.d-main'));
@@ -66,7 +78,8 @@ export function createDefib(root, opts) {
   const el = {
     name: q('.d-name'), bed: q('.d-bed'), chip: q('.chip'), tone: q('[data-d=tone]'), hr: q('.d-hr'), mode: q('.d-mode'),
     msg: q('.d-msg'), bar: q('.d-bar'), barFill: q('.d-bar i'), j: q('.d-j'), charge: q('.d-charge'), shock: q('.d-shock'),
-    sync: q('.d-sync'), off: q('.d-off'),
+    sync: q('.d-sync'), off: q('.d-off'), pacer: q('.d-pacer'), prate: q('[data-testid=pace-rate]'), pma: q('[data-testid=pace-ma]'),
+    pmode: q('[data-d=pmode]'),
   };
 
   const toneOn = () => settings.get('defib.tone', /** @type {boolean} */ (false)) === true;
@@ -110,9 +123,28 @@ export function createDefib(root, opts) {
     stopTone();
   }
 
+  /** Pacing is set by the learner on this screen; the room holds it so every screen of the bed shows the spikes. */
+  /** Steps tapped before the room echoes the last one: build on the value already sent, not the one on screen. */
+  const sent = { rate: /** @type {number | null} */ (null), ma: /** @type {number | null} */ (null) };
+  const PACE_BUTTONS = ['pace', 'pmode', 'rate-', 'rate+', 'ma-', 'ma+'];
+  function sendPace(/** @type {string} */ what) {
+    if (!patient) return;
+    const step = what.endsWith('+') ? 5 : -5;
+    if (what === 'pace') client.send({ t: 'pace', p: patient.id, on: !patient.paceOn });
+    else if (what === 'pmode') client.send({ t: 'pace', p: patient.id, mode: patient.paceMode === 'fixed' ? 'demand' : 'fixed' });
+    else if (what.startsWith('rate')) {
+      sent.rate = Math.max(PACE_RATE[0], Math.min(PACE_RATE[1], (sent.rate ?? patient.paceRate) + step));
+      client.send({ t: 'pace', p: patient.id, rate: sent.rate });
+    } else {
+      sent.ma = Math.max(PACE_MA[0], Math.min(PACE_MA[1], (sent.ma ?? patient.paceMa) + step));
+      client.send({ t: 'pace', p: patient.id, ma: sent.ma });
+    }
+  }
+
   root.addEventListener('click', (e) => {
     const what = /** @type {HTMLElement} */ (e.target).closest('button')?.dataset.d;
     if (!what) return;
+    if (PACE_BUTTONS.includes(what)) { sendPace(what); return; }
     const now = performance.now();
     if (what === 'up') model.step(1);
     else if (what === 'down') model.step(-1);
@@ -156,7 +188,7 @@ export function createDefib(root, opts) {
 
   /** @param {number} now */
   function render(now) {
-    const key = `${model.phase}|${model.energy}|${model.sync}|${padsOff()}|${model.waitingSince > 0}|${model.msg}|${toneOn()}|${now < noteUntil ? note : ''}|${client.status}`;
+    const key = `${model.phase}|${model.energy}|${model.sync}|${padsOff()}|${model.waitingSince > 0}|${model.msg}|${toneOn()}|${patient?.paceOn}|${patient?.paceRate}|${patient?.paceMa}|${patient?.paceMode}|${now < noteUntil ? note : ''}|${client.status}`;
     if (key === lastKey && model.phase !== 'charging') return;
     lastKey = key;
     el.j.textContent = `${model.energy} J`;
@@ -167,6 +199,13 @@ export function createDefib(root, opts) {
     el.charge.toggleAttribute('disabled', model.phase !== 'idle');
     el.shock.dataset.armed = model.phase === 'ready' ? '1' : '';
     el.mode.textContent = model.sync ? 'SYNC' : 'ASYNC';
+    el.pacer.setAttribute('aria-pressed', String(!!patient?.paceOn));
+    if (sent.rate === patient?.paceRate) sent.rate = null;
+    if (sent.ma === patient?.paceMa) sent.ma = null;
+    el.prate.textContent = `${patient?.paceRate ?? 70} /min`;
+    el.pma.textContent = `${patient?.paceMa ?? 0} mA`;
+    el.pmode.textContent = patient?.paceMode === 'fixed' ? 'Fixed' : 'Demand';
+    root.dataset.pacing = patient?.paceOn && !padsOff() ? '1' : '';
     el.off.hidden = !padsOff();
     el.bar.hidden = model.phase === 'idle';
     root.dataset.phase = model.phase;
@@ -215,7 +254,7 @@ export function createDefib(root, opts) {
       el.hr.textContent = sh.hr === null || sh.hr === undefined || !Number.isFinite(sh.hr) ? '---' : String(Math.round(sh.hr));
       // sync: an R wave after the button was pressed releases the shock
       const beats = opts.src.beats;
-      const rWave = model.waitingSince > 0 && beats.some((b) => b.t > pressedAtSec && b.t <= tSec && b.kind !== 'dropped');
+      const rWave = model.waitingSince > 0 && beats.some((b) => b.t > pressedAtSec && b.t <= tSec && b.kind !== 'dropped' && b.kind !== 'spike');
       if (model.tick(perfNow, rWave) === 'send') sendShock();
       if (model.phase === 'ready' && perfNow - lastReadyBeep > 1000) { lastReadyBeep = perfNow; readyBeep(); }
       if (model.phase !== 'idle') el.barFill.style.width = `${Math.round(model.progress(perfNow) * 100)}%`;
@@ -243,7 +282,7 @@ export function createDefib(root, opts) {
     c.fillStyle = theme?.colors.alarmMed ?? '#ffd000';
     const win = lane.window;
     for (const b of opts.src.beats) {
-      if (b.kind === 'dropped' || b.t > tSec || b.t < tSec - win + 0.3) continue;
+      if (b.kind === 'dropped' || b.kind === 'spike' || b.t > tSec || b.t < tSec - win + 0.3) continue;
       const x = lane.x(b.t);
       c.beginPath();
       c.moveTo(x - 6, 3);

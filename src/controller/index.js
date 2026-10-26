@@ -20,10 +20,11 @@ import {
 const RHYTHM_LABELS = /** @type {Record<string, string>} */ ({
   sinus: 'Sinus', sinus_brady: 'Sinus brady', sinus_tachy: 'Sinus tachy', af: 'AF', flutter: 'Flutter', svt: 'SVT',
   vt: 'VT', vf: 'VF', asystole: 'Asystole', pea: 'PEA', first_degree_block: '1st degree block', mobitz1: 'Mobitz I',
-  mobitz2: 'Mobitz II', chb: 'Complete heart block', torsades: 'Torsades', paced: 'Paced',
+  mobitz2: 'Mobitz II', chb: 'Complete heart block', torsades: 'Torsades', paced: 'Paced', junctional: 'Junctional',
+  bigeminy: 'Bigeminy', trigeminy: 'Trigeminy',
 });
 const SENSOR_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG leads', spo2: 'SpO₂ probe', nibp: 'NIBP cuff', abp: 'Art line', etco2: 'CO₂ line', cvp: 'CVP line', abp2: 'Second art line', gas: 'Gas line', bis: 'BIS sensor', pads: 'Defib pads' });
-const MODULE_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG', spo2: 'Pleth', etco2: 'EtCO₂ and RR', nibp: 'NIBP', rr: 'RR', temp: 'Temp', abp: 'Arterial line', cvp: 'CVP', abp2: 'Second arterial line', gas: 'Gas (agent, N₂O, O₂)', o2: 'O₂ only', tof: 'TOF', bis: 'BIS and EEG' });
+const MODULE_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG', spo2: 'Pleth', etco2: 'EtCO₂ and RR', nibp: 'NIBP', rr: 'RR', temp: 'Temp', abp: 'Arterial line', cvp: 'CVP', ecg2: 'Second ECG lead', abp2: 'Second arterial line', gas: 'Gas (agent, N₂O, O₂)', o2: 'O₂ only', tof: 'TOF', bis: 'BIS and EEG' });
 const TABS = [['vitals', 'Vitals'], ['alarms', 'Alarms'], ['presets', 'Presets'], ['scenarios', 'Scenarios'], ['screens', 'Screens'], ['trends', 'Trends'], ['more', 'More']];
 const esc = (/** @type {unknown} */ s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
 
@@ -380,6 +381,12 @@ export function mountController(root, opts) {
       <label class="field">Rhythm after a shock
         <select id="postshock" data-testid="postshock">${POST_SHOCK.map((r) => `<option value="${r}"${r === pt.postShock ? ' selected' : ''}>${r === 'none' ? 'No change' : esc(RHYTHM_LABELS[r] ?? r)}</option>`).join('')}</select></label>
       <p class="hint">A shock from a defib screen (set a screen's kind in the Screens tab) changes the rhythm to this. Pads off blocks the shock.</p>
+      <h2>Pacing (${esc(pt.label)})</h2>
+      <p class="hint">${pt.paceOn ? `Pacer on: ${pt.paceRate}/min, ${pt.paceMa} mA, ${pt.paceMode}.` : 'Pacer off.'} The learner sets rate, mA and mode on the defib screen; you decide when it captures.</p>
+      <label class="field">Capture threshold
+        <select id="pace-threshold" data-testid="pace-threshold">${[...new Set([20, 40, 60, 80, 100, 120, 150, 200, 250, pt.paceThreshold])].sort((a, b) => a - b).map((v) => `<option value="${v}"${v === pt.paceThreshold ? ' selected' : ''}>${v} mA${v === 250 ? ' (never captures)' : ''}</option>`).join('')}</select></label>
+      <div class="sw-row"><span>Fails to sense</span>${toggle('pace-nosense', !!pt.paceNoSense, 'Pacer fails to sense')}</div>
+      <p class="hint">Capture needs the mA at or above the threshold (wide complex and a pulse); below it you see spikes only. Fails to sense makes a demand pacer fire at its rate whatever the heart does.</p>
       <h2>Show on monitor</h2>
       ${MODULE_IDS.map((k) => `<div class="sw-row"><span>${MODULE_LABELS[k]}</span>${toggle('mod-' + k, s.modules.includes(k), MODULE_LABELS[k])}</div>`).join('')}
       <h2>Monitor theme</h2>
@@ -659,6 +666,7 @@ export function mountController(root, opts) {
       const m = id === 'abp-module' ? 'abp' : id.slice(4);
       setModules(on ? [...new Set([...s.modules, m])] : s.modules.filter((x) => x !== m));
     } else if (id.startsWith('off-')) act({ patient: { off: { [id.slice(4)]: on } } }, undefined, pt.id);
+    else if (id === 'pace-nosense') act({ patient: { paceNoSense: on } }, undefined, pt.id);
     else if (id === 'alarms-on') act({ alarms: { enabled: on } });
     else if (id === 'drugs-on') { settings.set('drugs', on); renderView(); }
   }
@@ -680,6 +688,8 @@ export function mountController(root, opts) {
       const v = /** @type {HTMLSelectElement} */ (t).value;
       if (v === pt.rhythm) delete pend().rhythm; else pend().rhythm = v;
       renderDock();
+    } else if (t.id === 'pace-threshold' && pt) {
+      act({ patient: { paceThreshold: Number(/** @type {HTMLSelectElement} */ (t).value) } }, undefined, pt.id);
     } else if (t.id === 'agent' && pt) {
       act({ patient: { agent: /** @type {HTMLSelectElement} */ (t).value } }, undefined, pt.id);
     } else if (t.id === 'postshock' && pt) {

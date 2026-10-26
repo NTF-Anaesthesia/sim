@@ -525,3 +525,18 @@ time, on every screen of that bed (`WaveSource.shock`, set from `shock` events l
 after 30 s or a shock. With sync on, R waves are marked from beat events and the shock is held until the next
 non-dropped beat (message after 2.5 s if none comes). Touch and mouse both work; nothing is prompted or stored beyond
 the existing per-device settings. The phone sets `postShock` in More and a screen's kind in the Screens tab.
+
+## 14. Pacing and rhythms (V2 S8)
+
+**Pacing** is part of the beat scheduler, not a separate drawing: the pacer adds `spike` beats (a stimulus, no complex, no pulse) and turns captured ones into `paced` beats (wide complex, pulse). Pulse follows capture.
+
+- Patient fields (all additive, schema stays 1): `paceOn` (false), `paceRate` 30-180 (70), `paceMa` 0-200 (0), `paceMode` `demand`|`fixed` (demand), `paceThreshold` 10-250 (60, set from the phone), `paceNoSense` (false, set from the phone).
+- `pacing(p)` in `engine/rhythm.js` returns `{on, capture}`. `on` needs `paceOn` and pads on; `capture` also needs `paceMa >= paceThreshold` and a rhythm that can be captured (not VF, VT or torsades). Capture makes `pulseless()` false and `shown().hr` the paced rate when the patient's own rate is slower or absent.
+- Scheduler: intrinsic beats and pacer stimuli are merged in time order. A stimulus that captures outside the 0.3 s refractory period becomes a `paced` beat; otherwise it stays a `spike`. Demand mode times from the last complex it saw (inhibited by a faster intrinsic rhythm); fixed mode, and demand with failure to sense, time from the pacer's own last stimulus (so spikes land on intrinsic beats and in the refractory period). A captured beat restarts the intrinsic clock; intrinsic beats inside the refractory period are skipped.
+- Beeps, sync marks and the arterial baseline ignore `spike` beats.
+- Message `{t:'pace', p, on?, rate?, ma?, mode?}` (at least one field; `validatePace`), sent from the defib screen only. Pads off refuses starting ("pads are off: pacing cannot start"). Logged as event kind `pace`, text like `on 70/min 80mA demand` or `off`. Threshold and failure to sense travel in the normal `set` patch (More tab, Pacing).
+- Defib screen: a PACER toggle, rate and output steppers (steps of 5), Demand/Fixed. `root.dataset.pacing` is `1` while pacing.
+
+**Rhythms**: `junctional` (retrograde inverted P after the QRS, `Beat.inv`), `bigeminy` and `trigeminy` (every 2nd or 3rd beat an early wide ectopic at 0.62 of the interval, with a compensatory pause so the average rate stays at `hr`).
+
+**Second ECG lead**: module `ecg2` (off by default, switched on from the phone) with wave `ecg2`, the same beats drawn with a V1-style shape. Its label is theme text `labels.wave.ecg2` (default "V1") and its leads-off text `labels.off.ecg2`, so each screen can show a different lead name through its theme.
