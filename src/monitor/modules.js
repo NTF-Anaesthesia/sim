@@ -4,6 +4,7 @@
 // so CVP/PAP later are `registry.register({...})` calls. A registry is made per monitor; nothing registers on import.
 import { rhythmInfo } from '../engine/beats.js';
 import { ageText, mapOf } from '../engine/nibp.js';
+import { AGENT_NAMES } from '../engine/gas.js';
 import { BIS_MIN_SQI } from '../shared/schema.js';
 
 /**
@@ -162,6 +163,57 @@ export function registerBuiltinModules(registry) {
         return {
           label: label(c, 'cvp'), color: 'cvp', param: 'cvp', unit: unit(c, 'cvp'), limits: lim(c, 'cvp'), small: '', sub: '',
           main: v === null || v === undefined ? '---' : v.toFixed(0), off: v === null || v === undefined,
+        };
+      },
+    },
+  });
+  // gas: oxygen, volatile agent and nitrous oxide numerics, and the agent trace; `o2` is the oxygen trace on its own
+  registry.register({
+    id: 'gas', wave: 'gas',
+    parts: {
+      numeric: (c) => {
+        const fi = c.v.fio2;
+        const et = c.v.eto2;
+        return {
+          label: label(c, 'o2'), color: 'o2', param: 'fio2', unit: unit(c, 'o2'), limits: lim(c, 'fio2'), sub: '',
+          main: INT(fi), small: et === null || et === undefined ? '' : `Et ${INT(et)}`, off: fi === null || fi === undefined,
+        };
+      },
+      numeric2: (c) => {
+        const none = !c.patient.agent || c.patient.agent === 'none';
+        const et = c.v.etag;
+        const fi = c.v.fiag;
+        const blank = none || et === null || et === undefined;
+        const mac = c.v.mac;
+        return {
+          label: none ? label(c, 'gas') : (AGENT_NAMES[/** @type {'sevo' | 'des' | 'iso'} */ (c.patient.agent)] ?? label(c, 'gas')),
+          color: 'gas', param: 'etagent', unit: unit(c, 'gas'), limits: null, sub: '',
+          main: blank ? '---' : et.toFixed(1),
+          small: none ? 'NO AGENT' : `Fi ${fi === null || fi === undefined ? '--' : fi.toFixed(1)}${typeof mac === 'number' ? ` MAC ${mac.toFixed(1)}` : ''}`,
+          off: blank,
+        };
+      },
+      numeric3: (c) => {
+        const fi = c.v.fin2o;
+        const et = c.v.etn2o;
+        return {
+          label: label(c, 'n2o'), color: 'n2o', param: 'n2o', unit: unit(c, 'n2o'), limits: null, sub: '',
+          main: INT(fi ?? null), small: et === null || et === undefined ? '' : `Et ${INT(et)}`, off: fi === null || fi === undefined,
+        };
+      },
+    },
+  });
+  registry.register({ id: 'o2', wave: 'o2', parts: {} });
+  // train-of-four: the last reading (count, and the ratio once all four twitches are there); tap to measure
+  registry.register({
+    id: 'tof',
+    parts: {
+      numeric: (c) => {
+        const r = c.patient.tofRead;
+        return {
+          label: label(c, 'tof'), color: 'tof', param: 'tof', unit: unit(c, 'tof'), limits: null, off: false,
+          main: r ? String(r.count) : '---', sub: r && r.count === 4 ? (r.ratio / 100).toFixed(2) : '',
+          small: r && r.at > 0 ? ageText(c.nowMs - r.at) : 'tap to measure',
         };
       },
     },

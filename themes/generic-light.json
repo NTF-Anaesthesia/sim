@@ -19,6 +19,10 @@
     "cvp": "#1e4fb3",
     "bis": "#6a3fb5",
     "eeg": "#6a3fb5",
+    "o2": "#444444",
+    "gas": "#6f2fb3",
+    "n2o": "#1e3fb3",
+    "tof": "#a02a8a",
     "nibp": "#222222",
     "rr": "#8a6100",
     "temp": "#222222",
@@ -93,6 +97,24 @@
       },
       {
         "module": "etco2",
+        "part": "wave",
+        "x": 4,
+        "y": 8,
+        "w": 8,
+        "h": 1.5,
+        "stack": "waves"
+      },
+      {
+        "module": "gas",
+        "part": "wave",
+        "x": 4,
+        "y": 8,
+        "w": 8,
+        "h": 1.5,
+        "stack": "waves"
+      },
+      {
+        "module": "o2",
         "part": "wave",
         "x": 4,
         "y": 8,
@@ -197,6 +219,42 @@
         "w": 4,
         "h": 1,
         "stack": "numbers"
+      },
+      {
+        "module": "gas",
+        "part": "numeric",
+        "x": 0,
+        "y": 11,
+        "w": 4,
+        "h": 1,
+        "stack": "numbers"
+      },
+      {
+        "module": "gas",
+        "part": "numeric2",
+        "x": 0,
+        "y": 11,
+        "w": 4,
+        "h": 1,
+        "stack": "numbers"
+      },
+      {
+        "module": "gas",
+        "part": "numeric3",
+        "x": 0,
+        "y": 11,
+        "w": 4,
+        "h": 1,
+        "stack": "numbers"
+      },
+      {
+        "module": "tof",
+        "part": "numeric",
+        "x": 0,
+        "y": 11,
+        "w": 4,
+        "h": 1,
+        "stack": "numbers"
       }
     ],
     "alarmBar": {
@@ -239,6 +297,16 @@
     },
     "cvp": {
       "speed": 25,
+      "gain": 1,
+      "scaleLines": []
+    },
+    "gas": {
+      "speed": 12.5,
+      "gain": 1,
+      "scaleLines": []
+    },
+    "o2": {
+      "speed": 12.5,
       "gain": 1,
       "scaleLines": []
     },
@@ -294,6 +362,10 @@
     "abp": "Art",
     "abp2": "Art 2",
     "cvp": "CVP",
+    "o2": "O2",
+    "gas": "Agent",
+    "n2o": "N2O",
+    "tof": "TOF",
     "bis": "BIS",
     "units": {
       "hr": "/min",
@@ -305,6 +377,10 @@
       "abp": "mmHg",
       "abp2": "mmHg",
       "cvp": "mmHg",
+      "o2": "%",
+      "gas": "%",
+      "n2o": "%",
+      "tof": "/4",
       "bis": ""
     },
     "wave": {
@@ -314,6 +390,8 @@
       "abp": "ART",
       "abp2": "ART2",
       "cvp": "CVP",
+      "gas": "AGENT",
+      "o2": "O2",
       "bis": "EEG"
     },
     "off": {
@@ -323,6 +401,7 @@
       "abp": "ART LINE OFF",
       "abp2": "ART2 LINE OFF",
       "cvp": "CVP LINE OFF",
+      "gas": "GAS LINE OFF",
       "bis": "BIS SENSOR OFF"
     }
   },

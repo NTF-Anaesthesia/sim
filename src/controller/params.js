@@ -12,11 +12,14 @@ export const GLIDE_CHOICES = [
 ];
 /** NIBP interval choices in seconds (0 = manual only). */
 export const NIBP_INTERVALS = [0, 60, 120, 180, 300, 600, 900, 1800];
+/** TOF interval choices in seconds (0 = on demand only). */
+export const TOF_INTERVALS = [0, 15, 30, 60, 120, 300];
 const KPA = 0.133322;
 
 /**
  * @typedef {{
- *   id: string, label: string, unit: string, min: number, max: number, step: number, dec: number, color: string, needs?: string,
+ *   id: string, label: string, unit: string, min: number, max: number, step: number, dec: number, color: string,
+ *   needs?: string, limitOnly?: boolean,
  *   get: (p: Patient) => number, set: (v: number) => any, to: (v: number) => number, from: (d: number) => number
  * }} ParamSpec all numbers in the spec (min, max, step) are in display units; `get` and `set` use wire units
  */
@@ -73,6 +76,27 @@ export function paramList(units) {
         get: (p) => p.temp, set: (v) => ({ temp: v }), to: (v) => round(v * 1.8 + 32, 1), from: (d) => round((d - 32) / 1.8, 1) }
       : { id: 'temp', label: 'Temp', unit: '°C', min: 25, max: 43, step: 0.1, dec: 1, color: 'var(--temp)',
         get: (p) => p.temp, set: (v) => ({ temp: v }), to: (v) => v, from: (d) => d },
+    { id: 'fio2', label: 'FiO₂', unit: '%', min: 0, max: 100, step: 1, dec: 0, color: 'var(--o2)', needs: 'gas|o2',
+      get: (p) => p.fio2, set: (v) => ({ fio2: v }), to: (v) => v, from: (d) => d },
+    { id: 'eto2', label: 'EtO₂', unit: '%', min: 0, max: 100, step: 1, dec: 0, color: 'var(--o2)', needs: 'gas|o2',
+      get: (p) => p.eto2, set: (v) => ({ eto2: v }), to: (v) => v, from: (d) => d },
+    { id: 'fiag', label: 'Fi agent', unit: '%', min: 0, max: 18, step: 0.1, dec: 1, color: 'var(--gas)', needs: 'gas',
+      get: (p) => p.fiag, set: (v) => ({ fiag: v }), to: (v) => v, from: (d) => d },
+    { id: 'etag', label: 'Et agent', unit: '%', min: 0, max: 18, step: 0.1, dec: 1, color: 'var(--gas)', needs: 'gas',
+      get: (p) => p.etag, set: (v) => ({ etag: v }), to: (v) => v, from: (d) => d },
+    { id: 'fin2o', label: 'FiN₂O', unit: '%', min: 0, max: 100, step: 1, dec: 0, color: 'var(--n2o)', needs: 'gas',
+      get: (p) => p.fin2o, set: (v) => ({ fin2o: v }), to: (v) => v, from: (d) => d },
+    { id: 'etn2o', label: 'EtN₂O', unit: '%', min: 0, max: 100, step: 1, dec: 0, color: 'var(--n2o)', needs: 'gas',
+      get: (p) => p.etn2o, set: (v) => ({ etn2o: v }), to: (v) => v, from: (d) => d },
+    { id: 'age', label: 'Age', unit: 'y', min: 0, max: 110, step: 1, dec: 0, color: 'var(--gas)', needs: 'gas',
+      get: (p) => p.age, set: (v) => ({ age: v }), to: (v) => v, from: (d) => d },
+    { id: 'tofCount', label: 'TOF count', unit: '/4', min: 0, max: 4, step: 1, dec: 0, color: 'var(--tof)', needs: 'tof',
+      get: (p) => p.tofCount, set: (v) => ({ tofCount: v }), to: (v) => v, from: (d) => d },
+    { id: 'tofRatio', label: 'TOF ratio', unit: '%', min: 0, max: 100, step: 1, dec: 0, color: 'var(--tof)', needs: 'tof',
+      get: (p) => p.tofRatio, set: (v) => ({ tofRatio: v }), to: (v) => v, from: (d) => d },
+    // alarm limit only: the Et agent limit is in age-adjusted MAC, so one pair serves every agent
+    { id: 'etagMac', label: 'Et agent', unit: 'MAC', min: 0, max: 3, step: 0.1, dec: 1, color: 'var(--gas)', needs: 'gas', limitOnly: true,
+      get: () => 0, set: () => ({}), to: (v) => v, from: (d) => d },
   ];
   return list;
 }
@@ -89,7 +113,17 @@ export const LIMIT_PARAMS = [
   { name: 'rr', label: 'RR', spec: 'rr' },
   { name: 'etco2', label: 'EtCO₂', spec: 'etco2' },
   { name: 'temp', label: 'Temp', spec: 'temp' },
+  { name: 'fio2', label: 'FiO₂', spec: 'fio2', needs: 'gas|o2' },
+  { name: 'etagent', label: 'Et agent', spec: 'etagMac', needs: 'gas' },
 ];
+
+/**
+ * Whether a spec or limit row shows with the room's modules on: `needs` is one module id, or ids joined with `|` (any).
+ * @param {string | undefined} needs @param {string[]} modules
+ */
+export function hasModule(needs, modules) {
+  return !needs || needs.split('|').some((m) => modules.includes(m));
+}
 
 /**
  * Clamp a value (display units) into the spec's range and snap it to the step.
@@ -146,7 +180,7 @@ export function buildPatch(pending, patient, units) {
   const out = {};
   for (const spec of paramList(units)) {
     const v = pending[spec.id];
-    if (typeof v !== 'number' || v === spec.get(patient)) continue;
+    if (spec.limitOnly || typeof v !== 'number' || v === spec.get(patient)) continue;
     const part = spec.set(v);
     for (const k of Object.keys(part)) out[k] = typeof part[k] === 'object' ? { ...out[k], ...part[k] } : part[k];
   }

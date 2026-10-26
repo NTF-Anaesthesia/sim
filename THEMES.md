@@ -46,7 +46,7 @@ Every example value is the default unless stated. Ranges are enforced; a value o
 | `font.numericScale`, `font.labelScale` | `1` | Size multiplier, 0.3 to 3. |
 | `font.waveLabelScale` | `1` | Extra size multiplier for wave captions only (on top of `font.labelScale`), 0.3 to 3. |
 | `font.numericWeight`, `font.labelWeight` | `700`, `500` | 100 to 900. |
-| `colors.ecg spo2 etco2 abp abp2 cvp eeg` | `"#00e000"` | Wave line colour and the matching numeric colour. |
+| `colors.ecg spo2 etco2 abp abp2 cvp eeg o2 gas n2o tof` | `"#00e000"` | Wave line colour and the matching numeric colour. |
 | `colors.bis` | `"#c080ff"` | BIS numeric colour (the strip uses `colors.eeg`). |
 | `colors.nibp rr temp hr` | `"#ffffff"` | Numeric colours (`hr` is the heart rate numeric). |
 | `colors.alarmHigh alarmMed alarmLow` | `"#ff2020"` | Alarm bar and flashing numeric colours by priority. |
@@ -60,7 +60,7 @@ Every example value is the default unless stated. Ranges are enforced; a value o
 | `layout.cells[]` | see below | One entry per module part. At most 60. |
 | `layout.alarmBar` | `{ "x": 8, "y": 0, "w": 4, "h": 1 }` | Where the alarm message bar sits. |
 | `waves.speedMmPerSec` | `25` | Sweep speed for every wave, 1 to 100 mm/s. |
-| `waves.<id>.speed` | `{ "ecg": { "speed": 25 } }` | Per-wave speed (`ecg`, `spo2`, `etco2`, `abp`, `abp2`, `cvp`, `eeg`), 1 to 100; falls back to `speedMmPerSec`. |
+| `waves.<id>.speed` | `{ "ecg": { "speed": 25 } }` | Per-wave speed (`ecg`, `spo2`, `etco2`, `abp`, `abp2`, `cvp`, `gas`, `o2`, `eeg`), 1 to 100; falls back to `speedMmPerSec`. |
 | `waves.<id>.gain` | `{ "ecg": { "gain": 1 } }` | Per-wave gain, 0.1 to 10. |
 | `waves.<id>.scaleLines` | `{ "abp": { "scaleLines": [80, 120] } }` | Up to 4 dotted reference lines in the wave's units, with the value in small text at the left, in the wave's colour but dim. `abp` and `abp2` (0 to 300), `cvp` (-5 to 40) and `etco2` (0 to 100) in mmHg, `ecg` in mV (-2 to 5). Default `[]` (none). |
 | `waves.pxPerMm` | `4` | Pixels per mm (25 mm/s at 4 is 100 px/s), 1 to 12. |
@@ -79,7 +79,7 @@ Every example value is the default unless stated. Ranges are enforced; a value o
 | `cells.background` | (not set) | Optional `#rrggbb` behind each cell; when missing, cells show the screen `background`. |
 | `nibp.inflateMs`, `nibp.measureMs` | `0`, `0` | Time shown inflating and measuring before the result appears, 0 to 120000. 0 gives the result at once. |
 | `labels.colorMode` | `"parameter"` | `parameter`: captions, units and limits in the parameter's colour (the look before this field existed); `text`: in `colors.text`. |
-| `labels.<id>` | `"ecg": "HR"` | Numeric captions for `ecg spo2 etco2 rr nibp temp abp abp2 cvp bis`; up to 24 characters, no `< > { }` or backslash. |
+| `labels.<id>` | `"ecg": "HR"` | Numeric captions for `ecg spo2 etco2 rr nibp temp abp abp2 cvp o2 gas n2o tof bis` (`o2` FiO2, `gas` agent, `n2o`, `tof`, `bis`); up to 24 characters, no `< > { }` or backslash. |
 | `labels.units.<id>` | `"etco2": "mmHg"` | Unit text next to a numeric. |
 | `labels.wave.<id>` | `"ecg": "II"` | Caption on each wave. |
 | `labels.off.<id>` | `"ecg": "LEADS OFF"` | Text shown when a sensor is switched off. |
@@ -97,8 +97,9 @@ Each cell places one part of one module:
 { "module": "ecg", "part": "wave", "x": 0, "y": 0, "w": 8, "h": 3, "stack": "left" }
 ```
 
-- `module`: `ecg`, `spo2`, `etco2`, `abp`, `abp2`, `cvp`, `bis` (wave = the EEG strip, numeric = BIS with SQI, EMG and SR), `nibp`, `rr`, `temp`. `part`: `wave`, `numeric`, or `numeric2` (the EtCO2 module's
-  respiratory rate).
+- `module`: `ecg`, `spo2`, `etco2`, `abp`, `abp2`, `cvp`, `gas`, `o2`, `tof`, `bis` (wave = the EEG strip, numeric = BIS with SQI, EMG and SR), `nibp`, `rr`, `temp`. `part`: `wave`, `numeric`, `numeric2` (the EtCO2
+  module's respiratory rate; the gas module's agent) or `numeric3` (the gas module's N2O). `gas` has a wave (agent) and three numerics
+  (FiO2, agent, N2O); `o2` is a wave only; `tof` is one numeric. All three are off until a room switches them on.
 - `x`, `y`, `w`, `h`: position and size in grid units (fractions allowed). A cell outside the grid, or missing a number,
   is dropped with a message. A theme with no usable cell is refused.
 - `stack` (optional): cells with the same stack name share the stack's area from top to bottom in proportion to their `h`.

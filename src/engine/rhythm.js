@@ -37,5 +37,12 @@ export function shown(p, now) {
     cvp: off.cvp ? null : d.cvp,
     bis: off.bis ? null : d.bis,
     abp2: off.abp2 || flat ? null : d.abp2,
+    // gas line: the agent reads blank while no agent is in use
+    fio2: off.gas ? null : d.fio2,
+    eto2: off.gas ? null : d.eto2,
+    fiag: off.gas || p.agent === 'none' || !p.agent ? null : d.fiag,
+    etag: off.gas || p.agent === 'none' || !p.agent ? null : d.etag,
+    fin2o: off.gas ? null : d.fin2o,
+    etn2o: off.gas ? null : d.etn2o,
   };
 }

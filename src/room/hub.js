@@ -86,6 +86,11 @@ export class RoomHub {
         if (cur && msg.after !== undefined && msg.after !== cur.nibpRead.at) return {};
         return this.apply(clientId, now, msg, (s) => this.doNibp(s, msg.p, now));
       }
+      case 'tof': {
+        const cur = pick(await this.state(), msg.p);
+        if (cur && msg.after !== undefined && msg.after !== cur.tofRead.at) return {};
+        return this.apply(clientId, now, msg, (s) => this.doTof(s, msg.p, now));
+      }
       case 'addPatient': return this.apply(clientId, now, msg, (s) => this.doAdd(s, msg, now));
       case 'removePatient': return this.apply(clientId, now, msg, (s) => this.doRemove(s, msg));
       case 'silence': return this.apply(clientId, now, msg, (s) => { s.alarms.silencedUntil = now + SILENCE_MS; return { kind: 'silence', what: 'silence' }; });
@@ -235,6 +240,7 @@ export class RoomHub {
       if ('enabled' in p.alarms) s.alarms.enabled = p.alarms.enabled;
     }
     if (p.nibp) Object.assign(pt.nibpRead, p.nibp);
+    if (p.tof) Object.assign(pt.tofRead, p.tof);
     if (p.theme) {
       s.theme = p.theme;
       if (p.theme === 'default') delete s.themeJson; // back to the default for every monitor
@@ -266,6 +272,22 @@ export class RoomHub {
     pt.nibpRead.dia = Math.round(d.dia);
     pt.nibpRead.at = now;
     return { kind: 'nibp', what: 'nibp', p: pt.id };
+  }
+
+  /**
+   * Train-of-four reading: the count and ratio the patient has now, stamped with the time. Monitors show it as the
+   * last reading; on an interval the monitor asks again (like NIBP).
+   * @param {RoomState} s
+   * @param {string | undefined} id
+   * @param {number} now
+   */
+  doTof(s, id, now) {
+    const pt = pick(s, id);
+    if (!pt) throw new BadPatch('unknown patient');
+    pt.tofRead.count = pt.tofCount;
+    pt.tofRead.ratio = pt.tofRatio;
+    pt.tofRead.at = now;
+    return { kind: 'tof', what: 'tof', p: pt.id };
   }
 
   /**

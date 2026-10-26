@@ -38,6 +38,9 @@ export function displayed(patient, now) {
     abp: { sys: g(from.abp.sys, to.abp.sys), dia: g(from.abp.dia, to.abp.dia) },
     cvp: g(from.cvp ?? to.cvp, to.cvp), bis: g(from.bis ?? to.bis, to.bis),
     abp2: { sys: g(from.abp2?.sys ?? to.abp2.sys, to.abp2.sys), dia: g(from.abp2?.dia ?? to.abp2.dia, to.abp2.dia) },
+    fio2: g(from.fio2 ?? to.fio2, to.fio2), eto2: g(from.eto2 ?? to.eto2, to.eto2),
+    fiag: g(from.fiag ?? to.fiag, to.fiag), etag: g(from.etag ?? to.etag, to.etag),
+    fin2o: g(from.fin2o ?? to.fin2o, to.fin2o), etn2o: g(from.etn2o ?? to.etn2o, to.etn2o),
   };
 }
 
