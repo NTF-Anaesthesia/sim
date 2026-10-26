@@ -22,3 +22,4 @@ Lasting rules live in `AGENTS.md`. Points worth remembering go here.
   alarm tones, rhythm model, numerics jitter. Rewritten as plain modules with the theme and registries; no code is shared.
 - The monitor keeps a hidden `data-testid="value"` element with the S1 test value until S3 drops the controller test input.
 - Monitor e2e: `CHROMIUM_PATH=<chrome> node test/e2e/monitor.mjs` (screenshots go to `test/e2e/out/`, ignored by git).
+- Theme engine (S4): `loadTheme` never throws and is what the monitor uses; `validateTheme` is the import gate (the phone panel, the monitor panel and the Room all use it). A refused file changes nothing. Editing a value in the monitor's panel stores a full custom theme on that device and rebuilds the view (wave history restarts). After changing a built-in theme run `node tools/export-themes.mjs` (a unit test checks `themes/*.json`). Local test: `CHROMIUM_PATH=<chrome> node test/e2e/theme.mjs`.

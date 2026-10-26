@@ -1,5 +1,6 @@
 // @ts-check
 // State and message types for a room, defaults and validation (DESIGN.md sections 3-5). No DOM, no timers.
+import { validateTheme } from '../theme/validate.js';
 
 export const SCHEMA_VERSION = 1;
 
@@ -231,7 +232,9 @@ export function validatePatch(patch) {
       out.theme = v;
     } else if (key === 'themeJson') {
       if (!isObj(v) || JSON.stringify(v).length > 12288) return { ok: false, msg: 'themeJson must be an object under 12 KB' };
-      out.themeJson = v;
+      const checked = validateTheme(v); // the room only carries themes every monitor can draw
+      if (!checked.ok) return { ok: false, msg: `themeJson: ${checked.errors[0]}` };
+      out.themeJson = checked.theme;
     } else return { ok: false, msg: `unknown field ${key}` };
   }
   return { ok: true, patch: out };

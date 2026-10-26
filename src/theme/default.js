@@ -49,5 +49,5 @@ export const DEFAULT_THEME = {
     wave: { ecg: 'II', spo2: 'Pleth', etco2: 'CO2', abp: 'ABP' },
     off: { ecg: 'LEADS OFF', spo2: 'PROBE OFF', etco2: 'CO2 LINE OFF', abp: 'ART LINE OFF' },
   },
-  alarmStyle: { barPosition: 'top-right', flashHz: 1, limitStyle: 'small', tones: 'iec' },
+  alarmStyle: { barPosition: 'top-right', flashHz: 1, limitStyle: 'small', tones: 'iec', toneHz: { high: 960, medium: 800, low: 640 } },
 };

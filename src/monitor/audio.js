@@ -92,10 +92,15 @@ export class AudioMixer {
     else this.tone('spo2', spo2PitchHz(spo2), 0.07);
   }
 
-  /** @param {number} priority 1..3 */
-  burst(priority) {
-    const hz = /** @type {Record<number, number>} */ (TONE_HZ)[priority];
+  /**
+   * @param {number} priority 1..3
+   * @param {{ tones?: string, toneHz?: { high?: number, medium?: number, low?: number } }} [style] theme `alarmStyle`
+   */
+  burst(priority, style = {}) {
+    const named = /** @type {Record<number, 'high' | 'medium' | 'low'>} */ ({ 3: 'high', 2: 'medium', 1: 'low' })[priority];
+    const hz = style.toneHz?.[named] ?? /** @type {Record<number, number>} */ (TONE_HZ)[priority];
     if (!hz) return;
-    for (const off of burstPattern(priority)) this.tone('alarm', hz, 0.1, off, 'triangle');
+    const type = style.tones === 'soft' ? 'sine' : 'triangle';
+    for (const off of burstPattern(priority)) this.tone('alarm', hz, 0.1, off, type);
   }
 }
