@@ -7,6 +7,7 @@ import { createThemePanel } from '../theme/panel.js';
 import { pickTheme } from '../theme/store.js';
 import { loadTheme } from '../theme/validate.js';
 import { makeActions } from './actions.js';
+import { LibraryStore } from './library.js';
 import { PresetStore, runPreset, presetFromPatient } from './presets.js';
 import { Settings, browserStorage } from './settings.js';
 import {
@@ -21,7 +22,7 @@ const RHYTHM_LABELS = /** @type {Record<string, string>} */ ({
 });
 const SENSOR_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG leads', spo2: 'SpO₂ probe', nibp: 'NIBP cuff', abp: 'Art line', etco2: 'CO₂ line', cvp: 'CVP line', abp2: 'Second art line' });
 const MODULE_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG', spo2: 'Pleth', etco2: 'EtCO₂ and RR', nibp: 'NIBP', rr: 'RR', temp: 'Temp', abp: 'Arterial line', cvp: 'CVP', abp2: 'Second arterial line' });
-const TABS = [['vitals', 'Vitals'], ['alarms', 'Alarms'], ['presets', 'Presets'], ['screens', 'Screens'], ['more', 'More']];
+const TABS = [['vitals', 'Vitals'], ['alarms', 'Alarms'], ['presets', 'Presets'], ['scenarios', 'Scenarios'], ['screens', 'Screens'], ['more', 'More']];
 const esc = (/** @type {unknown} */ s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
 
 /**
@@ -35,11 +36,12 @@ export function mountController(root, opts) {
   const kv = opts.storage === undefined ? browserStorage() : opts.storage;
   const settings = new Settings(kv);
   const presets = new PresetStore(kv);
+  const library = new LibraryStore(kv);
   const ui = {
     tab: 'vitals', p: /** @type {string | undefined} */ (undefined), glideMs: Number(settings.get('glideMs', 10000)),
     /** pending edits per patient id, wire units */
     pending: /** @type {Record<string, Record<string, number | string>>} */ ({}),
-    dragging: false, note: '', io: '',
+    dragging: false, note: '', io: '', lib: '', libNote: '',
     scr: '', // screen the per-screen theme panel is open for
   };
   const actions = makeActions(client, () => ui.p);
@@ -246,6 +248,54 @@ export function mountController(root, opts) {
       <p class="hint" id="note">${esc(ui.note)}</p>`;
   }
 
+  /** `m:ss` for a countdown. @param {number} ms */
+  const clock = (ms) => { const t = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+
+  function viewScenarios() {
+    const s = /** @type {NonNullable<ReturnType<typeof state>>} */ (state());
+    const pt = /** @type {NonNullable<ReturnType<typeof patient>>} */ (patient());
+    const run = s.scenario;
+    const runBed = run ? s.patients.find((x) => x.id === run.p)?.label ?? run.p : '';
+    const card = run ? `<div class="scn-run" data-testid="scn-run">
+        <p><b data-testid="scn-name">${esc(run.name)}</b> on ${esc(runBed)}</p>
+        <p data-testid="scn-step">${run.done ? 'Finished' : `Step ${run.step} of ${run.total} done`}</p>
+        <p class="hint" id="scn-count" data-testid="scn-count">${esc(scenarioLine(run))}</p>
+        <div class="row">
+          ${run.done ? '' : `<button type="button" data-act="scn-pause" data-testid="scn-pause">${run.pausedAt ? 'Resume' : 'Pause'}</button>
+          <button type="button" data-act="scn-next" data-testid="scn-next">${run.waiting ? 'Next step' : 'Skip wait'}</button>`}
+          <button type="button" data-act="scn-stop" data-testid="scn-stop">${run.done ? 'Clear' : 'Stop'}</button></div></div>` : '';
+    const drugsOn = settings.get('drugs', false) === true;
+    return `
+      ${card}
+      <p class="label">Starts on <b>${esc(pt.label)}</b>. The room runs it, so it keeps going with this phone closed.</p>
+      <ul class="presets">${library.allScenarios().map((sc, i) => `<li><button type="button" class="preset" data-scn="${i}" data-testid="scn-start-${esc(sc.name)}">${esc(sc.name)} <small>${sc.steps.length} steps</small></button>
+        ${sc.builtin ? '' : `<button type="button" class="small" data-scn-del="${esc(sc.name)}" aria-label="Delete ${esc(sc.name)}">✕</button>`}</li>`).join('')}</ul>
+      ${drugsOn ? `<h2>Drug buttons</h2>
+      <p class="label">Applies to <b>${esc(pt.label)}</b>. Teaching effects only, not doses.</p>
+      <ul class="presets">${library.allDrugs().map((d, i) => `<li><button type="button" class="preset" data-drug="${i}" data-testid="drug-${esc(d.name)}">${esc(d.name)}<br><small>${esc(d.note ?? '')}</small></button>
+        ${d.builtin ? '' : `<button type="button" class="small" data-drug-del="${esc(d.name)}" aria-label="Delete ${esc(d.name)}">✕</button>`}</li>`).join('')}</ul>` : ''}
+      <h2>Library file</h2>
+      <textarea id="lib" rows="4" aria-label="Library JSON" spellcheck="false">${esc(ui.lib)}</textarea>
+      <div class="row"><button type="button" data-act="lib-export" data-testid="lib-export">Export</button><button type="button" data-act="lib-import" data-testid="lib-import">Import</button>
+        <label class="btn file">File<input type="file" id="libfile" accept="application/json,.json" hidden></label></div>
+      <p class="hint" id="libnote" data-testid="lib-note">${esc(ui.libNote)}</p>`;
+  }
+
+  /** One line about where the running scenario is. @param {NonNullable<ReturnType<typeof state>>['scenario']} run */
+  function scenarioLine(run) {
+    if (!run || run.done) return 'All steps ran.';
+    if (run.waiting) return 'Waiting for you: tap Next step.';
+    if (run.pausedAt) return `Paused, ${clock(run.nextAt - run.pausedAt)} left to the next step.`;
+    return `Next step in ${clock(run.nextAt - client.serverNow())}`;
+  }
+
+  /** Keep the countdown moving without rebuilding the page. */
+  function renderCountdown() {
+    const run = state()?.scenario;
+    const el = root.querySelector('#scn-count');
+    if (el && run) el.textContent = scenarioLine(run);
+  }
+
   function viewScreens() {
     const s = /** @type {NonNullable<ReturnType<typeof state>>} */ (state());
     const pr = client.presence;
@@ -302,6 +352,7 @@ export function mountController(root, opts) {
       <h2>Monitor theme</h2>
       <div class="row"><button type="button" data-act="theme" data-testid="theme-open">Theme for all monitors…</button></div>
       <h2>This device</h2>
+      <div class="sw-row"><span>Drug buttons (Scenarios tab)</span>${toggle('drugs-on', settings.get('drugs', false) === true, 'Drug buttons')}</div>
       <div class="glide" role="group" aria-label="CO2 unit"><span class="label">CO₂</span>
         ${['mmHg', 'kPa'].map((x) => `<button type="button" class="pill" data-unit="co2:${x}" aria-pressed="${u.co2 === x}">${x}</button>`).join('')}</div>
       <div class="glide" role="group" aria-label="Temperature unit"><span class="label">Temp</span>
@@ -314,7 +365,7 @@ export function mountController(root, opts) {
     const view = $('view');
     if (!state()) { view.innerHTML = '<p class="hint">Joining the room…</p>'; return; }
     const scroll = window.scrollY;
-    view.innerHTML = ({ vitals: viewVitals, alarms: viewAlarms, presets: viewPresets, screens: viewScreens, more: viewMore }[/** @type {'vitals'} */ (ui.tab)] ?? viewVitals)();
+    view.innerHTML = ({ vitals: viewVitals, alarms: viewAlarms, presets: viewPresets, scenarios: viewScenarios, screens: viewScreens, more: viewMore }[/** @type {'vitals'} */ (ui.tab)] ?? viewVitals)();
     window.scrollTo(0, scroll);
   }
 
@@ -341,7 +392,7 @@ export function mountController(root, opts) {
   function render() {
     renderStatus(); renderBeds(); renderDock(); renderProgress();
     // do not rebuild the page under a finger that is dragging a slider, or while a screen name is being typed
-    if (!ui.dragging && !(ui.tab === 'screens' && root.ownerDocument.activeElement?.matches('#view input'))) renderView();
+    if (!ui.dragging && !root.ownerDocument.activeElement?.matches(ui.tab === 'screens' ? '#view input' : ui.tab === 'scenarios' ? '#view textarea' : '#never')) renderView();
   }
 
   // ---- edits ------------------------------------------------------------------------------------------------------
@@ -458,6 +509,18 @@ export function mountController(root, opts) {
     if (d.unit) { const [k, v] = d.unit.split(':'); settings.set('units', { ...units(), [k]: v }); render(); return; }
     if (d.preset !== undefined) { runByName(/** @type {string} */ (presets.all()[Number(d.preset)]?.name)); return; }
     if (d.del) { presets.remove(d.del); renderView(); return; }
+    if (d.scn !== undefined) {
+      const sc = library.allScenarios()[Number(d.scn)];
+      if (sc && !actions.scenarioStart(sc, pt.id)) { ui.libNote = 'Not connected: the scenario did not start.'; renderView(); } else delete ui.pending[pt.id];
+      return;
+    }
+    if (d.drug !== undefined) {
+      const dr = library.allDrugs()[Number(d.drug)];
+      if (dr && !actions.drug(dr, pt.id)) { ui.libNote = 'Not connected: the drug was not given.'; renderView(); } else delete ui.pending[pt.id];
+      return;
+    }
+    if (d.scnDel) { library.removeScenario(d.scnDel); renderView(); return; }
+    if (d.drugDel) { library.removeDrug(d.drugDel); renderView(); return; }
     if (d.switch) { onSwitch(d.switch, t.getAttribute('aria-checked') !== 'true', s, pt); return; }
     switch (d.act) {
       case 'apply': apply(); break;
@@ -469,6 +532,11 @@ export function mountController(root, opts) {
       case 'theme': themePanel.open(); break;
       case 'add': actions.addPatient(); break;
       case 'remove': if (window.confirm(`Remove ${pt.label}?`)) { actions.removePatient(pt.id); ui.p = undefined; } break;
+      case 'scn-pause': actions.scenarioControl(s.scenario?.pausedAt ? 'scenarioResume' : 'scenarioPause'); break;
+      case 'scn-next': actions.scenarioControl('scenarioNext'); break;
+      case 'scn-stop': actions.scenarioControl('scenarioStop'); break;
+      case 'lib-export': ui.lib = library.exportJson(); ui.libNote = 'Copy this text, or paste a library file here and tap Import.'; renderView(); break;
+      case 'lib-import': importLibrary(/** @type {HTMLTextAreaElement} */ ($('lib')).value); break;
       case 'save-preset': {
         const input = /** @type {HTMLInputElement} */ ($('pname'));
         const ok = presets.save(presetFromPatient(input.value, pt, ui.glideMs));
@@ -500,6 +568,14 @@ export function mountController(root, opts) {
     else if (what === 'theme-import') openScreenPanel(id);
   }
 
+  /** @param {string} text */
+  function importLibrary(text) {
+    const r = library.importJson(text);
+    if (r.ok) { ui.lib = ''; ui.libNote = `Imported ${r.scenarios} scenario${r.scenarios === 1 ? '' : 's'} and ${r.drugs} drug${r.drugs === 1 ? '' : 's'}.`; }
+    else ui.libNote = `Refused: ${r.msg}`;
+    renderView();
+  }
+
   /** @param {string} id @param {boolean} on @param {NonNullable<ReturnType<typeof state>>} s @param {NonNullable<ReturnType<typeof patient>>} pt */
   function onSwitch(id, on, s, pt) {
     if (id.startsWith('scrfollow-')) {
@@ -518,6 +594,7 @@ export function mountController(root, opts) {
       setModules(on ? [...new Set([...s.modules, m])] : s.modules.filter((x) => x !== m));
     } else if (id.startsWith('off-')) act({ patient: { off: { [id.slice(4)]: on } } }, undefined, pt.id);
     else if (id === 'alarms-on') act({ alarms: { enabled: on } });
+    else if (id === 'drugs-on') { settings.set('drugs', on); renderView(); }
   }
 
   root.addEventListener('change', (ev) => {
@@ -538,6 +615,9 @@ export function mountController(root, opts) {
       renderDock();
     } else if ((t.id === 'damping' || t.id === 'cvpv') && pt) {
       act({ patient: t.id === 'damping' ? { abpDamping: /** @type {HTMLSelectElement} */ (t).value } : { cvpV: /** @type {HTMLSelectElement} */ (t).value } }, undefined, pt.id);
+    } else if (t.id === 'libfile') {
+      const f = /** @type {HTMLInputElement} */ (t).files?.[0];
+      f?.text().then(importLibrary);
     } else if (t.id === 'file') {
       const f = /** @type {HTMLInputElement} */ (t).files?.[0];
       f?.text().then((text) => { const r = presets.importJson(text); ui.note = `Imported ${r.added}, skipped ${r.skipped}.`; renderView(); });
@@ -562,7 +642,7 @@ export function mountController(root, opts) {
     $('status').title = e?.msg ?? '';
     if (e?.code === 'schema') $('view').innerHTML = '<p class="hint">Update needed: reload this page.</p>';
   });
-  const progressTimer = setInterval(renderProgress, 250);
+  const progressTimer = setInterval(() => { renderProgress(); renderCountdown(); }, 250);
   const wake = () => { if (document.visibilityState !== 'hidden') client.wake(); };
   document.addEventListener('visibilitychange', wake);
   window.addEventListener('pageshow', wake);

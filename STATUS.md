@@ -1,6 +1,7 @@
 # sim: status
 
 ## Now
+- sim-v2 S3 scenarios and drugs (PR): timed scenarios run by the room on the storage alarm (phone can be closed), pause, skip, tap steps; import/export library files with refusal reasons; drug buttons with a glide, off by default.
 - V2 S1 named screens (this PR): each monitor names itself once and gets its own bed, modules and theme from the phone's Screens tab; Identify, Forget, online dots; device choices win and can be cleared from the phone.
 - sim-v2 S2 lines (PR): CVP (a/c/v, cannon a, giant v), second art line `abp2` with its own label, PPV swing, flush test; all off by default; alarms and limits for CVP and ABP2.
 - Theme fields (PR): limits `left`, mean `inline`, `labels.colorMode`, `font.waveLabelScale`, `scaleLines`, cell borders and background.
