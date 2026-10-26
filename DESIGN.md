@@ -190,6 +190,7 @@ Server to client:
 | `state` | `state`, `now` | full state, sent to a client right after it connects (a late joiner gets the current state) and after any change; `now` is the server clock for offset correction |
 | `error` | `code`, `msg` | `bad_json`, `too_big`, `rate`, `bad_patch` |
 | `pong` | `n`, `now` | |
+| `presence` | `monitors`, `controllers` | counts of connected sockets by role, sent to every socket when one joins or leaves (S3). Not stored, not in `state`; a client keeps the last one. The controller shows "N monitors". |
 
 Rules:
 - Every accepted change is broadcast as a full `state` to **all** sockets (including the sender) in one go; total state

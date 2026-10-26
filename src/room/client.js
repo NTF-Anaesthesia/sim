@@ -39,10 +39,14 @@ export class RoomClient {
     this.pings = new Map();
     /** @type {Map<string, Set<(arg: any) => void>>} */
     this.handlers = new Map();
+    /** @type {{ monitors: number, controllers: number } | null} who is connected, from the server's `presence` message */
+    this.presence = null;
+    this.lastPongAt = 0;
+    this.wakeTimer = null;
   }
 
   /**
-   * @param {'state' | 'status' | 'error'} name
+   * @param {'state' | 'status' | 'error' | 'presence'} name
    * @param {(arg: any) => void} fn
    * @returns {() => void} unsubscribe
    */
@@ -105,7 +109,11 @@ export class RoomClient {
       this.state = msg.state;
       if (this.bestRtt === Infinity && typeof msg.now === 'number') this.offsetMs = msg.now - this.now();
       this.emit('state', msg.state);
+    } else if (msg.t === 'presence') {
+      this.presence = { monitors: Number(msg.monitors) || 0, controllers: Number(msg.controllers) || 0 };
+      this.emit('presence', this.presence);
     } else if (msg.t === 'pong') {
+      this.lastPongAt = this.now();
       const sent = this.pings.get(msg.n);
       this.pings.delete(msg.n);
       if (sent === undefined) return;
@@ -117,6 +125,32 @@ export class RoomClient {
     } else if (msg.t === 'error') {
       this.emit('error', msg);
     }
+  }
+
+  /**
+   * Call when the page comes back (phone woke, network returned). A connection that went down is replaced at once
+   * with no backoff wait; one that looks open is checked with a ping and replaced if no answer comes in `waitMs`.
+   * @param {number} [waitMs]
+   */
+  wake(waitMs = 2500) {
+    if (this.stopped || this.status === 'full' || this.status === 'expired') return;
+    if (!this.ws || this.ws.readyState > 1) { this.reconnectNow(); return; }
+    const before = this.lastPongAt;
+    this.sendPing();
+    this.clearTimer(this.wakeTimer);
+    this.wakeTimer = this.setTimer(() => { if (this.lastPongAt === before) this.reconnectNow(); }, waitMs);
+  }
+
+  /** Drop the current socket (if any) and connect again now. */
+  reconnectNow() {
+    this.clearTimer(this.retryTimer);
+    this.clearTimer(this.pingTimer);
+    const old = this.ws;
+    if (old) { old.onclose = null; old.onmessage = null; try { old.close(); } catch { /* already gone */ } }
+    this.ws = null;
+    this.attempt = 0;
+    this.setStatus('reconnecting');
+    this.connect();
   }
 
   /** @param {number} code */
@@ -150,6 +184,7 @@ export class RoomClient {
     this.stopped = true;
     this.clearTimer(this.pingTimer);
     this.clearTimer(this.retryTimer);
+    this.clearTimer(this.wakeTimer);
     this.ws?.close();
     this.setStatus('closed');
   }

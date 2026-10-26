@@ -3,6 +3,7 @@
 // src/room/hub.js; this file only does sockets. State is read from storage after a wake, never trusted in memory.
 import { DurableObject } from 'cloudflare:workers';
 import { RoomHub } from '../src/room/hub.js';
+import { presenceMessage } from '../src/room/presence.js';
 
 const MAX_SOCKETS = 20;
 
@@ -33,6 +34,7 @@ export class Room extends DurableObject {
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ id, role });
     server.send(JSON.stringify(await this.hub.hello()));
+    this.broadcastPresence();
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -53,11 +55,30 @@ export class Room extends DurableObject {
   }
 
   /**
+   * Tell every socket how many monitors and controllers are connected (not stored; each client keeps the last one).
+   * @param {WebSocket} [leaving] a socket that is closing and must not be counted
+   */
+  broadcastPresence(leaving) {
+    const metas = this.ctx.getWebSockets().filter((w) => w !== leaving).map((w) => w.deserializeAttachment());
+    const text = JSON.stringify(presenceMessage(metas));
+    for (const peer of this.ctx.getWebSockets()) {
+      if (peer === leaving) continue;
+      try { peer.send(text); } catch { /* socket closing */ }
+    }
+  }
+
+  /**
    * @param {WebSocket} ws
    * @param {number} code
    */
   async webSocketClose(ws, code) {
     try { ws.close(code === 1005 ? 1000 : code); } catch { /* already closed */ }
+    this.broadcastPresence(ws);
+  }
+
+  /** @param {WebSocket} ws */
+  async webSocketError(ws) {
+    this.broadcastPresence(ws);
   }
 
   async alarm() {

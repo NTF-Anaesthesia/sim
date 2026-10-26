@@ -1,0 +1,55 @@
+/* Phone controller: one-handed layout, 44 px targets, tabs and Apply at the bottom where the thumb is. */
+.ctl { overflow-x: hidden; --ecg: #00e000; --spo2: #00d8ff; --nibp: #ffffff; --abp: #ff4040; --etco2: #ffd000; --temp: #c0c0c0; padding: 8px 12px 190px; }
+.ctl .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ctl .code b { font-size: 1.1rem; letter-spacing: .15em; color: var(--accent); }
+.ctl .chip { font-size: .9rem; padding: 4px 12px; }
+.ctl .chip[data-status="open"] { color: var(--ok); }
+.ctl .beds { display: flex; gap: 6px; overflow-x: auto; margin: 8px 0; }
+.ctl .bed { flex: none; min-width: 44px; }
+.ctl .bed[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.ctl h2 { font-size: 1rem; color: var(--dim); margin: 18px 0 6px; }
+.ctl .field { display: block; color: var(--dim); margin: 6px 0; }
+.ctl select { display: block; width: 100%; min-height: 48px; font: inherit; background: #151515; color: var(--fg); border: 1px solid #444; border-radius: 8px; padding: 6px 10px; margin-top: 4px; }
+.ctl .glide { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+.ctl .pill { min-height: 44px; border-radius: 999px; padding: 6px 14px; }
+.ctl [aria-pressed="true"].pill { background: var(--accent); color: #000; border-color: var(--accent); }
+.ctl .prm { border-top: 1px solid #222; padding: 8px 0; }
+.ctl .prm[data-pending="true"] .prm-val { color: var(--warn); }
+.ctl .prm-head { display: flex; align-items: baseline; gap: 8px; }
+.ctl .prm-name { font-weight: 700; flex: 1; }
+.ctl .prm-val { font-size: 2.2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ctl .prm-unit { color: var(--dim); width: 3.2em; }
+.ctl .prm-ctl { display: flex; align-items: center; gap: 8px; }
+.ctl .prm-ctl button { width: 56px; min-height: 52px; font-size: 1.6rem; padding: 0; }
+.ctl .prm-ctl input[type=range] { flex: 1; min-height: 52px; padding: 0; margin: 0; width: auto; accent-color: var(--accent); touch-action: pan-y; }
+.ctl .prm-pct { display: flex; gap: 6px; margin-top: 4px; }
+.ctl .prm-pct button { flex: 1; padding: 4px 0; font-size: .85rem; }
+.ctl .sw-row { display: flex; justify-content: space-between; align-items: center; min-height: 48px; border-top: 1px solid #222; }
+.ctl .switch { position: relative; width: 64px; min-height: 36px; height: 36px; border-radius: 18px; padding: 0; background: #333; }
+.ctl .switch i { position: absolute; top: 3px; left: 3px; width: 28px; height: 28px; border-radius: 50%; background: #aaa; transition: left .12s; }
+.ctl .switch[aria-checked="true"] { background: #064; border-color: var(--ok); }
+.ctl .switch[aria-checked="true"] i { left: 31px; background: var(--ok); }
+.ctl .wide { flex: 1; min-height: 52px; }
+.ctl .lim { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; border-top: 1px solid #222; padding: 6px 0; }
+.ctl .lim .prm-name { flex: 1 0 100%; }
+.ctl .lim-end { display: flex; align-items: center; flex: 1; justify-content: space-between; }
+.ctl .lim-end button { width: 48px; padding: 0; }
+.ctl .dash { display: none; }
+.ctl .lim-end output { min-width: 3.2em; text-align: center; font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.ctl .dash { color: var(--dim); }
+.ctl .presets { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 6px; }
+.ctl .presets li { display: flex; gap: 6px; }
+.ctl .preset { flex: 1; text-align: left; min-height: 52px; }
+.ctl textarea { width: 100%; font: 14px monospace; background: #151515; color: var(--fg); border: 1px solid #444; border-radius: 8px; }
+.ctl .dock { position: fixed; left: 0; right: 0; bottom: 0; background: #0a0a0a; border-top: 1px solid #333; padding-bottom: env(safe-area-inset-bottom); }
+.ctl .tabs { display: flex; }
+.ctl .tabs button { flex: 1; border-radius: 0; border: 0; min-height: 52px; background: transparent; }
+.ctl .tabs [aria-current="true"] { color: var(--accent); box-shadow: inset 0 3px var(--accent); }
+.ctl .applybar { display: flex; gap: 8px; padding: 8px 12px; }
+.ctl .apply { flex: 1; min-height: 56px; background: var(--accent); color: #000; font-weight: 700; font-size: 1.1rem; }
+.ctl .cancel { min-width: 96px; }
+.ctl .progress { position: relative; height: 22px; background: #222; margin: 0; }
+.ctl .progress #bar { height: 100%; width: 0; background: #064; }
+.ctl .progress #left { position: absolute; right: 8px; top: 0; font-size: .8rem; line-height: 22px; }
+.ctl [hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { .ctl .switch i { transition: none; } }

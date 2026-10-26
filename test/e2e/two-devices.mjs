@@ -23,14 +23,17 @@ try {
   const phone = await (await browser.newContext({ viewport: { width: 390, height: 800 }, hasTouch: true, isMobile: true })).newPage();
   await monitor.goto(`${BASE}/m/${code}`);
   await phone.goto(`${BASE}/c/${code.toLowerCase()}`); // lower case is accepted
+  // the shell's `test` value is sent by a bare socket (the real controller no longer has the test box)
+  const sock = new WebSocket(`${BASE.replace(/^http/, 'ws')}/ws/${code}?role=controller&id=c-test`);
+  await new Promise((r) => { sock.onopen = r; });
   await monitor.locator('#status[data-status="open"]').waitFor({ timeout: 10000 });
   await phone.locator('#status[data-status="open"]').waitFor({ timeout: 10000 });
+  check(/1 monitor/.test((await phone.locator('#status').textContent()) ?? ''), 'phone chip shows one monitor');
   check((await monitor.getByTestId('value').textContent()) === '--', 'monitor starts empty');
 
   for (const v of ['118', '72']) {
-    await phone.getByTestId('input').fill(v);
     const t0 = Date.now();
-    await phone.getByTestId('send').click();
+    sock.send(JSON.stringify({ t: 'test', value: v }));
     await monitor.getByTestId('value').filter({ hasText: v }).waitFor({ timeout: 5000 });
     const dt = Date.now() - t0;
     check(dt < LIMIT_MS, `value ${v} reached the monitor in ${dt} ms (< ${LIMIT_MS} ms)`);
@@ -52,6 +55,7 @@ try {
   const bad = await (await browser.newContext()).newPage();
   const res = await bad.goto(`${BASE}/m/NOPE`);
   check(res?.status() === 404, 'bad code is 404');
+  sock.close();
 } finally {
   await browser.close();
 }

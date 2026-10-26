@@ -2,6 +2,7 @@
 
 ## Now
 - S2 monitor screen (this PR): `/m/<code>` draws from the theme: ECG II, pleth, capnogram, art line (module `abp`), HR/SpO2/NIBP/RR/EtCO2/temp, all rhythms, alarms with tones and 2 min silence, NIBP cycle, jitter, full screen, wake lock, sound after a tap.
+- S3 (PR): phone controller at `/c/<code>` (tabs Vitals / Alarms / Presets / More), `presence` message, client `wake()`.
 - S1 (merged): repo, Worker + Durable Object rooms, test shell (monitor and controller exchange a test value), DESIGN.md, CI.
 
 ## Waiting on the owners
