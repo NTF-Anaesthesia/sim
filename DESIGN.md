@@ -170,7 +170,22 @@ A module is a named block of one screen, switched on or off from the controller.
 | `abp` | arterial line: ABP wave and sys/dia (mean) | **off by default** (the "art line") |
 | `abp2` | second arterial line (femoral, say): own sys/dia, label `abp2Label`, wave `abp2` | **off by default** |
 | `cvp` | central venous pressure: a, c, v waves and x, y descents, mean numeric | **off by default** |
+| `gas` | FiO2, agent (Fi/Et, age-adjusted MAC) and N2O numerics, the agent trace; sensor flag `off.gas` | **off by default** |
+| `o2` | the oxygen trace alone (FiO2 limits apply); `gas` already includes oxygen | **off by default** |
+| `tof` | train-of-four: last count (and ratio once the count is 4), time since; tap to measure | **off by default** |
 | `bis` | depth-of-anaesthesia index: BIS numeric with SQI, EMG and SR beside it, and a raw EEG strip (wave `eeg`) | **off by default** |
+
+**Gas and TOF (sim-v2 S5).** Patient fields (all additive, schema stays 1): `fio2`, `eto2`, `fiag`, `etag`, `fin2o`, `etn2o`
+(volume %, glide like every numeric), `agent` (`none`, `sevo`, `des`, `iso`), `age` (0 to 110 years, drives MAC), `tofCount`
+(0 to 4) and `tofRatio` (0 to 100 %) with `tofRead` (`count`, `ratio`, `at`, `mode` `manual` or `cycle`, `cycleSec`; the
+last reading, like `nibpRead`). **MAC** (`src/engine/gas.js`): `MAC(age) = MAC40 x 10^(-0.00269 x (age - 40))`, about 6 % less per
+decade, with MAC40 in % of sevoflurane 1.8, desflurane 6.6, isoflurane 1.17 and nitrous oxide 104; MACs of the agent and N2O
+add. Source: Nickalls RWD, Mapleson WW, Age-related iso-MAC charts for isoflurane, sevoflurane and desflurane in man, Br J
+Anaesth 2003;91:170-4, built on Mapleson WW, Effect of age on MAC in humans: a meta-analysis, Br J Anaesth 1996;76:179-85.
+Teaching numbers only. The agent and O2 traces come from the breath scheduler (inspired level, then the expired plateau
+each breath; flat at the inspired level when breathing stops). `tof` message: stamps `tofRead` from the patient's
+`tofCount`/`tofRatio` (event kind `tof`); a monitor with the module on asks again when its interval is due, like NIBP, and a
+tap on the cell measures now. `set` also takes `tof.mode` and `tof.cycleSec`.
 
 **BIS and EEG strip (V2 S6).** Patient fields `bis` (0-100, glides like the other numerics), `bisSqi` (signal quality %, default 98), `bisEmg` (muscle activity 0-100, default 5) and `bisSr` (suppression ratio %, default 0), all whole numbers; sensor flag `off.bis`; limit `bis` (default 20 to 100, so a deep reading alarms `BIS LOW` and the default awake patient does not alarm `BIS HIGH`); alarms `BIS SENSOR OFF` and (low priority) `BIS POOR SIGNAL`. All are additive: a room saved by an older build is filled with the defaults and stays `schema: 1`. Below SQI 15 the number reads `---` with `POOR SIGNAL`, raises `BIS POOR SIGNAL` and the limits are not judged; with the sensor off the number and strip are blank. The strip is the wave-registry entry `eeg` (`src/waves/eeg.js`, pure and deterministic in the display time, so two monitors agree): fast low-amplitude activity when awake (above about 80), alpha and theta in between, large slow waves when deep (below about 40). With `bisSr` above 0 each fixed 6 s cycle is a burst followed by a near-flat stretch (its length varies a little), and the flat share is the suppression ratio. EMG and a poor SQI add ragged broadband noise. Theme cells for module `bis` are in both built-in themes; the colours are `colors.bis` and `colors.eeg`, the wave settings `waves.eeg`, captions `labels.bis`, `labels.wave.bis` and `labels.off.bis`. The numeric prints `SQI`, `EMG` and `SR` in its small line. A teaching picture, not a recording, and not a brand's index.
 
@@ -219,6 +234,7 @@ Client to server:
 | `removePatient` | `p` | removes that patient; the last one cannot be removed. |
 | `mark` | `p?`, `text?` | bookmark in the event log (`kind: "bookmark"`, text up to 200 chars) for debriefs; the phone's Mark button (header) and Trends tab send it. `rev` +1. |
 | `history` | `range?` (ms, default 4 h, max 24 h), `all?` | asks for the full log (section 5a); the sender gets `history`. Not stored, `rev` unchanged. |
+| `tof` | `p?`, `after?` | take a TOF reading now (see Gas and TOF); a stale `after` is ignored (several monitors, one reading). |
 | `silence` | none | `alarms.silencedUntil` = now + 120000. |
 | `ping` | `n` | server replies `pong` with same `n`; used to measure delay and keep the connection alive. |
 | `addScreen` | `name?`, `kind?` | adds a named screen (section 4a; id `s<n>`, name default `Screen <n>`); the sender gets `screenAdded`. `rev` +1. |
@@ -307,7 +323,8 @@ Values glide **on the monitor** from a start to a target; the network carries on
 
 Evaluated **on each monitor** from glided values and `alarms.limits`; the controller only sets limits, enable, silence.
 
-- Parameters with limits: HR, SpO2, EtCO2, RR, NIBP sys, temp, ABP sys (only when `abp` on). Each `[low, high]`; a value
+- Parameters with limits: HR, SpO2, EtCO2, RR, NIBP sys, temp, ABP sys (only when `abp` on), FiO2 (`gas` or `o2` on) and
+  Et agent (`gas` on, an agent chosen), the last in age-adjusted MAC so one pair serves every agent (default 0.7 to 1.5). FiO2 below 21 % is a high alarm (hypoxic mixture); `off.gas` gives GAS LINE OFF (low). Each `[low, high]`; a value
   outside raises that parameter's alarm.
 - Priority, IEC 60601-1-8 style: **high** (red): asystole, VF, VT, SpO2 or HR beyond a critical band (SpO2 < limit-5 or
   HR < 40 or HR > 150 when outside limits); **medium** (yellow): any other limit violation; **low** (cyan, technical):

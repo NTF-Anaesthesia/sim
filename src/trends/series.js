@@ -10,7 +10,7 @@ export const TREND_RANGES = /** @type {const} */ ({ '30m': 30 * 60000, '1h': 60 
 
 /**
  * Graph groups (one small panel each). `get` reads one value out of `displayed()`; `module` is the room module that
- * has to be on for the group to appear (none = always).
+ * has to be on for the group to appear (none = always; `a|b` = either).
  * @type {{ id: string, label: string, unit: string, color: string, module?: string, series: { key: string, get: (d: any) => number }[] }[]}
  */
 export const TREND_GROUPS = [
@@ -23,6 +23,8 @@ export const TREND_GROUPS = [
   { id: 'abp', label: 'Art line', unit: 'mmHg', color: '#b3261e', module: 'abp', series: [{ key: 'abpSys', get: (d) => d.abp.sys }, { key: 'abpDia', get: (d) => d.abp.dia }] },
   { id: 'abp2', label: 'Art line 2', unit: 'mmHg', color: '#c25a00', module: 'abp2', series: [{ key: 'abp2Sys', get: (d) => d.abp2.sys }, { key: 'abp2Dia', get: (d) => d.abp2.dia }] },
   { id: 'cvp', label: 'CVP', unit: 'mmHg', color: '#1d78c1', module: 'cvp', series: [{ key: 'cvp', get: (d) => d.cvp }] },
+  { id: 'fio2', label: 'FiO₂', unit: '%', color: '#4a4a4a', module: 'gas|o2', series: [{ key: 'fio2', get: (d) => d.fio2 }, { key: 'eto2', get: (d) => d.eto2 }] },
+  { id: 'agent', label: 'Agent', unit: '%', color: '#7b3fb5', module: 'gas', series: [{ key: 'fiag', get: (d) => d.fiag }, { key: 'etag', get: (d) => d.etag }] },
   { id: 'bis', label: 'BIS', unit: '', color: '#7a4bc0', module: 'bis', series: [{ key: 'bis', get: (d) => d.bis }] },
 ];
 
@@ -30,7 +32,7 @@ export const TREND_GROUPS = [
  * @param {string[]} modules the room's shown modules
  * @returns {typeof TREND_GROUPS}
  */
-export const groupsFor = (modules) => TREND_GROUPS.filter((g) => !g.module || modules.includes(g.module));
+export const groupsFor = (modules) => TREND_GROUPS.filter((g) => !g.module || g.module.split('|').some((m) => modules.includes(m)));
 
 /**
  * The glide of a log record as a patient-like object `displayed()` can evaluate.

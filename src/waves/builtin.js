@@ -1,8 +1,8 @@
 // @ts-check
-// The built-in waves: ECG II, SpO2 pleth, arterial line, capnogram, CVP, second arterial line, EEG strip. `registerBuiltinWaves(registry)` adds them.
+// The built-in waves: ECG II, SpO2 pleth, arterial line, capnogram, CVP, second arterial line, agent and oxygen traces, EEG strip. `registerBuiltinWaves(registry)` adds them.
 import { eegSample } from './eeg.js';
 import { shockEcg, shockPleth } from './defib.js';
-import { artLineSample, cvpSample } from './lines.js';
+import { artLineSample, cvpSample, gasSample } from './lines.js';
 import { capnoSample, ecgSample, plethSample } from './shapes.js';
 
 /** @param {import('./registry.js').WaveRegistry} registry */
@@ -48,6 +48,18 @@ export function registerBuiltinWaves(registry) {
     sample: (src, t, ctx) => cvpSample(src, t, ctx.d?.cvp ?? ctx.patient.cvp, ctx.patient.cvpV),
     range: (gain) => [-2 / gain, 24 / gain],
     blank: ({ patient }) => !!patient.off?.cvp,
+  });
+  registry.register({
+    id: 'gas',
+    sample: (src, t) => gasSample(src, t, 'agent'),
+    range: (gain) => [-0.4 / gain, 12 / gain],
+    blank: ({ patient }) => !!patient.off?.gas || !patient.agent || patient.agent === 'none',
+  });
+  registry.register({
+    id: 'o2',
+    sample: (src, t) => gasSample(src, t, 'o2'),
+    range: (gain) => [0, 110 / gain],
+    blank: ({ patient }) => !!patient.off?.gas,
   });
   registry.register({
     id: 'eeg',

@@ -31,7 +31,10 @@ export class WaveSource {
    * @returns {import('../engine/beats.js').Beat[]} beats added this call
    */
   update(tSec, p, d) {
-    this.breathSched.advance(tSec + LOOKAHEAD, { rr: d.rr, ie: p.ie, etco2: d.etco2, shape: p.etco2Shape });
+    this.breathSched.advance(tSec + LOOKAHEAD, {
+      rr: d.rr, ie: p.ie, etco2: d.etco2, shape: p.etco2Shape,
+      gas: { fio2: d.fio2 ?? 21, eto2: d.eto2 ?? 21, fiag: d.fiag ?? 0, etag: d.etag ?? 0 },
+    });
     const pc = pacing(p);
     return this.beatSched.advance(tSec + LOOKAHEAD, {
       pace: pc.on ? { rate: p.paceRate, capture: pc.capture, fixed: p.paceMode === 'fixed' || !!p.paceNoSense } : null,

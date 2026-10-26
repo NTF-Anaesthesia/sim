@@ -9,10 +9,10 @@
  * }} Field
  */
 
-const PARAMS = /** @type {const} */ (['ecg', 'spo2', 'etco2', 'abp', 'abp2', 'cvp', 'bis', 'eeg', 'nibp', 'rr', 'temp', 'hr']);
-const PARAM_NAMES = { ecg: 'ECG', spo2: 'SpO2', etco2: 'EtCO2', abp: 'Art line', abp2: 'Art line 2', cvp: 'CVP', bis: 'BIS', eeg: 'EEG strip', nibp: 'NIBP', rr: 'RR', temp: 'Temp', hr: 'HR' };
-const WAVES = /** @type {const} */ (['ecg', 'ecg2', 'spo2', 'etco2', 'abp', 'abp2', 'cvp', 'eeg']);
-const WAVE_NAMES = { ecg: 'ECG', ecg2: 'Second ECG lead', spo2: 'Pleth', etco2: 'CO2', abp: 'Art line', abp2: 'Art line 2', cvp: 'CVP', eeg: 'EEG strip' };
+const PARAMS = /** @type {const} */ (['ecg', 'spo2', 'etco2', 'abp', 'abp2', 'cvp', 'o2', 'gas', 'n2o', 'tof', 'bis', 'eeg', 'nibp', 'rr', 'temp', 'hr']);
+const PARAM_NAMES = { ecg: 'ECG', spo2: 'SpO2', etco2: 'EtCO2', abp: 'Art line', abp2: 'Art line 2', cvp: 'CVP', o2: 'FiO2', gas: 'Agent', n2o: 'N2O', tof: 'TOF', bis: 'BIS', eeg: 'EEG strip', nibp: 'NIBP', rr: 'RR', temp: 'Temp', hr: 'HR' };
+const WAVES = /** @type {const} */ (['ecg', 'ecg2', 'spo2', 'etco2', 'abp', 'abp2', 'cvp', 'gas', 'o2', 'eeg']);
+const WAVE_NAMES = { ecg: 'ECG', ecg2: 'Second ECG lead', spo2: 'Pleth', etco2: 'CO2', abp: 'Art line', abp2: 'Art line 2', cvp: 'CVP', gas: 'Agent', o2: 'O2', eeg: 'EEG strip' };
 
 /** Waves that have a scale in real units: allowed range of a reference line and its unit (the others are unitless). */
 const SCALE_RANGE = /** @type {Record<string, [number, number, string]>} */ ({ ecg: [-2, 5, 'mV'], etco2: [0, 100, 'mmHg'], abp: [0, 300, 'mmHg'], abp2: [0, 300, 'mmHg'], cvp: [-5, 40, 'mmHg'] });
