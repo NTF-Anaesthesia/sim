@@ -1,0 +1,20 @@
+:root { color-scheme: dark; --bg: #000; --fg: #d8d8d8; --dim: #8a8a8a; --accent: #00d8ff; --ok: #00e000; --warn: #ffd000; }
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--fg); font: 18px/1.4 system-ui, sans-serif; }
+main { max-width: 34rem; margin: 0 auto; padding: 16px; }
+h1 { font-size: 1.4rem; margin: 0 0 .5rem; }
+p { margin: .4rem 0; }
+.label { color: var(--dim); }
+.code b { font-size: 2rem; letter-spacing: .2em; color: var(--accent); }
+.value { font-size: 4rem; font-weight: 700; color: var(--ok); margin: 0; }
+.chip { display: inline-block; padding: 2px 10px; border-radius: 999px; background: #222; color: var(--dim); font-size: .8rem; }
+.chip[data-status="open"] { color: var(--ok); }
+.chip[data-status="reconnecting"] { color: var(--warn); }
+button, input, a.btn { font: inherit; min-height: 44px; padding: 8px 14px; border-radius: 8px; border: 1px solid #444; background: #151515; color: var(--fg); }
+button, a.btn { cursor: pointer; text-decoration: none; display: inline-block; }
+button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input { width: 100%; margin: .3rem 0; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin: .6rem 0; }
+#qr { background: #fff; padding: 12px; display: inline-block; border-radius: 8px; }
+#qr svg { display: block; width: 200px; height: 200px; }
+.hint { color: var(--dim); font-size: .85rem; }

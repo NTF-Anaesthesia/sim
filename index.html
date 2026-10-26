@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulated monitor</title>
+<meta name="description" content="Phone-controlled simulated patient monitor, for teaching simulation only.">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="src/ui/page.css">
+<script>addEventListener('beforeinstallprompt', e => e.preventDefault());</script>
+</head>
+<body>
+<main>
+  <h1>Simulated monitor</h1>
+  <p class="hint">For teaching simulation only. No patient data. No sign-in.</p>
+  <div class="row"><button id="new" type="button" data-testid="new-room">New room</button></div>
+  <section id="room" hidden>
+    <p class="code">Room code <b id="code" data-testid="code"></b></p>
+    <div id="qr" role="img" aria-label="QR code that opens the controller on a phone"></div>
+    <p class="hint">Scan on the phone to control, or open the monitor on this device.</p>
+    <div class="row">
+      <a class="btn" id="open-m" data-testid="open-monitor" href="#">Open monitor here</a>
+      <a class="btn" id="open-c" data-testid="open-controller" href="#">Open controller here</a>
+    </div>
+  </section>
+  <form id="join" class="row" autocomplete="off">
+    <input id="join-code" aria-label="Room code" placeholder="Room code" maxlength="6" autocapitalize="characters" spellcheck="false">
+    <button type="submit" data-join="c">Control</button>
+    <button type="submit" data-join="m">Monitor</button>
+  </form>
+</main>
+<script type="module">
+import { mountHome } from './src/ui/home.js';
+mountHome(document);
+</script>
+<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});</script>
+</body>
+</html>
