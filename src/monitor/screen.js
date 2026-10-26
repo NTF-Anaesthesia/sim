@@ -183,6 +183,7 @@ export function mountScreen(root, opts) {
     if (k !== viewKey) { viewKey = k; rebuild(); }
     if (view && identity.nameEl.parentElement !== view.chip.parentElement) view.chip.before(identity.nameEl);
     if (view) view.testValue.textContent = state.test === undefined ? '--' : String(state.test);
+    if (view) view.testValue.dataset.patient = patient?.id ?? '';
   }
 
   function renderChips() {
