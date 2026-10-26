@@ -1,7 +1,7 @@
 // @ts-check
 // Entry `controller`: the phone controller (DESIGN.md sections 5-6). No work on import; `mountController` does it all.
 import { RoomClient, newClientId, roomUrl } from '../room/client.js';
-import { RHYTHMS, SENSORS, MODULE_IDS } from '../shared/schema.js';
+import { POST_SHOCK, RHYTHMS, SENSORS, MODULE_IDS } from '../shared/schema.js';
 import { macFraction } from '../engine/gas.js';
 import { BUILTIN_THEMES } from '../theme/builtin.js';
 import { createThemePanel } from '../theme/panel.js';
@@ -22,7 +22,7 @@ const RHYTHM_LABELS = /** @type {Record<string, string>} */ ({
   vt: 'VT', vf: 'VF', asystole: 'Asystole', pea: 'PEA', first_degree_block: '1st degree block', mobitz1: 'Mobitz I',
   mobitz2: 'Mobitz II', chb: 'Complete heart block', torsades: 'Torsades', paced: 'Paced',
 });
-const SENSOR_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG leads', spo2: 'SpO₂ probe', nibp: 'NIBP cuff', abp: 'Art line', etco2: 'CO₂ line', cvp: 'CVP line', abp2: 'Second art line', gas: 'Gas line', bis: 'BIS sensor' });
+const SENSOR_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG leads', spo2: 'SpO₂ probe', nibp: 'NIBP cuff', abp: 'Art line', etco2: 'CO₂ line', cvp: 'CVP line', abp2: 'Second art line', gas: 'Gas line', bis: 'BIS sensor', pads: 'Defib pads' });
 const MODULE_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG', spo2: 'Pleth', etco2: 'EtCO₂ and RR', nibp: 'NIBP', rr: 'RR', temp: 'Temp', abp: 'Arterial line', cvp: 'CVP', abp2: 'Second arterial line', gas: 'Gas (agent, N₂O, O₂)', o2: 'O₂ only', tof: 'TOF', bis: 'BIS and EEG' });
 const TABS = [['vitals', 'Vitals'], ['alarms', 'Alarms'], ['presets', 'Presets'], ['scenarios', 'Scenarios'], ['screens', 'Screens'], ['trends', 'Trends'], ['more', 'More']];
 const esc = (/** @type {unknown} */ s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
@@ -342,6 +342,11 @@ export function mountController(root, opts) {
             <span class="hint">${on ? 'online' : 'offline'}</span></h2>
           <div class="row"><input id="scrname-${id}" maxlength="24" value="${esc(sc.name)}" aria-label="Name of ${esc(sc.name)}" data-testid="scrname-${id}">
             <button type="button" data-scr-act="rename" data-s="${id}" data-testid="rename-${id}">Rename</button></div>
+          <label class="field">Kind
+            <select data-scr-sel="kind" data-s="${id}" data-testid="scrkind-${id}">
+              <option value="monitor"${sc.kind !== 'defib' ? ' selected' : ''}>Monitor</option>
+              <option value="defib"${sc.kind === 'defib' ? ' selected' : ''}>Defibrillator (touch screen)</option>
+            </select></label>
           <label class="field">Bed
             <select data-scr-sel="p" data-s="${id}" data-testid="scrbed-${id}">
               <option value="">Its own choice (default: first bed)</option>
@@ -371,6 +376,10 @@ export function mountController(root, opts) {
     return `
       <h2>Sensors off (${esc(pt.label)})</h2>
       ${SENSORS.map((k) => `<div class="sw-row"><span>${SENSOR_LABELS[k]}</span>${toggle('off-' + k, !!pt.off[k], SENSOR_LABELS[k] + ' off')}</div>`).join('')}
+      <h2>Defibrillator (${esc(pt.label)})</h2>
+      <label class="field">Rhythm after a shock
+        <select id="postshock" data-testid="postshock">${POST_SHOCK.map((r) => `<option value="${r}"${r === pt.postShock ? ' selected' : ''}>${r === 'none' ? 'No change' : esc(RHYTHM_LABELS[r] ?? r)}</option>`).join('')}</select></label>
+      <p class="hint">A shock from a defib screen (set a screen's kind in the Screens tab) changes the rhythm to this. Pads off blocks the shock.</p>
       <h2>Show on monitor</h2>
       ${MODULE_IDS.map((k) => `<div class="sw-row"><span>${MODULE_LABELS[k]}</span>${toggle('mod-' + k, s.modules.includes(k), MODULE_LABELS[k])}</div>`).join('')}
       <h2>Monitor theme</h2>
@@ -661,6 +670,7 @@ export function mountController(root, opts) {
     if (sd.scrSel && sd.s) {
       const v = /** @type {HTMLSelectElement} */ (t).value;
       if (sd.scrSel === 'p') setScreen(sd.s, { p: v || null });
+      else if (sd.scrSel === 'kind') setScreen(sd.s, { kind: v === 'defib' ? 'defib' : 'monitor' });
       else if (v === 'custom') {
         if (state()?.screens?.[sd.s]?.theme !== 'custom') { openScreenPanel(sd.s); renderView(); }
       } else setScreen(sd.s, { theme: v || null });
@@ -672,6 +682,8 @@ export function mountController(root, opts) {
       renderDock();
     } else if (t.id === 'agent' && pt) {
       act({ patient: { agent: /** @type {HTMLSelectElement} */ (t).value } }, undefined, pt.id);
+    } else if (t.id === 'postshock' && pt) {
+      act({ patient: { postShock: /** @type {HTMLSelectElement} */ (t).value } }, undefined, pt.id);
     } else if ((t.id === 'damping' || t.id === 'cvpv') && pt) {
       act({ patient: t.id === 'damping' ? { abpDamping: /** @type {HTMLSelectElement} */ (t).value } : { cvpV: /** @type {HTMLSelectElement} */ (t).value } }, undefined, pt.id);
     } else if (t.id === 'libfile') {

@@ -15,6 +15,8 @@ export class WaveSource {
     this.breathSched = new BreathScheduler(seed + 6);
     /** @type {Record<string, number>} display time each flush test began, by line (abp, abp2) */
     this.flush = {};
+    /** @type {number | undefined} display time of the latest shock (defib artefact), if any */
+    this.shock = undefined;
   }
 
   get beats() { return this.beatSched.beats; }
