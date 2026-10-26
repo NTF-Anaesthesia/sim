@@ -83,6 +83,23 @@ export function clampDisplay(spec, d) {
 }
 
 /**
+ * Move a display value by `delta`, and keep going in steps until the wire value really changes (a 0.1 F step can map
+ * to the same 0.1 C value). Stops at the range ends.
+ * @param {ParamSpec} spec
+ * @param {number} d display value now
+ * @param {number} delta display units, sign gives the direction
+ */
+export function moveDisplay(spec, d, delta) {
+  const wire = spec.from(d);
+  let next = clampDisplay(spec, d + delta);
+  const dir = Math.sign(delta) || 1;
+  for (let i = 0; i < 20 && spec.from(next) === wire && next > spec.min && next < spec.max; i++) {
+    next = clampDisplay(spec, next + dir * spec.step);
+  }
+  return next;
+}
+
+/**
  * Move a value by a percentage (quick +/- buttons). Always moves at least one step so small numbers still change.
  * @param {ParamSpec} spec
  * @param {number} d value in display units
@@ -91,8 +108,7 @@ export function clampDisplay(spec, d) {
 export function stepPercent(spec, d, pct) {
   const raw = d * (1 + pct / 100);
   const minMove = spec.step * Math.sign(pct);
-  const moved = Math.abs(raw - d) < spec.step ? d + minMove : raw;
-  return clampDisplay(spec, moved);
+  return moveDisplay(spec, d, Math.abs(raw - d) < spec.step ? minMove : raw - d);
 }
 
 /**

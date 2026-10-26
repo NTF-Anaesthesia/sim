@@ -7,7 +7,7 @@ import { PresetStore, runPreset, presetFromPatient } from './presets.js';
 import { Settings, browserStorage } from './settings.js';
 import {
   paramList, LIMIT_PARAMS, GLIDE_CHOICES, NIBP_INTERVALS, buildPatch, pendingCount, stepPercent, clampDisplay,
-  glideProgress, formatValue, intervalLabel,
+  glideProgress, formatValue, intervalLabel, moveDisplay,
 } from './params.js';
 
 const RHYTHM_LABELS = /** @type {Record<string, string>} */ ({
@@ -153,7 +153,7 @@ export function mountController(root, opts) {
   /** @param {import('./params.js').ParamSpec} sp @param {'lo' | 'hi'} end @param {number} wire */
   function limitEnd(sp, end, wire) {
     return `<span class="lim-end" data-end="${end}"><button type="button" data-lstep="-1" aria-label="${end === 'lo' ? 'low' : 'high'} limit down">−</button>
-      <output data-testid="lim-${end}">${formatValue(sp, wire)}</output><button type="button" data-lstep="1" aria-label="${end === 'lo' ? 'low' : 'high'} limit up">+</button></span>`;
+      <output data-testid="lim-${end}" data-w="${wire}">${formatValue(sp, wire)}</output><button type="button" data-lstep="1" aria-label="${end === 'lo' ? 'low' : 'high'} limit up">+</button></span>`;
   }
 
   function viewPresets() {
@@ -259,7 +259,7 @@ export function mountController(root, opts) {
     const pt = patient();
     if (!pt) return;
     const patch = buildPatch(pend(), pt, units());
-    if (patch) act(patch, ui.glideMs, pt.id);
+    if (patch && !act(patch, ui.glideMs, pt.id)) { ui.note = 'Not connected: your changes are kept. Apply again when connected.'; $('status').title = ui.note; return; }
     delete ui.pending[pt.id];
     render();
   }
@@ -279,17 +279,15 @@ export function mountController(root, opts) {
     const sp = paramList(units()).find((x) => x.id === lp?.spec);
     if (!lp || !sp) return;
     const out = /** @type {HTMLElement} */ (row.querySelector(`[data-end="${end}"] output`));
-    const lim = s.alarms.limits[name] ?? [sp.min, sp.max];
-    const base = sp.to(end === 'lo' ? lim[0] : lim[1]);
-    const cur = Number(out.dataset.v ?? base);
-    const next = clampDisplay(sp, cur + dir * sp.step);
-    out.dataset.v = String(next);
-    out.textContent = next.toFixed(sp.dec);
+    const wireNow = Number(out.dataset.w);
+    const nextD = moveDisplay(sp, sp.to(wireNow), dir * sp.step);
+    out.dataset.w = String(sp.from(nextD));
+    out.textContent = nextD.toFixed(sp.dec);
     debounce('lim-' + name, () => {
       const loOut = /** @type {HTMLElement} */ (row.querySelector('[data-end="lo"] output'));
       const hiOut = /** @type {HTMLElement} */ (row.querySelector('[data-end="hi"] output'));
-      let lo = sp.from(Number(loOut.dataset.v ?? loOut.textContent));
-      let hi = sp.from(Number(hiOut.dataset.v ?? hiOut.textContent));
+      let lo = Number(loOut.dataset.w);
+      let hi = Number(hiOut.dataset.w);
       if (lo > hi) { if (end === 'lo') hi = lo; else lo = hi; }
       act({ alarms: { limits: { [name]: [lo, hi] } } });
     });
@@ -303,6 +301,7 @@ export function mountController(root, opts) {
     const pt = patient();
     const pr = presets.all().find((x) => x.name === name);
     if (!pt || !pr) return;
+    if (client.status !== 'open') { ui.note = 'Not connected: preset not applied.'; renderView(); return; }
     scenario?.cancel();
     // a preset's own glide time wins; a step with glideMs 0 still means "instant"
     scenario = runPreset(pr, act, pt.id);
@@ -324,7 +323,7 @@ export function mountController(root, opts) {
       const row = /** @type {HTMLElement} */ (t.closest('.prm'));
       const cur = rowDisplay(row);
       if (!cur) return;
-      setFromDisplay(row, d.pct ? stepPercent(cur.sp, cur.d, Number(d.pct)) : cur.d + Number(d.step) * cur.sp.step);
+      setFromDisplay(row, d.pct ? stepPercent(cur.sp, cur.d, Number(d.pct)) : moveDisplay(cur.sp, cur.d, Number(d.step) * cur.sp.step));
       return;
     }
     if (d.lstep) { const row = /** @type {HTMLElement} */ (t.closest('.lim')); stepLimit(row, /** @type {'lo' | 'hi'} */ (/** @type {HTMLElement} */ (t.closest('.lim-end')).dataset.end), Number(d.lstep)); return; }

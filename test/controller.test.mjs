@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { validatePatch } from '../src/shared/schema.js';
 import { defaultPatient } from '../src/shared/schema.js';
 import {
-  paramList, buildPatch, pendingCount, stepPercent, clampDisplay, glideProgress, formatValue, intervalLabel, DEFAULT_UNITS,
+  paramList, buildPatch, pendingCount, stepPercent, clampDisplay, glideProgress, formatValue, intervalLabel, DEFAULT_UNITS, moveDisplay,
 } from '../src/controller/params.js';
 import { BUILTIN_PRESETS, PresetStore, normalizePreset, runPreset, presetFromPatient } from '../src/controller/presets.js';
 import { Settings } from '../src/controller/settings.js';
@@ -185,4 +185,20 @@ test('wake replaces a dead socket at once and a silent one after the wait', () =
   FakeWS.all[1].onclose({ code: 1006 });
   c.wake();
   assert.equal(FakeWS.all.length, 3);
+});
+
+test('steppers always move to a different wire value (F and kPa)', () => {
+  for (const u of [{ co2: 'mmHg', temp: 'F' }, { co2: 'kPa', temp: 'C' }]) {
+    for (const id of ['temp', 'etco2']) {
+      const sp = paramList(u).find((x) => x.id === id);
+      const lo = sp.from(sp.min); const hi = sp.from(sp.max);
+      for (let w = lo * 10 + 1; w < hi * 10; w++) {
+        const wire = w / 10;
+        const d = sp.to(wire);
+        if (sp.from(d) !== wire || d <= sp.min || d >= sp.max) continue; // not shown exactly, or at a range end
+        assert.notEqual(sp.from(moveDisplay(sp, d, sp.step)), sp.from(d), `${id} up ${wire}`);
+        assert.notEqual(sp.from(moveDisplay(sp, d, -sp.step)), sp.from(d), `${id} down ${wire}`);
+      }
+    }
+  }
 });
