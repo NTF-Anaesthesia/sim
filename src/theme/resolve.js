@@ -44,6 +44,15 @@ export function resolveTheme(raw) {
   const problems = [];
   const src = isObj(raw) ? /** @type {Record<string, any>} */ (raw) : {};
   const theme = merge(DEFAULT_THEME, src, 'theme', problems);
+  // range, option and text checks from the editor's field table: a bad value falls back to the default one by one
+  for (const f of FIELDS) {
+    const v = getPath(theme, f.path);
+    const why = f.type === 'color' ? '' : fieldProblem(f, v);
+    if (why) {
+      problems.push(`${f.path}: ${why}, using the default`);
+      setPath(theme, f.path, structuredClone(getPath(DEFAULT_THEME, f.path)));
+    }
+  }
   const grid = theme.layout.grid;
   const cellsRaw = src.layout?.cells;
   if (Array.isArray(cellsRaw)) {
@@ -55,15 +64,6 @@ export function resolveTheme(raw) {
       return ok;
     });
   } else theme.layout.cells = structuredClone(DEFAULT_THEME.layout.cells);
-  // range, option and text checks from the editor's field table: a bad value falls back to the default one by one
-  for (const f of FIELDS) {
-    const v = getPath(theme, f.path);
-    const why = f.type === 'color' ? '' : fieldProblem(f, v);
-    if (why) {
-      problems.push(`${f.path}: ${why}, using the default`);
-      setPath(theme, f.path, structuredClone(getPath(DEFAULT_THEME, f.path)));
-    }
-  }
   return { theme, problems };
 }
 

@@ -6,6 +6,7 @@ import { THEME_SCHEMA, migrateTheme } from '../src/theme/migrate.js';
 import { MAX_THEME_BYTES, exportTheme, loadTheme, parseThemeText, validateTheme } from '../src/theme/validate.js';
 import { cleanPick, createThemeStore, pickTheme } from '../src/theme/store.js';
 import { FIELDS, getPath } from '../src/theme/fields.js';
+import { resolveTheme } from '../src/theme/resolve.js';
 import { layoutCells } from '../src/theme/layout.js';
 import { createSettings } from '../src/monitor/settings.js';
 import { createModuleRegistry, registerBuiltinModules } from '../src/monitor/modules.js';
@@ -182,4 +183,15 @@ test('the shipped example files in themes/ match the built-in themes', async () 
     const text = readFileSync(new URL(`../themes/${files[b.id]}.json`, import.meta.url), 'utf8');
     assert.equal(text, exportTheme(validateTheme(b.theme).theme), `themes/${files[b.id]}.json is out of date: run node tools/export-themes.mjs`);
   }
+});
+
+test('deeply nested files are refused, not a stack overflow', () => {
+  const deep = JSON.parse('{"colors":' + '['.repeat(5000) + ']'.repeat(5000) + '}');
+  const r = validateTheme(deep);
+  assert.equal(r.ok, false);
+});
+
+test('cells are checked against the grid that survives range checks', () => {
+  const { theme } = resolveTheme({ layout: { grid: { columns: 1000, rows: 1000 }, cells: [{ module: 'ecg', part: 'wave', x: 900, y: 900, w: 50, h: 50 }, { module: 'ecg', part: 'wave', x: 0, y: 0, w: 4, h: 2 }] } });
+  assert.equal(theme.layout.cells.length, 1);
 });

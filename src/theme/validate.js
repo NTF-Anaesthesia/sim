@@ -12,6 +12,7 @@ const MAX_CELLS = 60;
 const SECTIONS = ['background', 'font', 'colors', 'layout', 'waves', 'audio', 'numerics', 'nibp', 'labels', 'alarmStyle'];
 /** Keys that would carry styling or code: themes hold values only. */
 const FORBIDDEN_KEY = /^(css|custom_?css|styles?|stylesheet|scripts?|html|js|javascript|on[a-z]+)$/i;
+const MAX_DEPTH = 12;
 const FORBIDDEN_TEXT = /<|url\s*\(|@import|javascript:|expression\s*\(|\\/i;
 
 /** @param {any} v */
@@ -19,17 +20,18 @@ const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /**
  * Walk the whole file for keys and strings that are not values.
- * @param {unknown} node @param {string} path @param {string[]} errors
+ * @param {unknown} node @param {string} path @param {string[]} errors @param {number} [depth]
  */
-function scan(node, path, errors) {
+function scan(node, path, errors, depth = 0) {
   if (errors.length >= 5) return;
+  if (depth > MAX_DEPTH) { errors.push(`${path || 'theme'}: nested too deeply.`); return; }
   if (typeof node === 'string') {
     if (FORBIDDEN_TEXT.test(node)) errors.push(`${path || 'theme'}: custom CSS or markup is not allowed, themes hold values only.`);
-  } else if (Array.isArray(node)) node.forEach((x, i) => scan(x, `${path}[${i}]`, errors));
+  } else if (Array.isArray(node)) node.forEach((x, i) => scan(x, `${path}[${i}]`, errors, depth + 1));
   else if (isObj(node)) {
     for (const [k, v] of Object.entries(/** @type {Record<string, unknown>} */ (node))) {
       if (FORBIDDEN_KEY.test(k)) errors.push(`${path ? path + '.' : ''}${k}: custom CSS or script is not allowed, themes hold values only.`);
-      else scan(v, path ? `${path}.${k}` : k, errors);
+      else scan(v, path ? `${path}.${k}` : k, errors, depth + 1);
     }
   }
 }
