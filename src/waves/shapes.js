@@ -25,7 +25,7 @@ export function upper(arr, t) {
 /** @typedef {import('../engine/beats.js').Base} Base */
 /** @typedef {import('../engine/breaths.js').Breath} Breath */
 /** @typedef {import('../engine/beats.js').Atrial} Atrial */
-/** @typedef {{ beats: Beat[], breaths: Breath[], base: Base, atrial?: Atrial, flush?: Record<string, number> }} WaveSrc */
+/** @typedef {{ beats: Beat[], breaths: Breath[], base: Base, atrial?: Atrial, flush?: Record<string, number>, shock?: number }} WaveSrc */
 
 /** Longest time before a beat (PR) and after it (T wave) that can still touch a sample, seconds. */
 export const BEAT_REACH = { before: 0.55, after: 0.6 };

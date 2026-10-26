@@ -66,3 +66,32 @@ html, body { margin: 0; height: 100%; background: var(--m-bg, #000); color: var(
 .trends-overlay svg { max-width: 900px; width: 100%; }
 .trends-overlay table { border-collapse: collapse; }
 .trends-overlay th, .trends-overlay td { padding: 3px 10px; border-bottom: 1px solid #444; text-align: right; }
+
+/* Defib screen (kind "defib"): structure; colours come from the theme variables set by src/defib/index.js */
+.defib { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; padding: 8px; background: var(--m-bg, #000); color: var(--c-text, #c0c0c0); font-family: var(--m-font, system-ui, sans-serif); touch-action: manipulation; user-select: none; }
+.defib button { font: inherit; color: inherit; background: transparent; border: 2px solid currentColor; border-radius: 10px; cursor: pointer; min-height: 56px; min-width: 56px; padding: 6px 14px; }
+.defib button:disabled { opacity: .35; cursor: default; }
+.defib .d-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
+.defib .d-top b { font-size: 18px; }
+.defib .d-small { min-height: 36px; min-width: 0; font-size: 13px; padding: 2px 10px; border-width: 1px; opacity: .8; }
+.defib .d-small[aria-pressed="true"] { opacity: 1; background: var(--c-grid, #16301a); }
+.defib .d-wave { position: relative; flex: 1; min-height: 120px; border: 1px solid var(--c-grid, #16301a); }
+.defib .d-wave canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.defib .d-label { position: absolute; left: 6px; top: 4px; font-size: 13px; color: var(--c-ecg, #00e000); }
+.defib .d-off { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--c-alarmHigh, #ff2020); }
+.defib .d-off[hidden] { display: none; }
+.defib .d-read { display: flex; align-items: baseline; gap: 8px; color: var(--c-hr, #00e000); }
+.defib .d-hr { font-size: 56px; font-weight: 700; line-height: 1; }
+.defib .d-unit { opacity: .7; }
+.defib .d-mode { margin-left: auto; font-weight: 700; color: var(--c-alarmMed, #ffd000); }
+.defib .d-msg { min-height: 1.5em; font-size: 18px; color: var(--c-alarmMed, #ffd000); }
+.defib .d-bar { height: 8px; border: 1px solid currentColor; }
+.defib .d-bar[hidden] { display: none; }
+.defib .d-bar i { display: block; height: 100%; width: 0; background: var(--c-alarmMed, #ffd000); }
+.defib .d-ctl { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; }
+.defib .d-energy { display: flex; align-items: center; gap: 6px; }
+.defib .d-j { min-width: 5.5em; text-align: center; font-size: 30px; font-weight: 700; }
+.defib .d-big { flex: 1; min-height: 72px; font-size: 24px; font-weight: 700; letter-spacing: .05em; }
+.defib .d-shock[data-armed="1"] { background: var(--c-alarmHigh, #ff2020); color: var(--c-flashText, #000); border-color: var(--c-alarmHigh, #ff2020); }
+.defib .d-sync[aria-pressed="true"] { background: var(--c-alarmMed, #ffd000); color: var(--c-flashText, #000); border-color: var(--c-alarmMed, #ffd000); }
+.defib[data-waiting="1"] .d-msg { font-weight: 700; }
