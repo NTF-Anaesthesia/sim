@@ -1,6 +1,7 @@
 // @ts-check
 // Which theme a monitor shows. A device choice (kept in `sim.settings.theme`) wins; then its named screen's theme (set
-// from the phone); then the room's theme (`theme: 'custom'` plus `themeJson`, sent from a phone); else the default. Pure given a settings object.
+// from the phone); then the room's theme (`theme: 'custom'` plus `themeJson`, sent from a phone); else the default.
+// Pure given a settings object.
 import { builtinTheme } from './builtin.js';
 
 /**

@@ -16,7 +16,7 @@ Schema version: `themeSchema: 1` (see "Versions" below). Full examples: [themes/
 - **On the phone** (`/c/<code>`, More, **Theme for all monitors**): the same import, then the theme is sent into the room
   and every monitor that has no choice of its own shows it, within a second, with no reload. **Reset all to default** clears it.
 - **Screen size**: the Theme panel also has Screen: *as theme* (default), *fill window* or *fixed size*; this is a device setting (`sim.settings.screen`) and wins over `screen.mode`. A theme sent from the phone carries its own `screen.mode`.
-- Order of use on a monitor: its own device choice, else the room's theme, else the default.
+- Order of use on a monitor: its own device choice, else its named screen's theme (set on the phone's Screens tab, DESIGN.md section 4a), else the room's theme, else the default.
 - A web address must allow other sites to read it (CORS) or be on the same site; it is fetched without cookies.
 - A file that is refused changes nothing: the monitor keeps the theme it had and the panel says why (not JSON, bigger
   than 32 KB, not an object, newer schema, CSS or markup, no usable cells, theme too big for the room).
