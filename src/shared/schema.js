@@ -278,6 +278,17 @@ function isModuleList(v) {
 }
 
 /**
+ * A screen name trimmed, or null when it is not 1-24 characters after trimming.
+ * @param {unknown} v
+ * @returns {string | null}
+ */
+export function screenName(v) {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  return t && t.length <= 24 ? t : null;
+}
+
+/**
  * One screen's part of a `set` patch: `name`, `p`, `modules`, `theme`, `themeJson`. `null` clears a field (the
  * screen then follows its device's URL / the room). `kind` is fixed when the screen is made.
  * @param {unknown} v
@@ -292,8 +303,9 @@ export function validateScreenPatch(v, id) {
   for (const k of Object.keys(x)) {
     const val = x[k];
     if (k === 'name') {
-      if (typeof val !== 'string' || !val.trim() || val.length > 24) return { ok: false, msg: 'name must be 1-24 characters' };
-      out.name = val.trim();
+      const name = screenName(val);
+      if (name === null) return { ok: false, msg: 'name must be 1-24 characters' };
+      out.name = name;
     } else if (k === 'p') {
       if (val !== null && (typeof val !== 'string' || !val || val.length > 12)) return { ok: false, msg: `screens.${id}.p must be a patient id or null` };
       out.p = val;

@@ -4,6 +4,7 @@ import { RoomClient, newClientId, roomUrl } from '../room/client.js';
 import { RHYTHMS, SENSORS, MODULE_IDS } from '../shared/schema.js';
 import { BUILTIN_THEMES } from '../theme/builtin.js';
 import { createThemePanel } from '../theme/panel.js';
+import { pickTheme } from '../theme/store.js';
 import { loadTheme } from '../theme/validate.js';
 import { makeActions } from './actions.js';
 import { PresetStore, runPreset, presetFromPatient } from './presets.js';
@@ -73,7 +74,8 @@ export function mountController(root, opts) {
   // Theme for one named screen (Screens tab): `ui.scr` is the screen the panel is open for.
   const screenTheme = () => {
     const sc = state()?.screens?.[ui.scr];
-    return loadTheme(sc?.theme === 'custom' ? sc.themeJson : sc?.theme ? BUILTIN_THEMES.find((b) => b.id === sc.theme)?.theme : undefined).theme;
+    const st = state();
+    return loadTheme(st ? pickTheme(null, st, sc ?? null).raw : undefined).theme;
   };
   /** @type {ReturnType<typeof createThemePanel> | null} made on first use, so the room's panel stays the only one until then */
   let screenPanel = null;

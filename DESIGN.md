@@ -178,7 +178,7 @@ Each monitor can be a **named screen** the phone sets: its own bed, module list 
 - **Naming**: a monitor with no screen id shows a small card "Name this screen" at the top (never blocking; "Not now"
   hides it for this page load and the monitor follows the room). Saving sends `addScreen`; the reply `screenAdded`
   gives the id, kept per device and room in `localStorage` (`sim.settings.screenId.<code>`). `?s=<id>` in the monitor
-  address overrides the stored id. A stored id the room no longer has (forgotten, or the room expired) is dropped and
+  address overrides the stored id for that visit (never saved). A stored id the room no longer has (forgotten, or the room expired) is dropped and
   the card comes back.
 - **Settings** go through `set` with `patch.screens.<id>.{name, p, modules, theme, themeJson}`; `null` clears `p`,
   `modules` or the theme (back to the room). A built-in `theme` drops `themeJson`; `themeJson` alone means `custom`.

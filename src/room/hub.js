@@ -3,7 +3,7 @@
 // (worker/room.js) is a thin shell around this, so node can test it with a fake storage (DESIGN.md sections 2, 5).
 import {
   DEVICE_CHOICES, MAX_PATIENTS, MAX_SCREENS, SCHEMA_VERSION, SCREEN_ID, SCREEN_KINDS, TARGETS, numericsOf, defaultPatient,
-  defaultState, validateIam, validatePatch,
+  defaultState, screenName, validateIam, validatePatch,
 } from '../shared/schema.js';
 import { displayed, restartGlide } from '../engine/glide.js';
 
@@ -256,8 +256,9 @@ export class RoomHub {
     while (`s${n}` in screens) n++;
     let name = `Screen ${n}`;
     if (msg.name !== undefined && msg.name !== '') {
-      if (typeof msg.name !== 'string' || !msg.name.trim() || msg.name.length > 24) throw new BadPatch('name must be 1-24 characters');
-      name = msg.name.trim();
+      const t = screenName(msg.name);
+      if (t === null) throw new BadPatch('name must be 1-24 characters');
+      name = t;
     }
     screens[`s${n}`] = { name, kind };
     return `s${n}`;

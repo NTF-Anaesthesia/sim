@@ -14,6 +14,7 @@ export function mountMonitor(root, opts) {
   const q = new URLSearchParams(loc.search ?? '');
   // `?p=` picks the bed on this device, `?s=` which named screen it is; the phone can clear `?p=` (it shadows the screen's bed)
   const onClearPick = () => {
+    if (loc !== window.location) return;
     try { const u = new URL(location.href); u.searchParams.delete('p'); history.replaceState(null, '', u); } catch { /* no history here */ }
   };
   mountScreen(root, { client, code: opts.code, pick: q.get('p'), screenParam: q.get('s'), onClearPick });

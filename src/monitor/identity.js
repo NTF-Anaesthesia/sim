@@ -1,6 +1,6 @@
 // @ts-check
 // Which named screen this monitor is (V2 S1, DESIGN.md section 4a). The id is server-made (`s1`, `s2`, ...) and kept per
-// device and room in `sim.settings.screenId.<code>`; `?s=<id>` in the address overrides it. With no id the monitor asks
+// device and room in `sim.settings.screenId.<code>`; `?s=<id>` in the address overrides it for that visit (never saved). With no id the monitor asks
 // for a name once per page load (a small card, never blocking the screen; "Not now" keeps following the room). It tells
 // the room which screen it is and which device choices it has (`iam`), shows its name large on `identify`, and drops a
 // device choice on `clearDevice`. All text goes in with textContent / value, never as markup.
@@ -30,7 +30,7 @@ export function createIdentity(opts) {
   const { client, settings } = opts;
   const doc = opts.doc ?? document;
   const key = `screenId.${opts.code}`;
-  const fromParam = typeof opts.param === 'string' && SCREEN_ID.test(opts.param) ? opts.param : null;
+  let fromParam = typeof opts.param === 'string' && SCREEN_ID.test(opts.param) ? opts.param : null;
   /** @type {string | null} */
   let id = fromParam ?? cleanId(settings.get(key, null));
   let dismissed = false;
@@ -80,11 +80,19 @@ export function createIdentity(opts) {
   later.addEventListener('click', () => { dismissed = true; card.hidden = true; });
 
   /** Tell the room which screen this is and which device choices win over its settings. */
-  function report() {
-    client.send({ t: 'iam', s: id, dev: id ? opts.deviceChoices() : [] });
+  let sent = '';
+  /** @param {boolean} [force] resend even if nothing changed (a new connection) */
+  function report(force) {
+    const msg = { t: 'iam', s: id, dev: id ? opts.deviceChoices() : [] };
+    const k = JSON.stringify(msg);
+    if (!force && k === sent) return;
+    sent = k;
+    client.send(msg);
   }
 
-  client.on('status', (s) => { if (s === 'open') report(); });
+  client.on('status', (s) => { if (s === 'open') report(true); });
+  // the room refused `addScreen` (full, rate limit): offer the card again
+  client.on('error', () => { if (adding) { adding = false; card.hidden = true; opts.onChange(); } });
   client.on('screen', (/** @type {any} */ m) => {
     if (m.t === 'screenAdded' && adding) {
       adding = false;
@@ -105,6 +113,7 @@ export function createIdentity(opts) {
   function setId(next) {
     id = next;
     if (id) settings.set(key, id); else settings.remove(key);
+    if (fromParam && id !== fromParam) fromParam = null;
     report();
     opts.onChange();
   }
@@ -123,8 +132,7 @@ export function createIdentity(opts) {
     sync(st) {
       const sc = id ? st.screens?.[id] ?? null : null;
       if (sc && id === fresh) fresh = '';
-      if (id && !sc && id !== fresh) { id = null; settings.remove(key); report(); }
-      if (sc && id === fromParam) settings.set(key, id);
+      if (id && !sc && id !== fresh) { if (id !== fromParam) settings.remove(key); id = null; report(); }
       nameEl.textContent = sc?.name ?? '';
       if (!id && !dismissed && !adding && card.hidden) {
         input.placeholder = `Screen ${nextNumber(st)}`;

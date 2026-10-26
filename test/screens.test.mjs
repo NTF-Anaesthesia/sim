@@ -120,3 +120,11 @@ test('theme precedence: device > screen > room > default', () => {
   assert.equal(pickTheme(null, room, null).source, 'room');
   assert.equal(pickTheme(null, { theme: 'default' }, undefined).source, 'default');
 });
+
+test('screen names are trimmed before the length check, in addScreen and rename alike', async () => {
+  const { screenName } = await import('../src/shared/schema.js');
+  assert.equal(screenName('  ' + 'a'.repeat(23) + ' '), 'a'.repeat(23));
+  assert.equal(screenName('   '), null);
+  assert.equal(screenName('a'.repeat(25)), null);
+  assert.equal(screenName(3), null);
+});
