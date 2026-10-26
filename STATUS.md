@@ -1,6 +1,7 @@
 # sim: status
 
 ## Now
+- sim-v2 S3 scenarios and drugs (PR): timed scenarios run by the room on the storage alarm (phone can be closed), pause, skip, tap steps; import/export library files with refusal reasons; drug buttons with a glide, off by default.
 - sim-v2 S4 trends + debrief (PR): every event and glide start kept as SQLite rows (state still shows the last 20); Mark button and Trends tab on the phone; trend graph and table (30 min / 1 h / 4 h) on phone and monitor (Trends button, overlay closed by default); one-file offline debrief (HTML) plus JSON; 24 h expiry shown on the phone.
 - V2 S1 named screens (this PR): each monitor names itself once and gets its own bed, modules and theme from the phone's Screens tab; Identify, Forget, online dots; device choices win and can be cleared from the phone.
 - sim-v2 S2 lines (PR): CVP (a/c/v, cannon a, giant v), second art line `abp2` with its own label, PPV swing, flush test; all off by default; alarms and limits for CVP and ABP2.

@@ -7,6 +7,7 @@ import {
 } from '../shared/schema.js';
 import { displayed, restartGlide } from '../engine/glide.js';
 import { MAX_LOG_ROWS, makeLog } from './log.js';
+import { drugPatch, validateDrug, validateScenario } from '../shared/scenario.js';
 
 /** @typedef {import('../shared/schema.js').RoomState} RoomState */
 
@@ -111,6 +112,34 @@ export class RoomHub {
         if (!DEVICE_CHOICES.includes(msg.what)) return { reply: err('bad_patch', 'what must be theme or p') };
         return { broadcast: { t: 'clearDevice', s: msg.s, what: msg.what } };
       }
+      case 'scenarioStart': {
+        const v = validateScenario(msg.scenario);
+        if (!v.ok) return { reply: err('bad_patch', v.msg) };
+        const st = await this.state();
+        const pid = msg.p ?? st.patients[0].id;
+        if (!st.patients.some((x) => x.id === pid)) return { reply: err('bad_patch', 'unknown patient') };
+        const prev = await this.storage.get('scenarioSteps');
+        await this.storage.put('scenarioSteps', v.scenario.steps);
+        const out = await this.apply(clientId, now, msg, (s) => this.doScenarioStart(s, v.scenario, pid, now));
+        if (out.reply) await this.storage.put('scenarioSteps', prev ?? null);
+        return out;
+      }
+      case 'scenarioPause':
+      case 'scenarioResume':
+      case 'scenarioNext':
+      case 'scenarioStop': {
+        const run = (await this.state()).scenario;
+        if (!run) return { reply: err('bad_patch', 'no scenario is running') };
+        const steps = (await this.storage.get('scenarioSteps')) ?? [];
+        const out = await this.apply(clientId, now, msg, (s) => this.doScenarioControl(s, msg.t, steps, now));
+        if (msg.t === 'scenarioStop') await this.storage.put('scenarioSteps', null);
+        return out;
+      }
+      case 'drug': {
+        const v = validateDrug(msg.drug);
+        if (!v.ok) return { reply: err('bad_patch', v.msg) };
+        return this.apply(clientId, now, msg, (s) => this.doDrug(s, v.drug, msg.p, now));
+      }
       case 'flush': return this.apply(clientId, now, msg, (s) => this.doFlush(s, msg));
       case 'test': return this.apply(clientId, now, msg, (s) => {
         if (JSON.stringify(msg.value ?? null).length > MAX_TEST_CHARS) throw new BadPatch('test value too large');
@@ -143,7 +172,7 @@ export class RoomHub {
     this.record(before, next, now, clientId, info);
     await this.storage.put('state', next);
     await this.storage.put('last', now);
-    await this.storage.setAlarm(now + IDLE_MS);
+    await this.storage.setAlarm(alarmAt(next, now));
     this.cache = next;
     return { broadcast: { t: 'state', state: next, now } };
   }
@@ -265,6 +294,7 @@ export class RoomHub {
     const i = s.patients.findIndex((x) => x.id === msg.p);
     if (i < 0) throw new BadPatch('unknown patient');
     s.patients.splice(i, 1);
+    if (s.scenario?.p === msg.p) delete s.scenario; // its bed is gone
     for (const sc of Object.values(s.screens ?? {})) if (sc.p === msg.p) delete sc.p; // back to the device's own bed
     return { kind: 'patient', what: `remove ${msg.p}`, p: msg.p };
   }
@@ -330,6 +360,102 @@ export class RoomHub {
   }
 
   /**
+   * Start a scenario on one patient (replacing any running one): the first step runs after its own delay (at once at 0).
+   * The steps are kept in storage, not in the broadcast state.
+   * @param {RoomState} s
+   * @param {import('../shared/scenario.js').Scenario} sc
+   * @param {string} p
+   * @param {number} now
+   */
+  doScenarioStart(s, sc, p, now) {
+    const first = sc.steps[0];
+    s.scenario = {
+      id: `n${s.rev + 1}`, name: sc.name, p, step: 0, total: sc.steps.length, startedAt: now, pausedAt: 0,
+      nextAt: first.onTap ? 0 : now + (first.atSec ?? 0) * 1000, waiting: !!first.onTap, done: false,
+    };
+    const run = s.scenario;
+    const ran = this.runDue(s, sc.steps, now);
+    return { kind: 'scenario', what: `start ${sc.name}${ran ? ` (step ${run.step}/${run.total})` : ''}`, p };
+  }
+
+  /**
+   * Pause, resume, run the next step now (skip a countdown, or answer a tap), or stop.
+   * @param {RoomState} s
+   * @param {string} t message type
+   * @param {import('../shared/scenario.js').ScenarioStep[]} steps
+   * @param {number} now
+   */
+  doScenarioControl(s, t, steps, now) {
+    const run = /** @type {import('../shared/scenario.js').ScenarioRun} */ (s.scenario);
+    const p = run.p;
+    if (t === 'scenarioStop') { delete s.scenario; return { kind: 'scenario', what: `stop ${run.name}`, p }; }
+    if (run.done) throw new BadPatch('the scenario has finished');
+    if (t === 'scenarioPause') {
+      if (!run.pausedAt) run.pausedAt = now;
+      return { kind: 'scenario', what: 'pause', p };
+    }
+    if (t === 'scenarioResume') {
+      if (run.pausedAt) {
+        if (run.nextAt) run.nextAt += now - run.pausedAt;
+        run.pausedAt = 0;
+        this.runDue(s, steps, now);
+      }
+      return { kind: 'scenario', what: 'resume', p };
+    }
+    this.runNext(s, steps, now, run.pausedAt || now);
+    return { kind: 'scenario', what: `step ${run.step}/${run.total} (tap)`, p };
+  }
+
+  /**
+   * Run the next step of the scenario now, then plan the one after it (`base` = the time its delay counts from).
+   * @param {RoomState} s
+   * @param {import('../shared/scenario.js').ScenarioStep[]} steps
+   * @param {number} now
+   * @param {number} base
+   */
+  runNext(s, steps, now, base) {
+    const run = /** @type {import('../shared/scenario.js').ScenarioRun} */ (s.scenario);
+    const step = steps[run.step];
+    if (!step) { run.done = true; run.nextAt = 0; run.waiting = false; return; }
+    this.doSet(s, { patch: step.patch, p: run.p, glideMs: step.glideMs }, now);
+    run.step++;
+    const next = steps[run.step];
+    if (!next) { run.done = true; run.nextAt = 0; run.waiting = false; return; }
+    run.waiting = !!next.onTap;
+    run.nextAt = next.onTap ? 0 : base + (next.atSec ?? 0) * 1000;
+  }
+
+  /**
+   * Run every timed step that is due (a late alarm catches up in order, each delay counted from when its step was due).
+   * @param {RoomState} s
+   * @param {import('../shared/scenario.js').ScenarioStep[]} steps
+   * @param {number} now
+   * @returns {number} how many steps ran
+   */
+  runDue(s, steps, now) {
+    let n = 0;
+    for (let run = s.scenario; run && !run.done && !run.pausedAt && run.nextAt > 0 && run.nextAt <= now; run = s.scenario) {
+      this.runNext(s, steps, now, run.nextAt);
+      n++;
+    }
+    return n;
+  }
+
+  /**
+   * A drug button: its relative change to the patient's targets, as one `set` with the drug's glide.
+   * @param {RoomState} s
+   * @param {import('../shared/scenario.js').Drug} drug
+   * @param {string | undefined} id patient id
+   * @param {number} now
+   */
+  doDrug(s, drug, id, now) {
+    const pt = pick(s, id);
+    if (!pt) throw new BadPatch('unknown patient');
+    this.doSet(s, { patch: { patient: drugPatch(pt, drug.effects) }, p: pt.id, glideMs: drug.glideMs }, now);
+    return { kind: 'drug', what: `drug ${drug.name}`, p: pt.id };
+  }
+
+  /**
    * Rate limit: at most MAX_PER_SECOND messages in any 1 s window per client.
    * @param {string} clientId
    * @param {number} now
@@ -343,8 +469,8 @@ export class RoomHub {
   }
 
   /**
-   * Storage alarm: delete the room if it has been idle for 24 h, else wait for the rest of the time.
-   * @returns {Promise<{ expired: boolean }>}
+   * Storage alarm (one per room): runs scenario steps that are due, and deletes the room after 24 h of no changes.
+   * @returns {Promise<{ expired: boolean, broadcast?: object }>}
    */
   async onAlarm() {
     const now = this.clock();
@@ -356,9 +482,31 @@ export class RoomHub {
       this.recent.clear();
       return { expired: true };
     }
-    await this.storage.setAlarm(last + IDLE_MS);
+    const s = await this.state();
+    const run = s.scenario;
+    if (run && !run.done && !run.pausedAt && run.nextAt > 0 && run.nextAt <= now) {
+      const steps = (await this.storage.get('scenarioSteps')) ?? [];
+      const out = await this.apply('server', now, {}, (st) => {
+        const n = this.runDue(st, steps, now);
+        const r = /** @type {import('../shared/scenario.js').ScenarioRun} */ (st.scenario);
+        return { kind: 'scenario', what: `step ${r.step}/${r.total}${n > 1 ? ` (${n} due)` : ''}${r.done ? ' done' : ''}`, p: r.p };
+      });
+      return { expired: false, broadcast: out.broadcast };
+    }
+    await this.storage.setAlarm(alarmAt(s, last));
     return { expired: false };
   }
+}
+
+/**
+ * When the room's one alarm should fire: the next timed scenario step, or the idle expiry, whichever is first.
+ * @param {RoomState} s
+ * @param {number} last server ms of the last change
+ */
+function alarmAt(s, last) {
+  const run = s.scenario;
+  const idle = last + IDLE_MS;
+  return run && !run.done && !run.pausedAt && run.nextAt > 0 ? Math.min(idle, run.nextAt) : idle;
 }
 
 class BadPatch extends Error {}
