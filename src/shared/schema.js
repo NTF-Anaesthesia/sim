@@ -1,5 +1,6 @@
 // @ts-check
 // State and message types for a room, defaults and validation (DESIGN.md sections 3-5). No DOM, no timers.
+import { builtinTheme } from '../theme/builtin.js';
 import { validateTheme } from '../theme/validate.js';
 
 export const SCHEMA_VERSION = 1;
@@ -23,6 +24,12 @@ export const SENSORS = ['ecg', 'spo2', 'nibp', 'abp', 'etco2'];
 export const MAX_PATIENTS = 8;
 export const MODULE_IDS = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp', 'abp'];
 export const DEFAULT_MODULES = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp'];
+/** Named screens (S1 of V2): ids are server-made `s1`, `s2`, ...; `defib` is reserved for the defib screen. */
+export const MAX_SCREENS = 12;
+export const SCREEN_KINDS = ['monitor', 'defib'];
+export const SCREEN_ID = /^s[1-9][0-9]{0,2}$/;
+/** Device choices a monitor reports in `iam` (they win over its screen setting; the phone can clear them). */
+export const DEVICE_CHOICES = ['theme', 'p'];
 
 /**
  * @typedef {{ sys: number, dia: number }} Pressure
@@ -39,8 +46,12 @@ export const DEFAULT_MODULES = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp'];
  * @typedef {{ limits: Limits, enabled: boolean, silencedUntil: number, latched: string[] }} Alarms
  * @typedef {{ t: number, by: string, kind: string, p?: string, what: string }} RoomEvent
  * @typedef {{
+ *   name: string, kind: string, p?: string, modules?: string[], theme?: string, themeJson?: object
+ * }} Screen  absent `p` / `modules` / `theme` = follow the device's URL / the room / the room
+ * @typedef {{
  *   schema: number, rev: number, patients: Patient[], modules: string[],
- *   alarms: Alarms, events: RoomEvent[], theme: string, themeJson?: object, test?: unknown
+ *   alarms: Alarms, events: RoomEvent[], theme: string, themeJson?: object, test?: unknown,
+ *   screens?: Record<string, Screen>
  * }} RoomState
  */
 
@@ -187,7 +198,7 @@ export function validatePatch(patch) {
       }
       out.patient = pt;
     } else if (key === 'modules') {
-      if (!Array.isArray(v) || v.length > 16 || !v.every((m) => typeof m === 'string' && m.length <= 16)) {
+      if (!isModuleList(v)) {
         return { ok: false, msg: 'modules must be a list of ids' };
       }
       out.modules = [...new Set(v)];
@@ -231,13 +242,88 @@ export function validatePatch(patch) {
       if (v !== 'default' && v !== 'custom') return { ok: false, msg: 'theme must be default or custom' };
       out.theme = v;
     } else if (key === 'themeJson') {
-      if (!isObj(v) || JSON.stringify(v).length > 12288) return { ok: false, msg: 'themeJson must be an object under 12 KB' };
-      const checked = validateTheme(v); // the room only carries themes every monitor can draw
-      if (!checked.ok) return { ok: false, msg: `themeJson: ${checked.errors[0]}` };
+      const checked = checkThemeJson(v);
+      if (!checked.ok) return checked;
       out.themeJson = checked.theme;
+    } else if (key === 'screens') {
+      if (!isObj(v) || Object.keys(v).length > MAX_SCREENS) return { ok: false, msg: 'screens must be an object of screen ids' };
+      /** @type {Record<string, any>} */
+      const scr = {};
+      for (const id of Object.keys(v)) {
+        if (!SCREEN_ID.test(id)) return { ok: false, msg: `unknown screen ${id.slice(0, 8)}` };
+        const one = validateScreenPatch(v[id], id);
+        if (!one.ok) return one;
+        scr[id] = one.patch;
+      }
+      out.screens = scr;
     } else return { ok: false, msg: `unknown field ${key}` };
   }
   return { ok: true, patch: out };
+}
+
+/**
+ * @param {unknown} v
+ * @returns {{ ok: true, theme: any } | { ok: false, msg: string }}
+ */
+function checkThemeJson(v) {
+  if (!isObj(v) || JSON.stringify(v).length > 12288) return { ok: false, msg: 'themeJson must be an object under 12 KB' };
+  const checked = validateTheme(v); // the room only carries themes every monitor can draw
+  if (!checked.ok) return { ok: false, msg: `themeJson: ${checked.errors[0]}` };
+  return { ok: true, theme: checked.theme };
+}
+
+/** @param {unknown} v */
+function isModuleList(v) {
+  return Array.isArray(v) && v.length <= 16 && v.every((m) => typeof m === 'string' && m.length <= 16);
+}
+
+/**
+ * One screen's part of a `set` patch: `name`, `p`, `modules`, `theme`, `themeJson`. `null` clears a field (the
+ * screen then follows its device's URL / the room). `kind` is fixed when the screen is made.
+ * @param {unknown} v
+ * @param {string} id
+ * @returns {{ ok: true, patch: Record<string, any> } | { ok: false, msg: string }}
+ */
+export function validateScreenPatch(v, id) {
+  if (!isObj(v)) return { ok: false, msg: `screens.${id} must be an object` };
+  const x = /** @type {Record<string, any>} */ (v);
+  /** @type {Record<string, any>} */
+  const out = {};
+  for (const k of Object.keys(x)) {
+    const val = x[k];
+    if (k === 'name') {
+      if (typeof val !== 'string' || !val.trim() || val.length > 24) return { ok: false, msg: 'name must be 1-24 characters' };
+      out.name = val.trim();
+    } else if (k === 'p') {
+      if (val !== null && (typeof val !== 'string' || !val || val.length > 12)) return { ok: false, msg: `screens.${id}.p must be a patient id or null` };
+      out.p = val;
+    } else if (k === 'modules') {
+      if (val !== null && !isModuleList(val)) return { ok: false, msg: `screens.${id}.modules must be a list of ids or null` };
+      out.modules = val === null ? null : [...new Set(val)];
+    } else if (k === 'theme') {
+      if (val !== null && val !== 'custom' && !builtinTheme(val)) return { ok: false, msg: `screens.${id}.theme must be a built-in id, custom or null` };
+      out.theme = val;
+    } else if (k === 'themeJson') {
+      const checked = checkThemeJson(val);
+      if (!checked.ok) return checked;
+      out.themeJson = checked.theme;
+    } else return { ok: false, msg: `unknown field screens.${id}.${k.slice(0, 16)}` };
+  }
+  return { ok: true, patch: out };
+}
+
+/**
+ * A monitor saying which screen it is and which device choices it has (`iam`). Not stored in state; the room keeps it
+ * with the socket for `presence`.
+ * @param {any} msg
+ * @returns {{ ok: true, s: string | null, dev: string[] } | { ok: false, msg: string }}
+ */
+export function validateIam(msg) {
+  const s = msg?.s ?? null;
+  if (s !== null && (typeof s !== 'string' || !SCREEN_ID.test(s))) return { ok: false, msg: 'bad screen id' };
+  const dev = msg?.dev ?? [];
+  if (!Array.isArray(dev) || !dev.every((d) => DEVICE_CHOICES.includes(d))) return { ok: false, msg: 'bad device choices' };
+  return { ok: true, s, dev: [...new Set(dev)] };
 }
 
 export const TARGETS = TARGET_KEYS;
