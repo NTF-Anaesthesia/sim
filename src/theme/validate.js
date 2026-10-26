@@ -9,7 +9,7 @@ export const MAX_THEME_BYTES = 32768;
 /** Largest theme the room will carry to every monitor (schema.js caps the same size). */
 export const MAX_ROOM_THEME_CHARS = 12288;
 const MAX_CELLS = 60;
-const SECTIONS = ['background', 'font', 'colors', 'layout', 'waves', 'audio', 'numerics', 'nibp', 'labels', 'alarmStyle'];
+const SECTIONS = ['background', 'font', 'colors', 'layout', 'screen', 'waves', 'audio', 'numerics', 'nibp', 'labels', 'alarmStyle'];
 /** Keys that would carry styling or code: themes hold values only. */
 const FORBIDDEN_KEY = /^(css|custom_?css|styles?|stylesheet|scripts?|html|js|javascript|on[a-z]+)$/i;
 const MAX_DEPTH = 12;
