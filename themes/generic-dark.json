@@ -17,6 +17,8 @@
     "abp": "#ff3030",
     "abp2": "#ff8030",
     "cvp": "#4080ff",
+    "bis": "#c080ff",
+    "eeg": "#c080ff",
     "nibp": "#ffffff",
     "rr": "#ffe000",
     "temp": "#ffffff",
@@ -81,6 +83,15 @@
         "stack": "left"
       },
       {
+        "module": "bis",
+        "part": "wave",
+        "x": 0,
+        "y": 5,
+        "w": 8,
+        "h": 2,
+        "stack": "left"
+      },
+      {
         "module": "etco2",
         "part": "wave",
         "x": 0,
@@ -135,6 +146,15 @@
       },
       {
         "module": "cvp",
+        "part": "numeric",
+        "x": 8,
+        "y": 5,
+        "w": 4,
+        "h": 2,
+        "stack": "right"
+      },
+      {
+        "module": "bis",
         "part": "numeric",
         "x": 8,
         "y": 5,
@@ -221,6 +241,10 @@
       "speed": 25,
       "gain": 1,
       "scaleLines": []
+    },
+    "eeg": {
+      "speed": 25,
+      "gain": 1
     }
   },
   "screen": {
@@ -270,6 +294,7 @@
     "abp": "ABP",
     "abp2": "ABP2",
     "cvp": "CVP",
+    "bis": "BIS",
     "units": {
       "hr": "/min",
       "spo2": "%",
@@ -279,7 +304,8 @@
       "nibp": "mmHg",
       "abp": "mmHg",
       "abp2": "mmHg",
-      "cvp": "mmHg"
+      "cvp": "mmHg",
+      "bis": ""
     },
     "wave": {
       "ecg": "II",
@@ -287,7 +313,8 @@
       "etco2": "CO2",
       "abp": "ABP",
       "abp2": "ABP2",
-      "cvp": "CVP"
+      "cvp": "CVP",
+      "bis": "EEG"
     },
     "off": {
       "ecg": "LEADS OFF",
@@ -295,7 +322,8 @@
       "etco2": "CO2 LINE OFF",
       "abp": "ART LINE OFF",
       "abp2": "ART2 LINE OFF",
-      "cvp": "CVP LINE OFF"
+      "cvp": "CVP LINE OFF",
+      "bis": "BIS SENSOR OFF"
     }
   },
   "alarmStyle": {

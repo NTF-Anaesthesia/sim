@@ -1,5 +1,5 @@
 /* Phone controller: one-handed layout, 44 px targets, tabs and Apply at the bottom where the thumb is. */
-.ctl { overflow-x: hidden; --ecg: #00e000; --spo2: #00d8ff; --nibp: #ffffff; --abp: #ff4040; --abp2: #ff8a40; --cvp: #4a8cff; --etco2: #ffd000; --temp: #c0c0c0; padding: 8px 12px 190px; }
+.ctl { overflow-x: hidden; --ecg: #00e000; --spo2: #00d8ff; --nibp: #ffffff; --abp: #ff4040; --abp2: #ff8a40; --cvp: #4a8cff; --bis: #c080ff; --etco2: #ffd000; --temp: #c0c0c0; padding: 8px 12px 190px; }
 .ctl .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .ctl .code b { font-size: 1.1rem; letter-spacing: .15em; color: var(--accent); }
 .ctl .chip { font-size: .9rem; padding: 4px 12px; }

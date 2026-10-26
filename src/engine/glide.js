@@ -36,7 +36,7 @@ export function displayed(patient, now) {
     temp: g(from.temp, to.temp),
     nibp: { sys: g(from.nibp.sys, to.nibp.sys), dia: g(from.nibp.dia, to.nibp.dia) },
     abp: { sys: g(from.abp.sys, to.abp.sys), dia: g(from.abp.dia, to.abp.dia) },
-    cvp: g(from.cvp ?? to.cvp, to.cvp),
+    cvp: g(from.cvp ?? to.cvp, to.cvp), bis: g(from.bis ?? to.bis, to.bis),
     abp2: { sys: g(from.abp2?.sys ?? to.abp2.sys, to.abp2.sys), dia: g(from.abp2?.dia ?? to.abp2.dia, to.abp2.dia) },
   };
 }

@@ -269,6 +269,7 @@ export function mountScreen(root, opts) {
     const abp2 = s.abp2 ? { sys: /** @type {number} */ (J(s.abp2.sys, 'sys')), dia: /** @type {number} */ (J(s.abp2.dia, 'dia')) } : null;
     const v = {
       cvp: s.cvp === null ? null : /** @type {number} */ (jit ? J(s.cvp, 'cvp') : s.cvp), abp2,
+      bis: s.bis === null ? null : Math.round(s.bis),
       hr: J(s.hr, 'hr'), spo2: J(s.spo2, 'spo2', 100), etco2: J(s.etco2, 'etco2'), rr: J(s.rr, 'rr'),
       temp: jit ? /** @type {number} */ (J(s.temp, 'temp')) : s.temp, abp,
     };
@@ -284,6 +285,7 @@ export function mountScreen(root, opts) {
       hr: s.hr, spo2: s.spo2, etco2: s.etco2, rr: s.rr, temp: s.temp,
       nibpSys: nb.phase === 'result' ? nb.sys : null, abpSys: s.abp ? s.abp.sys : null,
       cvp: s.cvp, abp2Sys: s.abp2 ? s.abp2.sys : null,
+      bis: s.bis === null ? null : Math.round(s.bis),
     }, nowMs);
     const av = tracker.update(alarms, { enabled: state.alarms.enabled, silencedUntil: state.alarms.silencedUntil }, nowMs);
 
