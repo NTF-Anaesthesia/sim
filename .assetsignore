@@ -12,3 +12,4 @@ package-lock.json
 tsconfig.json
 wrangler.jsonc
 vite.config.js
+*.log
