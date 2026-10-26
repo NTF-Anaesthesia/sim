@@ -7,7 +7,8 @@
     "numericWeight": 800,
     "labelWeight": 600,
     "numericScale": 0.9,
-    "labelScale": 1.1
+    "labelScale": 1.1,
+    "waveLabelScale": 1
   },
   "colors": {
     "ecg": "#0b6b1e",
@@ -156,7 +157,8 @@
     "grid": true,
     "ecg": {
       "speed": 25,
-      "gain": 1
+      "gain": 1,
+      "scaleLines": []
     },
     "spo2": {
       "speed": 25,
@@ -164,11 +166,25 @@
     },
     "etco2": {
       "speed": 12.5,
-      "gain": 1
+      "gain": 1,
+      "scaleLines": []
     },
     "abp": {
       "speed": 25,
-      "gain": 1
+      "gain": 1,
+      "scaleLines": []
+    }
+  },
+  "screen": {
+    "mode": "fill",
+    "width": 1280,
+    "height": 800
+  },
+  "cells": {
+    "border": {
+      "color": "#404040",
+      "width": 0,
+      "radius": 0
     }
   },
   "audio": {
@@ -185,6 +201,7 @@
   "numerics": {
     "showLimits": true,
     "limitsPosition": "below",
+    "meanPosition": "below",
     "decimals": {
       "temp": 1
     },
@@ -195,6 +212,7 @@
     "measureMs": 6000
   },
   "labels": {
+    "colorMode": "parameter",
     "ecg": "Pulse",
     "spo2": "Sat",
     "etco2": "CO2",

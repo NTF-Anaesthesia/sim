@@ -44,6 +44,7 @@ export function mountScreen(root, opts) {
   const burstSt = { lastAt: 0, lastPriority: 0 };
   let theme = resolveTheme(undefined).theme;
   let themeKey = '';
+  const screenPick = () => { const m = /** @type {string} */ (settings.get('screen', 'theme')); return m === 'fill' || m === 'fixed' ? m : 'theme'; };
   /** @type {import('../shared/schema.js').RoomState | null} */
   let state = null;
   /** @type {import('../shared/schema.js').Patient | null} */
@@ -105,6 +106,7 @@ export function mountScreen(root, opts) {
     },
     onApply: (t) => { themeStore.setCustom(t); identity.report(); applyState(); },
     extras: [],
+    screen: { get: screenPick, set: (m) => { settings.set('screen', m); applyState(); } },
     doc: root.ownerDocument,
   });
   root.ownerDocument.body.append(panel.el);
@@ -133,6 +135,8 @@ export function mountScreen(root, opts) {
       onFull: toggleFull,
       onWake: toggleWake,
       onTheme: () => (panel.isOpen ? panel.close() : panel.open()),
+      screenMode: screenPick() === 'theme' ? theme.screen.mode : screenPick(),
+      onFit: () => { needRefill = true; },
     });
     lanes = [];
     for (const ref of view.refs) {
@@ -147,6 +151,10 @@ export function mountScreen(root, opts) {
       const lane = new Lane(ref.canvas, {
         pxPerSec: speed * theme.waves.pxPerMm, color: theme.colors[id] ?? theme.colors.text,
         lineWidth: theme.waves.lineWidth, gapPx: theme.waves.sweepGapPx, lo, hi,
+        zoom: () => view?.fit.scale ?? 1,
+        scale: ref.scale && Array.isArray(theme.waves[id]?.scaleLines) && theme.waves[id].scaleLines.length
+          ? { canvas: ref.scale, lines: theme.waves[id].scaleLines, font: theme.font.family, px: Math.round(10 * theme.font.labelScale * (theme.font.waveLabelScale ?? 1)) }
+          : undefined,
         sample: (t) => (patient && t >= startedAt ? wd.sample(src, t, { patient, perfusing: !pulseless(patient), tSec: t }) : null),
       });
       lanes.push({ lane, id, ref });
@@ -171,7 +179,7 @@ export function mountScreen(root, opts) {
     const np = pickPatient();
     if (np?.id !== patient?.id) { nibp = new NibpMachine(theme.nibp); viewKey = ''; }
     patient = np;
-    const k = JSON.stringify([modsOn(), patient?.id]) + themeKey;
+    const k = JSON.stringify([modsOn(), patient?.id, screenPick()]) + themeKey;
     if (k !== viewKey) { viewKey = k; rebuild(); }
     if (view && identity.nameEl.parentElement !== view.chip.parentElement) view.chip.before(identity.nameEl);
     if (view) view.testValue.textContent = state.test === undefined ? '--' : String(state.test);
@@ -258,8 +266,16 @@ export function mountScreen(root, opts) {
         ref.el.style.setProperty('--c', `var(--c-${nv.color})`);
         /** @type {HTMLElement} */ (ref.label).textContent = nv.label;
         /** @type {HTMLElement} */ (ref.unit).textContent = nv.unit;
+        const inline = theme.numerics.meanPosition === 'inline' && nv.sub.startsWith('(');
+        ref.el.dataset.mean = inline ? 'inline' : '';
         ref.val.textContent = nv.main;
-        /** @type {HTMLElement} */ (ref.sub).textContent = nv.sub;
+        if (inline) {
+          const mean = ref.val.ownerDocument.createElement('span');
+          mean.className = 'nmean';
+          mean.textContent = ` ${nv.sub}`;
+          ref.val.append(mean);
+        }
+        /** @type {HTMLElement} */ (ref.sub).textContent = inline ? '' : nv.sub;
         /** @type {HTMLElement} */ (ref.small).textContent = nv.small;
         /** @type {HTMLElement} */ (ref.hi).textContent = nv.limits ? String(nv.limits[1]) : '';
         /** @type {HTMLElement} */ (ref.lo).textContent = nv.limits ? String(nv.limits[0]) : '';

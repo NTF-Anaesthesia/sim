@@ -9,7 +9,9 @@ export class Lane {
    * @param {HTMLCanvasElement} canvas
    * @param {{
    *   pxPerSec: number, color: string, lineWidth: number, gapPx: number, lo: number, hi: number,
-   *   sample: (t: number) => number | null
+   *   sample: (t: number) => number | null,
+   *   zoom?: () => number,
+   *   scale?: { canvas: HTMLCanvasElement, lines: number[], font: string, px: number }
    * }} opts
    */
   constructor(canvas, opts) {
@@ -21,6 +23,8 @@ export class Lane {
     this.lo = opts.lo;
     this.hi = opts.hi;
     this.sample = opts.sample;
+    this.scale = opts.scale;
+    this.zoom = opts.zoom ?? (() => 1);
     /** @type {number | null} */
     this.last = null;
     /** @type {number | null} */
@@ -37,7 +41,8 @@ export class Lane {
 
   /** Size the backing store to the element (device pixels, capped at 2x). True when it changed. */
   fit() {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const z = this.zoom();
+    const dpr = Math.min(2 * Math.max(1, z), (window.devicePixelRatio || 1) * z);
     const w = this.c.clientWidth;
     const h = this.c.clientHeight;
     if (!w || !h) return false;
@@ -84,10 +89,40 @@ export class Lane {
     this.lastY = null;
   }
 
+  /** Dotted reference lines with their values at the left, in the wave's colour but dim. Own canvas, so the sweep never erases them. */
+  drawScale() {
+    const sc = this.scale;
+    if (!sc) return;
+    const W = Math.round(this.w * this.dpr);
+    const H = Math.round(this.h * this.dpr);
+    if (sc.canvas.width !== W || sc.canvas.height !== H) { sc.canvas.width = W; sc.canvas.height = H; }
+    const ctx = sc.canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.clearRect(0, 0, this.w, this.h);
+    ctx.globalAlpha = 0.45;
+    ctx.strokeStyle = this.color;
+    ctx.fillStyle = this.color;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 4]);
+    ctx.font = `${sc.px}px ${sc.font}`;
+    ctx.textBaseline = 'bottom';
+    for (const v of sc.lines) {
+      const y = this.y(v);
+      if (y === null || y < 0 || y > this.h) continue;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(this.w, y);
+      ctx.stroke();
+      ctx.fillText(String(v), 3, y - 1);
+    }
+  }
+
   /** Redraw the whole window ending at display time t. */
   refill(/** @type {number} */ t) {
     this.fit();
     if (!this.ctx) return;
+    this.drawScale();
     this.clear();
     if (!this.blank) this.draw(t, true);
   }

@@ -2,14 +2,14 @@
 // The default theme (DESIGN.md section 8): generic colours on black. Everything the monitor draws comes from a theme
 // object like this one; there are no colours, fonts or positions anywhere else. Additions to the schema (all optional,
 // all with these defaults): colors.grid, waves.pxPerMm, waves.grid, numerics.fontScale, nibp.inflateMs/measureMs,
-// layout.cells[].stack, labels.wave, labels.off, labels.rhythms is not a theme key (rhythm names live in the engine).
+// layout.cells[].stack, labels.wave, labels.off, waveLabelScale, numerics.meanPosition, labels.colorMode, waves.<id>.scaleLines, cells.border/background; labels.rhythms is not a theme key (rhythm names live in the engine).
 
 /** @type {Record<string, any>} */
 export const DEFAULT_THEME = {
   themeSchema: 1,
   name: 'Generic dark',
   background: '#000000',
-  font: { family: 'system-ui, sans-serif', numericWeight: 700, labelWeight: 500, numericScale: 1, labelScale: 1 },
+  font: { family: 'system-ui, sans-serif', numericWeight: 700, labelWeight: 500, numericScale: 1, labelScale: 1, waveLabelScale: 1 },
   colors: {
     ecg: '#00e000', spo2: '#00d8ff', etco2: '#ffe000', abp: '#ff3030',
     nibp: '#ffffff', rr: '#ffe000', temp: '#ffffff', hr: '#00e000',
@@ -38,12 +38,18 @@ export const DEFAULT_THEME = {
   },
   waves: {
     speedMmPerSec: 25, pxPerMm: 4, lineWidth: 2, sweepGapPx: 14, fill: false, grid: false,
-    ecg: { speed: 25, gain: 1 }, spo2: { speed: 25, gain: 1 }, etco2: { speed: 12.5, gain: 1 }, abp: { speed: 25, gain: 1 },
+    ecg: { speed: 25, gain: 1, scaleLines: [] }, spo2: { speed: 25, gain: 1 }, etco2: { speed: 12.5, gain: 1, scaleLines: [] },
+    abp: { speed: 25, gain: 1, scaleLines: [] },
   },
+  // screen.mode 'fill' stretches the layout to the window (today); 'fixed' draws it at width x height and scales it evenly
+  screen: { mode: 'fill', width: 1280, height: 800 },
+  // `background` (optional, #rrggbb) is the colour behind each cell and is absent here so it follows the screen colour
+  cells: { border: { color: '#404040', width: 0, radius: 0 } },
   audio: { alarm: { volume: 1 }, qrs: { volume: 0.5 }, spo2: { volume: 0.5 } },
-  numerics: { showLimits: true, limitsPosition: 'beside', decimals: { temp: 1 }, fontScale: 1 },
+  numerics: { showLimits: true, limitsPosition: 'beside', meanPosition: 'below', decimals: { temp: 1 }, fontScale: 1 },
   nibp: { inflateMs: 0, measureMs: 0 },
   labels: {
+    colorMode: 'parameter',
     ecg: 'HR', spo2: 'SpO2', etco2: 'EtCO2', rr: 'RR', nibp: 'NIBP', temp: 'Temp', abp: 'ABP',
     units: { hr: '/min', spo2: '%', etco2: 'mmHg', rr: '/min', temp: '°C', nibp: 'mmHg', abp: 'mmHg' },
     wave: { ecg: 'II', spo2: 'Pleth', etco2: 'CO2', abp: 'ABP' },

@@ -4,8 +4,8 @@
 
 /**
  * @typedef {{
- *   path: string, label: string, group: string, type: 'color' | 'number' | 'text' | 'select' | 'bool',
- *   min?: number, max?: number, step?: number, options?: string[], maxLen?: number
+ *   path: string, label: string, group: string, type: 'color' | 'number' | 'text' | 'select' | 'bool' | 'numlist',
+ *   min?: number, max?: number, step?: number, options?: string[], maxLen?: number, maxItems?: number
  * }} Field
  */
 
@@ -13,6 +13,9 @@ const PARAMS = /** @type {const} */ (['ecg', 'spo2', 'etco2', 'abp', 'nibp', 'rr
 const PARAM_NAMES = { ecg: 'ECG', spo2: 'SpO2', etco2: 'EtCO2', abp: 'Art line', nibp: 'NIBP', rr: 'RR', temp: 'Temp', hr: 'HR' };
 const WAVES = /** @type {const} */ (['ecg', 'spo2', 'etco2', 'abp']);
 const WAVE_NAMES = { ecg: 'ECG', spo2: 'Pleth', etco2: 'CO2', abp: 'Art line' };
+
+/** Waves that have a scale in real units: allowed range of a reference line and its unit (the others are unitless). */
+const SCALE_RANGE = /** @type {Record<string, [number, number, string]>} */ ({ ecg: [-2, 5, 'mV'], etco2: [0, 100, 'mmHg'], abp: [0, 300, 'mmHg'] });
 
 /** Safe font stacks offered in the editor; a file may use any value that passes FONT_PATTERN. */
 export const FONT_CHOICES = ['system-ui, sans-serif', 'Georgia, serif', 'ui-monospace, Menlo, Consolas, monospace', 'Arial, Helvetica, sans-serif'];
@@ -35,15 +38,25 @@ export const FIELDS = [
   { path: 'font.family', label: 'Font', group: 'Fonts', type: 'select', options: FONT_CHOICES, maxLen: 120 },
   { path: 'font.numericScale', label: 'Numeric size', group: 'Fonts', type: 'number', min: 0.3, max: 3, step: 0.05 },
   { path: 'font.labelScale', label: 'Label size', group: 'Fonts', type: 'number', min: 0.3, max: 3, step: 0.05 },
+  { path: 'font.waveLabelScale', label: 'Wave caption size', group: 'Fonts', type: 'number', min: 0.3, max: 3, step: 0.05 },
   { path: 'font.numericWeight', label: 'Numeric weight', group: 'Fonts', type: 'number', min: 100, max: 900, step: 100 },
   { path: 'font.labelWeight', label: 'Label weight', group: 'Fonts', type: 'number', min: 100, max: 900, step: 100 },
+  { path: 'labels.colorMode', label: 'Caption colour', group: 'Fonts', type: 'select', options: ['parameter', 'text'] },
   { path: 'numerics.fontScale', label: 'All numerics size', group: 'Fonts', type: 'number', min: 0.3, max: 3, step: 0.05 },
 
   { path: 'layout.grid.columns', label: 'Grid columns', group: 'Layout', type: 'number', min: 1, max: 48, step: 1 },
   { path: 'layout.grid.rows', label: 'Grid rows', group: 'Layout', type: 'number', min: 1, max: 48, step: 1 },
   { path: 'layout.grid.gap', label: 'Gap (px)', group: 'Layout', type: 'number', min: 0, max: 40, step: 1 },
+  { path: 'screen.mode', label: 'Screen', group: 'Layout', type: 'select', options: ['fill', 'fixed'] },
+  { path: 'screen.width', label: 'Fixed screen width (px)', group: 'Layout', type: 'number', min: 320, max: 3840, step: 10 },
+  { path: 'screen.height', label: 'Fixed screen height (px)', group: 'Layout', type: 'number', min: 240, max: 2160, step: 10 },
   { path: 'numerics.showLimits', label: 'Show alarm limits', group: 'Layout', type: 'bool' },
-  { path: 'numerics.limitsPosition', label: 'Limits position', group: 'Layout', type: 'select', options: ['beside', 'below'] },
+  { path: 'numerics.limitsPosition', label: 'Limits position', group: 'Layout', type: 'select', options: ['beside', 'below', 'left'] },
+  { path: 'numerics.meanPosition', label: 'Mean pressure', group: 'Layout', type: 'select', options: ['below', 'inline'] },
+  { path: 'cells.border.color', label: 'Cell border colour', group: 'Layout', type: 'color' },
+  { path: 'cells.border.width', label: 'Cell border (px)', group: 'Layout', type: 'number', min: 0, max: 6, step: 1 },
+  { path: 'cells.border.radius', label: 'Cell corner radius (px)', group: 'Layout', type: 'number', min: 0, max: 24, step: 1 },
+  { path: 'cells.background', label: 'Cell background', group: 'Layout', type: 'color' },
 
   { path: 'waves.speedMmPerSec', label: 'Wave speed (mm/s)', group: 'Waves', type: 'number', min: 1, max: 100, step: 0.5 },
   { path: 'waves.lineWidth', label: 'Wave width (px)', group: 'Waves', type: 'number', min: 0.5, max: 8, step: 0.5 },
@@ -53,6 +66,7 @@ export const FIELDS = [
   ...WAVES.flatMap((w) => /** @type {Field[]} */ ([
     { path: `waves.${w}.speed`, label: `${WAVE_NAMES[w]} speed`, group: 'Waves', type: 'number', min: 1, max: 100, step: 0.5 },
     { path: `waves.${w}.gain`, label: `${WAVE_NAMES[w]} gain`, group: 'Waves', type: 'number', min: 0.1, max: 10, step: 0.1 },
+    ...(w in SCALE_RANGE ? [/** @type {Field} */ ({ path: `waves.${w}.scaleLines`, label: `${WAVE_NAMES[w]} scale lines (${SCALE_RANGE[w][2]})`, group: 'Waves', type: 'numlist', min: SCALE_RANGE[w][0], max: SCALE_RANGE[w][1], maxItems: 4 })] : []),
   ])),
 
   ...PARAMS.filter((p) => p !== 'hr').map((p) => /** @type {Field} */ ({ path: `labels.${p}`, label: `${PARAM_NAMES[p]} label`, group: 'Labels', type: 'text', maxLen: 24 })),
@@ -100,6 +114,9 @@ export function fieldProblem(f, v) {
   if (f.type === 'number') {
     if (typeof v !== 'number' || !Number.isFinite(v)) return 'expected a number';
     if (v < /** @type {number} */ (f.min) || v > /** @type {number} */ (f.max)) return `must be between ${f.min} and ${f.max}`;
+  } else if (f.type === 'numlist') {
+    if (!Array.isArray(v) || v.length > /** @type {number} */ (f.maxItems)) return `expected a list of at most ${f.maxItems} numbers`;
+    if (v.some((x) => typeof x !== 'number' || !Number.isFinite(x) || x < /** @type {number} */ (f.min) || x > /** @type {number} */ (f.max))) return `numbers must be between ${f.min} and ${f.max}`;
   } else if (f.type === 'bool') {
     if (typeof v !== 'boolean') return 'expected true or false';
   } else if (f.type === 'select') {

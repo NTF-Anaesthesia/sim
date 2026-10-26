@@ -1,6 +1,6 @@
 // @ts-check
 // Which named screen this monitor is (V2 S1, DESIGN.md section 4a). The id is server-made (`s1`, `s2`, ...) and kept per
-// device and room in `sim.settings.screen.<code>`; `?s=<id>` in the address overrides it. With no id the monitor asks
+// device and room in `sim.settings.screenId.<code>`; `?s=<id>` in the address overrides it. With no id the monitor asks
 // for a name once per page load (a small card, never blocking the screen; "Not now" keeps following the room). It tells
 // the room which screen it is and which device choices it has (`iam`), shows its name large on `identify`, and drops a
 // device choice on `clearDevice`. All text goes in with textContent / value, never as markup.
@@ -29,7 +29,7 @@ const CSS = `
 export function createIdentity(opts) {
   const { client, settings } = opts;
   const doc = opts.doc ?? document;
-  const key = `screen.${opts.code}`;
+  const key = `screenId.${opts.code}`;
   const fromParam = typeof opts.param === 'string' && SCREEN_ID.test(opts.param) ? opts.param : null;
   /** @type {string | null} */
   let id = fromParam ?? cleanId(settings.get(key, null));

@@ -104,6 +104,43 @@ try {
   check(await mon.evaluate(() => getComputedStyle(document.querySelector('#app')).getPropertyValue('--m-gap').trim()) === '10px', 'editor: gap changes live');
   await mon.getByTestId('f-waves.lineWidth').fill('99');
   check(await mon.getByTestId('f-waves.lineWidth').getAttribute('aria-invalid') === 'true', 'editor: an out-of-range number is flagged and not applied');
+  // v1 additions: cell border, left limits, mean inline, caption colour, wave caption size, scale lines
+  const cssVar = (page, name) => page.evaluate((n) => getComputedStyle(document.querySelector('#app')).getPropertyValue(n).trim(), name);
+  await mon.getByTestId('f-cells.border.width').fill('3');
+  await mon.getByTestId('f-cells.border.radius').fill('10');
+  check(await mon.evaluate(() => getComputedStyle(document.querySelector('.cell.wave')).borderTopWidth) === '3px', 'editor: cell border width shows live');
+  await mon.getByTestId('f-cells.border.width').fill('99');
+  check(await mon.getByTestId('f-cells.border.width').getAttribute('aria-invalid') === 'true', 'editor: border width over 6 is flagged');
+  await mon.getByTestId('f-numerics.limitsPosition').selectOption('left');
+  check(await mon.evaluate(() => document.querySelector('#app').dataset.limits) === 'left', 'editor: limits at the left');
+  await mon.getByTestId('f-numerics.meanPosition').selectOption('inline');
+  await mon.getByTestId('f-labels.colorMode').selectOption('text');
+  const capCol = await mon.evaluate(() => { const c = document.querySelector('.cell[data-module="ecg"][data-part="numeric"]'); return [getComputedStyle(c.querySelector('.nlabel')).color, getComputedStyle(c.querySelector('.nval')).color]; });
+  check(capCol[0] !== capCol[1], 'editor: captions in the text colour differ from the number colour');
+  await mon.getByTestId('f-font.waveLabelScale').fill('2');
+  check(await cssVar(mon, '--m-wlabel-scale') !== '1', 'editor: wave caption size changes');
+  await mon.getByTestId('f-waves.etco2.scaleLines').fill('20, 40');
+  const inked = await mon.waitForFunction(() => {
+    const c = document.querySelector('.cell[data-module="etco2"][data-part="wave"] canvas.wscale');
+    return !!c && c.width > 0 && c.getContext('2d').getImageData(0, 0, c.width, c.height).data.some((v, i) => i % 4 === 3 && v > 0);
+  }, null, { timeout: 3000 }).then(() => true, () => false);
+  check(inked, 'editor: scale lines are drawn on the CO2 wave');
+  await mon.getByTestId('f-cells.border.width').fill('0');
+  // fixed screen: same cell proportions at two window sizes of the same shape
+  await mon.getByTestId('f-screen.mode').selectOption('fixed');
+  const ratio = () => mon.evaluate(() => { const r = document.querySelector('.cell[data-module="ecg"][data-part="wave"]').getBoundingClientRect(); const s = document.querySelector('.screen').getBoundingClientRect(); return [r.width / r.height, r.width / s.width]; });
+  await mon.setViewportSize({ width: 1280, height: 800 });
+  await mon.waitForTimeout(300);
+  const r1 = await ratio();
+  await mon.setViewportSize({ width: 1024, height: 640 });
+  await mon.waitForTimeout(300);
+  const r2 = await ratio();
+  check(Math.abs(r1[0] - r2[0]) < 0.02 * r1[0] && Math.abs(r1[1] - r2[1]) < 0.01, 'fixed screen: cells keep their proportions at 1280 and 1024 wide windows');
+  await mon.getByTestId('f-screen.mode').selectOption('fill');
+  await mon.getByTestId('theme-screen').selectOption('fixed');
+  check(await mon.evaluate(() => !!document.querySelector('.screen')), 'device override: fixed size beats the theme');
+  await mon.getByTestId('theme-screen').selectOption('theme');
+  check(await mon.evaluate(() => !document.querySelector('.screen')), 'device override: back to the theme (fill)');
   await mon.getByTestId('theme-fill').click();
   const boxed = await mon.getByTestId('theme-text').inputValue();
   check(/"themeSchema": 1/.test(boxed) && boxed.includes('#ff00ff'), 'export: the current theme (with the edit) is shown as JSON');
