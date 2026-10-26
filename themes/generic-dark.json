@@ -15,6 +15,8 @@
     "spo2": "#00d8ff",
     "etco2": "#ffe000",
     "abp": "#ff3030",
+    "abp2": "#ff8030",
+    "cvp": "#4080ff",
     "nibp": "#ffffff",
     "rr": "#ffe000",
     "temp": "#ffffff",
@@ -61,6 +63,24 @@
         "stack": "left"
       },
       {
+        "module": "abp2",
+        "part": "wave",
+        "x": 0,
+        "y": 5,
+        "w": 8,
+        "h": 2,
+        "stack": "left"
+      },
+      {
+        "module": "cvp",
+        "part": "wave",
+        "x": 0,
+        "y": 5,
+        "w": 8,
+        "h": 2,
+        "stack": "left"
+      },
+      {
         "module": "etco2",
         "part": "wave",
         "x": 0,
@@ -97,6 +117,24 @@
       },
       {
         "module": "abp",
+        "part": "numeric",
+        "x": 8,
+        "y": 5,
+        "w": 4,
+        "h": 2,
+        "stack": "right"
+      },
+      {
+        "module": "abp2",
+        "part": "numeric",
+        "x": 8,
+        "y": 5,
+        "w": 4,
+        "h": 2,
+        "stack": "right"
+      },
+      {
+        "module": "cvp",
         "part": "numeric",
         "x": 8,
         "y": 5,
@@ -173,6 +211,16 @@
       "speed": 25,
       "gain": 1,
       "scaleLines": []
+    },
+    "abp2": {
+      "speed": 25,
+      "gain": 1,
+      "scaleLines": []
+    },
+    "cvp": {
+      "speed": 25,
+      "gain": 1,
+      "scaleLines": []
     }
   },
   "screen": {
@@ -220,6 +268,8 @@
     "nibp": "NIBP",
     "temp": "Temp",
     "abp": "ABP",
+    "abp2": "ABP2",
+    "cvp": "CVP",
     "units": {
       "hr": "/min",
       "spo2": "%",
@@ -227,19 +277,25 @@
       "rr": "/min",
       "temp": "°C",
       "nibp": "mmHg",
-      "abp": "mmHg"
+      "abp": "mmHg",
+      "abp2": "mmHg",
+      "cvp": "mmHg"
     },
     "wave": {
       "ecg": "II",
       "spo2": "Pleth",
       "etco2": "CO2",
-      "abp": "ABP"
+      "abp": "ABP",
+      "abp2": "ABP2",
+      "cvp": "CVP"
     },
     "off": {
       "ecg": "LEADS OFF",
       "spo2": "PROBE OFF",
       "etco2": "CO2 LINE OFF",
-      "abp": "ART LINE OFF"
+      "abp": "ART LINE OFF",
+      "abp2": "ART2 LINE OFF",
+      "cvp": "CVP LINE OFF"
     }
   },
   "alarmStyle": {

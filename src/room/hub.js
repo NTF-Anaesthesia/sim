@@ -1,7 +1,7 @@
 // @ts-check
 // Room logic with no Cloudflare or DOM types: takes a storage object, returns what to send. The Durable Object
 // (worker/room.js) is a thin shell around this, so node can test it with a fake storage (DESIGN.md sections 2, 5).
-import { MAX_PATIENTS, SCHEMA_VERSION, TARGETS, numericsOf, defaultPatient, defaultState, validatePatch } from '../shared/schema.js';
+import { MAX_PATIENTS, SCHEMA_VERSION, TARGETS, numericsOf, defaultPatient, defaultState, fillDefaults, validatePatch } from '../shared/schema.js';
 import { displayed, restartGlide } from '../engine/glide.js';
 
 /** @typedef {import('../shared/schema.js').RoomState} RoomState */
@@ -42,7 +42,7 @@ export class RoomHub {
   async state() {
     if (!this.cache) {
       const stored = await this.storage.get('state');
-      this.cache = /** @type {RoomState} */ (stored ?? defaultState(this.clock()));
+      this.cache = fillDefaults(/** @type {RoomState} */ (stored ?? defaultState(this.clock())));
     }
     return this.cache;
   }
@@ -79,6 +79,7 @@ export class RoomHub {
       case 'removePatient': return this.apply(clientId, now, msg, (s) => this.doRemove(s, msg));
       case 'silence': return this.apply(clientId, now, msg, (s) => { s.alarms.silencedUntil = now + SILENCE_MS; return { kind: 'silence', what: 'silence' }; });
       case 'mark': return this.apply(clientId, now, msg, (s) => this.doMark(s, msg));
+      case 'flush': return this.apply(clientId, now, msg, (s) => this.doFlush(s, msg));
       case 'test': return this.apply(clientId, now, msg, (s) => {
         if (JSON.stringify(msg.value ?? null).length > MAX_TEST_CHARS) throw new BadPatch('test value too large');
         s.test = msg.value;
@@ -127,10 +128,11 @@ export class RoomHub {
     if (!pt) throw new BadPatch('unknown patient');
     const before = structuredClone(pt);
     if (p.patient) {
-      const { nibp, abp, off, ...flat } = p.patient;
+      const { nibp, abp, abp2, off, ...flat } = p.patient;
       Object.assign(pt, flat);
       if (nibp) Object.assign(pt.nibp, nibp);
       if (abp) Object.assign(pt.abp, abp);
+      if (abp2) Object.assign(pt.abp2, abp2);
       if (off) Object.assign(pt.off, off);
     }
     if (p.modules) s.modules = p.modules;
@@ -210,6 +212,20 @@ export class RoomHub {
     if (msg.text !== undefined && (typeof msg.text !== 'string' || msg.text.length > 200)) throw new BadPatch('text must be up to 200 characters');
     if (msg.p !== undefined && !pick(s, msg.p)) throw new BadPatch('unknown patient');
     return { kind: 'bookmark', what: msg.text ? `mark ${msg.text}` : 'mark', ...(msg.p ? { p: msg.p } : {}) };
+  }
+
+  /**
+   * Flush test of an arterial line: only an event (kind `flush`, `what` = the line, `abp` or `abp2`); every monitor draws
+   * the square wave and ringing from the event time. Nothing in the patient changes.
+   * @param {RoomState} s
+   * @param {any} msg
+   */
+  doFlush(s, msg) {
+    const pt = pick(s, msg.p);
+    if (!pt) throw new BadPatch('unknown patient');
+    const line = msg.line ?? 'abp';
+    if (line !== 'abp' && line !== 'abp2') throw new BadPatch('line must be abp or abp2');
+    return { kind: 'flush', what: line, p: pt.id };
   }
 
   /**

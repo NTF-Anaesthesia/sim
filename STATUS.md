@@ -1,6 +1,7 @@
 # sim: status
 
 ## Now
+- sim-v2 S2 lines (PR): CVP (a/c/v, cannon a, giant v), second art line `abp2` with its own label, PPV swing, flush test; all off by default; alarms and limits for CVP and ABP2.
 - Theme fields (PR): limits `left`, mean `inline`, `labels.colorMode`, `font.waveLabelScale`, `scaleLines`, cell borders and background.
 - S4 theme engine (this PR): themes as files; import by file, URL or paste on the monitor and from the phone for every monitor; export; live editor; second built-in theme; `THEMES.md`.
 - S2 monitor screen (this PR): `/m/<code>` draws from the theme: ECG II, pleth, capnogram, art line (module `abp`), HR/SpO2/NIBP/RR/EtCO2/temp, all rhythms, alarms with tones and 2 min silence, NIBP cycle, jitter, full screen, wake lock, sound after a tap.

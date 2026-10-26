@@ -3,7 +3,7 @@
 // two monitors showing the same moment agree. Never moves a value that is blank or zero.
 
 /** Wobble size (half range) per numeric. */
-export const JITTER_AMP = { hr: 1.4, spo2: 0.7, etco2: 0.9, rr: 0.5, sys: 2.2, dia: 1.6, temp: 0.03 };
+export const JITTER_AMP = { hr: 1.4, spo2: 0.7, etco2: 0.9, rr: 0.5, sys: 2.2, dia: 1.6, temp: 0.03, cvp: 0.4 };
 
 /** @param {string} key @returns {number} a per-key phase so the numerics do not move together */
 function phase(key) {

@@ -24,7 +24,8 @@ export function upper(arr, t) {
 /** @typedef {import('../engine/beats.js').Beat} Beat */
 /** @typedef {import('../engine/beats.js').Base} Base */
 /** @typedef {import('../engine/breaths.js').Breath} Breath */
-/** @typedef {{ beats: Beat[], breaths: Breath[], base: Base }} WaveSrc */
+/** @typedef {import('../engine/beats.js').Atrial} Atrial */
+/** @typedef {{ beats: Beat[], breaths: Breath[], base: Base, atrial?: Atrial, flush?: Record<string, number> }} WaveSrc */
 
 /** Longest time before a beat (PR) and after it (T wave) that can still touch a sample, seconds. */
 export const BEAT_REACH = { before: 0.55, after: 0.6 };
@@ -116,8 +117,10 @@ export function plethSample(src, t, quality) {
 }
 
 export const ABP_DELAY = 0.08;
+/** The second line (femoral, say) is closer to the heart's timing than the first. */
+export const ABP2_DELAY = 0.06;
 /** ABP pulse shape 0..1 at x seconds after the R wave. damping: normal | over | under */
-function abpBeat(/** @type {number} */ x, /** @type {string} */ damping) {
+export function abpBeat(/** @type {number} */ x, /** @type {string} */ damping) {
   if (x < 0) return 0;
   const rise = damping === 'over' ? 0.2 : 0.13;
   if (x < rise) return Math.sin((x / rise) * Math.PI / 2);
@@ -129,24 +132,43 @@ function abpBeat(/** @type {number} */ x, /** @type {string} */ damping) {
 }
 
 /**
+ * Pulse-pressure factor for a beat at time `t` when the pressure swings with the breath (positive-pressure
+ * ventilation): pulse pressure is largest in inspiration and smallest in expiration, and
+ * (max - min) / mean of the two is `ppv` percent. 1 when there is no swing or no breath to follow.
+ * @param {Breath[]} breaths @param {number} t @param {number} ppv percent
+ */
+export function ppvFactor(breaths, t, ppv) {
+  if (!(ppv > 0)) return 1;
+  const i = upper(breaths, t) - 1;
+  const b = breaths[i];
+  if (!b || t - b.t > b.cycle + 1) return 1;
+  const m = Math.cos((2 * Math.PI * (t - b.t - b.ti / 2)) / b.cycle);
+  return 1 + (ppv / 200) * m;
+}
+
+/**
  * Arterial pressure in mmHg; a flat low line while there is no pulse.
  * @param {WaveSrc} src @param {number} t @param {string} damping
+ * @param {{ line?: 'abp' | 'abp2', ppv?: number }} [opts] `line` picks which pressure the beats carry; `ppv` the swing in %
  */
-export function abpSample(src, t, damping) {
+export function abpSample(src, t, damping, opts = {}) {
+  const second = opts.line === 'abp2';
   const b = src.beats;
-  const i = upper(b, t - ABP_DELAY);
+  const i = upper(b, t - (second ? ABP2_DELAY : ABP_DELAY));
   const last = b[i - 1];
   if (!last) return 8;
+  const dia = (/** @type {Beat} */ x) => (second ? x.dbp2 ?? x.dbp : x.dbp);
+  const sys = (/** @type {Beat} */ x) => (second ? x.sbp2 ?? x.sbp : x.sbp);
   let best = 0;
   let pulsed = false;
   for (let k = Math.max(0, i - 2); k < i; k++) {
     if (!b[k].pulse) continue;
     pulsed = true;
-    const pp = (b[k].sbp - b[k].dbp) * b[k].amp * (damping === 'over' ? 0.85 : 1);
-    best = Math.max(best, abpBeat(t - ABP_DELAY - b[k].t, damping) * pp);
+    const pp = (sys(b[k]) - dia(b[k])) * b[k].amp * (damping === 'over' ? 0.85 : 1) * ppvFactor(src.breaths, b[k].t, opts.ppv ?? 0);
+    best = Math.max(best, abpBeat(t - (second ? ABP2_DELAY : ABP_DELAY) - b[k].t, damping) * pp);
   }
   if (!pulsed) return 8; // no pulse: a flat low line
-  return last.dbp + best;
+  return dia(last) + best;
 }
 
 /**
