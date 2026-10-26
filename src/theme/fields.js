@@ -9,10 +9,10 @@
  * }} Field
  */
 
-const PARAMS = /** @type {const} */ (['ecg', 'spo2', 'etco2', 'abp', 'abp2', 'cvp', 'nibp', 'rr', 'temp', 'hr']);
-const PARAM_NAMES = { ecg: 'ECG', spo2: 'SpO2', etco2: 'EtCO2', abp: 'Art line', abp2: 'Art line 2', cvp: 'CVP', nibp: 'NIBP', rr: 'RR', temp: 'Temp', hr: 'HR' };
-const WAVES = /** @type {const} */ (['ecg', 'spo2', 'etco2', 'abp', 'abp2', 'cvp']);
-const WAVE_NAMES = { ecg: 'ECG', spo2: 'Pleth', etco2: 'CO2', abp: 'Art line', abp2: 'Art line 2', cvp: 'CVP' };
+const PARAMS = /** @type {const} */ (['ecg', 'spo2', 'etco2', 'abp', 'abp2', 'cvp', 'bis', 'eeg', 'nibp', 'rr', 'temp', 'hr']);
+const PARAM_NAMES = { ecg: 'ECG', spo2: 'SpO2', etco2: 'EtCO2', abp: 'Art line', abp2: 'Art line 2', cvp: 'CVP', bis: 'BIS', eeg: 'EEG strip', nibp: 'NIBP', rr: 'RR', temp: 'Temp', hr: 'HR' };
+const WAVES = /** @type {const} */ (['ecg', 'spo2', 'etco2', 'abp', 'abp2', 'cvp', 'eeg']);
+const WAVE_NAMES = { ecg: 'ECG', spo2: 'Pleth', etco2: 'CO2', abp: 'Art line', abp2: 'Art line 2', cvp: 'CVP', eeg: 'EEG strip' };
 
 /** Waves that have a scale in real units: allowed range of a reference line and its unit (the others are unitless). */
 const SCALE_RANGE = /** @type {Record<string, [number, number, string]>} */ ({ ecg: [-2, 5, 'mV'], etco2: [0, 100, 'mmHg'], abp: [0, 300, 'mmHg'], abp2: [0, 300, 'mmHg'], cvp: [-5, 40, 'mmHg'] });
@@ -69,7 +69,7 @@ export const FIELDS = [
     ...(w in SCALE_RANGE ? [/** @type {Field} */ ({ path: `waves.${w}.scaleLines`, label: `${WAVE_NAMES[w]} scale lines (${SCALE_RANGE[w][2]})`, group: 'Waves', type: 'numlist', min: SCALE_RANGE[w][0], max: SCALE_RANGE[w][1], maxItems: 4 })] : []),
   ])),
 
-  ...PARAMS.filter((p) => p !== 'hr').map((p) => /** @type {Field} */ ({ path: `labels.${p}`, label: `${PARAM_NAMES[p]} label`, group: 'Labels', type: 'text', maxLen: 24 })),
+  ...PARAMS.filter((p) => p !== 'hr' && p !== 'eeg').map((p) => /** @type {Field} */ ({ path: `labels.${p}`, label: `${PARAM_NAMES[p]} label`, group: 'Labels', type: 'text', maxLen: 24 })),
 
   { path: 'alarmStyle.barPosition', label: 'Bar text position', group: 'Alarms', type: 'select', options: ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'] },
   { path: 'alarmStyle.flashHz', label: 'Flash rate (Hz)', group: 'Alarms', type: 'number', min: 0.2, max: 4, step: 0.1 },

@@ -35,6 +35,7 @@ export function shown(p, now) {
     nibp: off.nibp ? null : d.nibp,
     abp: off.abp || flat ? null : d.abp,
     cvp: off.cvp ? null : d.cvp,
+    bis: off.bis ? null : d.bis,
     abp2: off.abp2 || flat ? null : d.abp2,
   };
 }

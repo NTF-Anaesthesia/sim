@@ -14,7 +14,7 @@ export const LIBRARY_VERSION = 1;
 /** A step patch may only change the patient and the alarm limits (never the theme or the screens). */
 const STEP_KEYS = ['patient', 'alarms'];
 /** Numerics a drug can change: plain numbers, and pressures with `sys` / `dia`. */
-export const DRUG_NUMBERS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'cvp'];
+export const DRUG_NUMBERS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'cvp', 'bis'];
 export const DRUG_PRESSURES = ['nibp', 'abp', 'abp2'];
 
 /**

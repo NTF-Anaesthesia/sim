@@ -4,6 +4,7 @@
 // so CVP/PAP later are `registry.register({...})` calls. A registry is made per monitor; nothing registers on import.
 import { rhythmInfo } from '../engine/beats.js';
 import { ageText, mapOf } from '../engine/nibp.js';
+import { BIS_MIN_SQI } from '../shared/schema.js';
 
 /**
  * @typedef {{
@@ -35,6 +36,9 @@ export function createModuleRegistry() {
 }
 
 /** @typedef {ReturnType<typeof createModuleRegistry>} ModuleRegistry */
+
+/** Below this signal quality the depth number is not shown (a poor signal gives no reliable index). */
+export { BIS_MIN_SQI };
 
 const INT = (/** @type {number | null} */ v) => (v === null || !Number.isFinite(v) ? '---' : String(Math.round(v)));
 const label = (/** @type {NumCtx} */ c, /** @type {string} */ id) => c.theme.labels[id] ?? id;
@@ -158,6 +162,22 @@ export function registerBuiltinModules(registry) {
         return {
           label: label(c, 'cvp'), color: 'cvp', param: 'cvp', unit: unit(c, 'cvp'), limits: lim(c, 'cvp'), small: '', sub: '',
           main: v === null || v === undefined ? '---' : v.toFixed(0), off: v === null || v === undefined,
+        };
+      },
+    },
+  });
+  registry.register({
+    id: 'bis', wave: 'eeg',
+    parts: {
+      numeric: (c) => {
+        const v = c.v.bis;
+        const p = c.patient;
+        const poor = v !== null && v !== undefined && p.bisSqi < BIS_MIN_SQI;
+        const sensorOff = v === null || v === undefined;
+        return {
+          label: label(c, 'bis'), color: 'bis', param: 'bis', unit: unit(c, 'bis'), limits: lim(c, 'bis'), sub: '',
+          main: sensorOff || poor ? '---' : INT(v), off: sensorOff || poor,
+          small: sensorOff ? 'SENSOR OFF' : `SQI ${Math.round(p.bisSqi)}  EMG ${Math.round(p.bisEmg)}  SR ${Math.round(p.bisSr)}${poor ? '  POOR SIGNAL' : ''}`,
         };
       },
     },
