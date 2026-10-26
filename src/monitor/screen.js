@@ -17,6 +17,8 @@ import { createSettings } from './settings.js';
 import { buildView } from './view.js';
 
 const TICK_MS = 250;
+/** @param {unknown} x @param {number} fallback a device setting is only used when it is a positive number */
+const positive = (x, fallback) => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : fallback);
 
 /**
  * @param {HTMLElement} root
@@ -55,6 +57,7 @@ export function mountScreen(root, opts) {
   let latestVals = /** @type {Record<string, any>} */ ({});
   /** @type {WakeLockSentinel | null} */
   let wake = null;
+  let wakeWanted = false;
 
   const audio = new AudioMixer({
     volume: (ch) => (theme.audio?.[ch]?.volume ?? 1) * settings.get(`vol.${ch}`, 1),
@@ -92,8 +95,8 @@ export function mountScreen(root, opts) {
       const id = def.wave;
       const wd = /** @type {import('../waves/registry.js').WaveDef} */ (waves.get(id));
       const ws = waveSettings(theme, id);
-      const speed = settings.get(`sweep.${id}`, ws.speed);
-      const gain = settings.get(`gain.${id}`, ws.gain);
+      const speed = positive(settings.get(`sweep.${id}`, ws.speed), ws.speed);
+      const gain = positive(settings.get(`gain.${id}`, ws.gain), ws.gain);
       const [lo, hi] = wd.range(gain);
       const lane = new Lane(ref.canvas, {
         pxPerSec: speed * theme.waves.pxPerMm, color: theme.colors[id] ?? theme.colors.text,
@@ -113,6 +116,8 @@ export function mountScreen(root, opts) {
     if (key !== themeKey) {
       themeKey = key;
       theme = resolveTheme(state.themeJson).theme;
+      nibp = new NibpMachine(theme.nibp);
+      audio.refreshVolumes();
       viewKey = '';
     }
     const np = pickPatient();
@@ -129,12 +134,12 @@ export function mountScreen(root, opts) {
     view.chip.textContent = s === 'open' ? 'live' : s;
     view.chip.dataset.status = s;
     view.soundBtn.textContent = audio.enabled ? 'Sound on' : 'Sound';
-    view.wakeBtn.textContent = wake ? 'Awake on' : 'Keep awake';
+    view.wakeBtn.textContent = wakeWanted ? 'Awake on' : 'Keep awake';
     view.fullBtn.textContent = document.fullscreenElement ? 'Exit full screen' : 'Full screen';
   }
 
   async function toggleSound() {
-    if (audio.enabled) audio.disable();
+    if (audio.enabled) await audio.disable();
     else await audio.enable();
     renderChips();
   }
@@ -145,11 +150,17 @@ export function mountScreen(root, opts) {
     } catch { /* not allowed here */ }
     renderChips();
   }
-  async function toggleWake() {
+  async function acquireWake() {
     try {
-      if (wake) { await wake.release(); wake = null; } else wake = await navigator.wakeLock.request('screen');
-      wake?.addEventListener('release', () => { wake = null; renderChips(); });
+      if (!wakeWanted) { await wake?.release(); wake = null; return; }
+      if (wake) return;
+      wake = await navigator.wakeLock.request('screen');
+      wake.addEventListener('release', () => { wake = null; renderChips(); });
     } catch { wake = null; }
+  }
+  async function toggleWake() {
+    wakeWanted = !wakeWanted;
+    await acquireWake();
     renderChips();
   }
 
@@ -176,8 +187,9 @@ export function mountScreen(root, opts) {
       client.send({ t: 'nibp', p: patient.id, after: due });
     }
     const alarms = evaluateAlarms(patient, state, {
-      hr: v.hr, spo2: v.spo2, etco2: v.etco2, rr: v.rr, temp: v.temp,
-      nibpSys: nb.phase === 'result' ? nb.sys : null, abpSys: abp ? abp.sys : null,
+      // alarms judge the glided value, not the display wobble, so a value near a limit does not flap
+      hr: s.hr, spo2: s.spo2, etco2: s.etco2, rr: s.rr, temp: s.temp,
+      nibpSys: nb.phase === 'result' ? nb.sys : null, abpSys: s.abp ? s.abp.sys : null,
     }, nowMs);
     const av = tracker.update(alarms, { enabled: state.alarms.enabled, silencedUntil: state.alarms.silencedUntil }, nowMs);
 
@@ -274,7 +286,7 @@ export function mountScreen(root, opts) {
   addEventListener('resize', refill);
   document.addEventListener('visibilitychange', async () => {
     refill();
-    if (document.visibilityState === 'visible' && wake === null && view?.wakeBtn.textContent === 'Awake on') await toggleWake();
+    if (document.visibilityState === 'visible' && wake === null && wakeWanted) await acquireWake();
   });
   document.addEventListener('fullscreenchange', renderChips);
   requestAnimationFrame(frame);

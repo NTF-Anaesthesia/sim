@@ -57,7 +57,7 @@ export class AudioMixer {
     await this.ctx.resume();
   }
 
-  disable() { void this.ctx?.suspend(); }
+  async disable() { await this.ctx?.suspend(); }
 
   /** Re-read the volumes (after a setting changed). */
   refreshVolumes() {

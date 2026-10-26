@@ -34,8 +34,8 @@ export class NibpMachine {
       this.seenAt = reading.at;
       this.reading = reading;
       this.startedAt = nowMs;
-      this.failed = cuffOff;
     }
+    this.failed = cuffOff; // follows the cuff: back on, the last reading shows again
     const r = this.reading ?? reading;
     const e = nowMs - this.startedAt;
     if (this.failed) return { phase: 'failed', sys: null, dia: null, at: r.at, progress: 1 };

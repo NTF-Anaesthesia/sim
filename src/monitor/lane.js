@@ -114,7 +114,8 @@ export class Lane {
     ctx.beginPath();
     for (let s = from + step; s <= t + 1e-9; s += step) {
       const x = this.x(s);
-      const y = this.peak(s, step) === null ? null : this.y(/** @type {number} */ (this.peak(s, step)));
+      const pk = this.peak(s, step);
+      const y = pk === null ? null : this.y(pk);
       if (x < px) { ctx.stroke(); ctx.beginPath(); py = null; } // wrapped: start again at the left edge
       ctx.clearRect(x + 1, 0, this.gapPx, this.h); // erase the gap ahead of the write point
       if (x + 1 + this.gapPx > this.w) ctx.clearRect(0, 0, x + 1 + this.gapPx - this.w, this.h);
