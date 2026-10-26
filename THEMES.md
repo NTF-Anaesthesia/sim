@@ -41,11 +41,12 @@ Every example value is the default unless stated. Ranges are enforced; a value o
 | `background` | `"#000000"` | Screen colour. |
 | `font.family` | `"system-ui, sans-serif"` | Letters, digits, spaces, commas, quotes, dots, hyphens; up to 120 characters. No web fonts are loaded. |
 | `font.numericScale`, `font.labelScale` | `1` | Size multiplier, 0.3 to 3. |
+| `font.waveLabelScale` | `1` | Extra size multiplier for wave captions only (on top of `font.labelScale`), 0.3 to 3. |
 | `font.numericWeight`, `font.labelWeight` | `700`, `500` | 100 to 900. |
 | `colors.ecg spo2 etco2 abp` | `"#00e000"` | Wave line colour and the matching numeric colour. |
 | `colors.nibp rr temp hr` | `"#ffffff"` | Numeric colours (`hr` is the heart rate numeric). |
 | `colors.alarmHigh alarmMed alarmLow` | `"#ff2020"` | Alarm bar and flashing numeric colours by priority. |
-| `colors.text` | `"#c0c0c0"` | Labels, units and the toolbar. |
+| `colors.text` | `"#c0c0c0"` | The toolbar and sensor-off text; also captions, units and limits when `labels.colorMode` is `text`. |
 | `colors.grid` | `"#16301a"` | Grid lines behind the waves (only when `waves.grid` is true). |
 | `colors.flashText` | `"#000000"` | Text colour on a coloured alarm bar. |
 | `layout.grid.columns`, `rows` | `12`, `12` | Grid size, 1 to 48. Cells are placed on this grid. |
@@ -55,16 +56,23 @@ Every example value is the default unless stated. Ranges are enforced; a value o
 | `waves.speedMmPerSec` | `25` | Sweep speed for every wave, 1 to 100 mm/s. |
 | `waves.<id>.speed` | `{ "ecg": { "speed": 25 } }` | Per-wave speed (`ecg`, `spo2`, `etco2`, `abp`), 1 to 100; falls back to `speedMmPerSec`. |
 | `waves.<id>.gain` | `{ "ecg": { "gain": 1 } }` | Per-wave gain, 0.1 to 10. |
+| `waves.<id>.scaleLines` | `{ "abp": { "scaleLines": [80, 120] } }` | Up to 4 dotted reference lines in the wave's units, with the value in small text at the left, in the wave's colour but dim. `abp` and `etco2` in mmHg (0 to 300, 0 to 100), `ecg` in mV (-2 to 5). Default `[]` (none). |
 | `waves.pxPerMm` | `4` | Pixels per mm (25 mm/s at 4 is 100 px/s), 1 to 12. |
 | `waves.lineWidth` | `2` | Wave width in pixels, 0.5 to 8. |
 | `waves.sweepGapPx` | `14` | Blank gap ahead of the sweep, 0 to 100. |
 | `waves.grid` | `false` | Draw a 5 mm grid behind the waves. |
 | `audio.<channel>.volume` | `{ "alarm": { "volume": 1 } }` | `alarm`, `qrs`, `spo2`; 0 to 1. Multiplied by the device's own volume. |
 | `numerics.showLimits` | `true` | Show alarm limits next to each numeric. |
-| `numerics.limitsPosition` | `"beside"` | `beside` or `below` the number. |
+| `numerics.limitsPosition` | `"beside"` | `beside` (far right), `below` the number, or `left`: small limits stacked between the caption and the number, at the left of the box. |
+| `numerics.meanPosition` | `"below"` | `below` (own line) or `inline`: ABP and NIBP show `120/75 (89)` on one line, the mean slightly smaller. |
 | `numerics.fontScale` | `1` | Size of all numerics, 0.3 to 3 (also multiplied by `font.numericScale`). |
 | `numerics.decimals.temp` | `1` | Decimals for temperature. |
+| `cells.border.color` | `"#404040"` | Border colour of every cell. |
+| `cells.border.width` | `0` | Border width in pixels, 0 to 6. 0 means no border. |
+| `cells.border.radius` | `0` | Corner radius in pixels, 0 to 24. |
+| `cells.background` | (not set) | Optional `#rrggbb` behind each cell; when missing, cells show the screen `background`. |
 | `nibp.inflateMs`, `nibp.measureMs` | `0`, `0` | Time shown inflating and measuring before the result appears, 0 to 120000. 0 gives the result at once. |
+| `labels.colorMode` | `"parameter"` | `parameter`: captions, units and limits in the parameter's colour (the look before this field existed); `text`: in `colors.text`. |
 | `labels.<id>` | `"ecg": "HR"` | Numeric captions for `ecg spo2 etco2 rr nibp temp abp`; up to 24 characters, no `< > { }` or backslash. |
 | `labels.units.<id>` | `"etco2": "mmHg"` | Unit text next to a numeric. |
 | `labels.wave.<id>` | `"ecg": "II"` | Caption on each wave. |

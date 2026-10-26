@@ -5,7 +5,7 @@
 /**
  * @typedef {{
  *   cell: import('../theme/layout.js').Cell, el: HTMLElement,
- *   canvas?: HTMLCanvasElement, off?: HTMLElement,
+ *   canvas?: HTMLCanvasElement, scale?: HTMLCanvasElement, off?: HTMLElement,
  *   label?: HTMLElement, val?: HTMLElement, sub?: HTMLElement, unit?: HTMLElement, small?: HTMLElement,
  *   lo?: HTMLElement, hi?: HTMLElement
  * }} CellRef
@@ -20,9 +20,16 @@ function applyTheme(theme, /** @type {HTMLElement} */ root) {
   s.setProperty('--m-label-weight', String(theme.font.labelWeight));
   s.setProperty('--m-num-scale', String(theme.font.numericScale * (theme.numerics.fontScale ?? 1)));
   s.setProperty('--m-label-scale', String(theme.font.labelScale));
+  s.setProperty('--m-wlabel-scale', String(theme.font.labelScale * (theme.font.waveLabelScale ?? 1)));
+  const cb = theme.cells?.border ?? {};
+  s.setProperty('--m-cell-bw', `${cb.width ?? 0}px`);
+  s.setProperty('--m-cell-bc', String(cb.color ?? '#404040'));
+  s.setProperty('--m-cell-br', `${cb.radius ?? 0}px`);
+  s.setProperty('--m-cell-bg', String(theme.cells?.background ?? 'transparent'));
   s.setProperty('--m-gap', `${theme.layout.grid.gap / 2}px`);
   s.setProperty('--m-flash', `${1 / Math.max(0.1, theme.alarmStyle.flashHz)}s`);
   root.dataset.limits = theme.numerics.limitsPosition;
+  root.dataset.labelColor = theme.labels?.colorMode ?? 'parameter';
   root.dataset.limitStyle = theme.alarmStyle.limitStyle;
   for (const [k, v] of Object.entries(theme.colors)) s.setProperty(`--c-${k}`, String(v));
 }
@@ -65,8 +72,9 @@ export function buildView(root, theme, cells, act) {
         el.style.backgroundImage = 'linear-gradient(var(--c-grid) 1px, transparent 1px), linear-gradient(90deg, var(--c-grid) 1px, transparent 1px)';
         el.style.backgroundSize = `${mm}px ${mm}px`;
       }
-      el.innerHTML = '<canvas></canvas><span class="wlabel"></span><span class="woff"></span>';
-      ref.canvas = /** @type {HTMLCanvasElement} */ (el.querySelector('canvas'));
+      el.innerHTML = '<canvas class="wmain"></canvas><canvas class="wscale"></canvas><span class="wlabel"></span><span class="woff"></span>';
+      ref.canvas = /** @type {HTMLCanvasElement} */ (el.querySelector('.wmain'));
+      ref.scale = /** @type {HTMLCanvasElement} */ (el.querySelector('.wscale'));
       /** @type {HTMLElement} */ (el.querySelector('.wlabel')).textContent = theme.labels.wave?.[cell.module] ?? cell.module;
       ref.off = /** @type {HTMLElement} */ (el.querySelector('.woff'));
       ref.off.textContent = theme.labels.off?.[cell.module] ?? '';

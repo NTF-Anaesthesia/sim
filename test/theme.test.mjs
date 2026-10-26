@@ -107,7 +107,7 @@ test('seam 10: speed, gain and channel volumes are in the schema', () => {
   const paths = FIELDS.map((f) => f.path);
   for (const w of ['ecg', 'spo2', 'etco2', 'abp']) for (const k of ['speed', 'gain']) assert.ok(paths.includes(`waves.${w}.${k}`), `waves.${w}.${k}`);
   for (const c of ['alarm', 'qrs', 'spo2']) assert.ok(paths.includes(`audio.${c}.volume`), `audio.${c}.volume`);
-  for (const f of FIELDS) assert.notEqual(getPath(DEFAULT_THEME, f.path), undefined, `default has ${f.path}`);
+  for (const f of FIELDS.filter((x) => x.path !== 'cells.background')) assert.notEqual(getPath(DEFAULT_THEME, f.path), undefined, `default has ${f.path}`);
 });
 
 test('the second theme moves every module and changes every colour', () => {
@@ -194,4 +194,53 @@ test('deeply nested files are refused, not a stack overflow', () => {
 test('cells are checked against the grid that survives range checks', () => {
   const { theme } = resolveTheme({ layout: { grid: { columns: 1000, rows: 1000 }, cells: [{ module: 'ecg', part: 'wave', x: 900, y: 900, w: 50, h: 50 }, { module: 'ecg', part: 'wave', x: 0, y: 0, w: 4, h: 2 }] } });
   assert.equal(theme.layout.cells.length, 1);
+});
+
+test('theme fields added after v1 default to today\'s look and stay at schema 1', () => {
+  const t = resolveTheme({ themeSchema: 1, colors: { ecg: '#ff8800' } }).theme;
+  assert.equal(t.themeSchema, 1);
+  assert.equal(t.numerics.meanPosition, 'below');
+  assert.equal(t.numerics.limitsPosition, 'beside');
+  assert.equal(t.labels.colorMode, 'parameter');
+  assert.equal(t.font.waveLabelScale, 1);
+  assert.deepEqual(t.waves.abp.scaleLines, []);
+  assert.deepEqual(t.cells.border, { color: '#404040', width: 0, radius: 0 });
+  assert.equal(t.cells.background, undefined);
+  assert.deepEqual(layoutCells(t, () => true).length, t.layout.cells.length);
+});
+
+test('new theme fields accept good values and drop bad ones one by one', () => {
+  const good = validateTheme({
+    themeSchema: 1,
+    numerics: { limitsPosition: 'left', meanPosition: 'inline' },
+    labels: { colorMode: 'text' }, font: { waveLabelScale: 2 },
+    waves: { abp: { scaleLines: [80, 120] }, etco2: { scaleLines: [40] }, ecg: { scaleLines: [1] } },
+    cells: { border: { color: '#112233', width: 2, radius: 8 }, background: '#101010' },
+  });
+  assert.equal(good.ok, true);
+  assert.deepEqual(good.warnings, []);
+  assert.equal(good.theme.cells.background, '#101010');
+  assert.deepEqual(good.theme.waves.abp.scaleLines, [80, 120]);
+  const bad = validateTheme({
+    themeSchema: 1,
+    numerics: { limitsPosition: 'middle', meanPosition: 'above' },
+    labels: { colorMode: 'rainbow' }, font: { waveLabelScale: 9 },
+    waves: { abp: { scaleLines: [1, 2, 3, 4, 5] }, etco2: { scaleLines: [-5] }, ecg: { scaleLines: 'x' } },
+    cells: { border: { color: 'red', width: 7, radius: 25 }, background: 'blue' },
+  });
+  assert.equal(bad.ok, true);
+  for (const p of ['numerics.limitsPosition', 'numerics.meanPosition', 'labels.colorMode', 'font.waveLabelScale', 'waves.abp.scaleLines',
+    'waves.etco2.scaleLines', 'waves.ecg.scaleLines', 'cells.border.color', 'cells.border.width', 'cells.border.radius', 'cells.background']) {
+    assert.ok(bad.warnings.some((w) => w.includes(p)), `${p} is reported`);
+  }
+  assert.equal(bad.theme.numerics.limitsPosition, 'beside');
+  assert.equal(bad.theme.cells.border.width, 0);
+  assert.equal(bad.theme.cells.background, undefined);
+  assert.deepEqual(bad.theme.waves.abp.scaleLines, []);
+});
+
+test('a top-level cells key is not mistaken for layout.cells', () => {
+  const t = resolveTheme({ cells: { border: { width: 4 } } }).theme;
+  assert.equal(t.cells.border.width, 4);
+  assert.ok(t.layout.cells.length > 0);
 });

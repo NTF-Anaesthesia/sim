@@ -25,11 +25,15 @@ function merge(base, raw, path, problems) {
     if (!isObj(raw)) { problems.push(`${path}: expected an object, using the default`); return structuredClone(base); }
     /** @type {Record<string, any>} */
     const out = {};
-    for (const k of Object.keys(base)) out[k] = k === 'cells' ? base[k] : merge(base[k], raw[k], `${path}.${k}`, problems);
+    for (const k of Object.keys(base)) out[k] = k === 'cells' && path === 'theme.layout' ? base[k] : merge(base[k], raw[k], `${path}.${k}`, problems);
     for (const k of Object.keys(raw)) if (!(k in out)) out[k] = raw[k]; // unknown keys are kept and ignored
     return out;
   }
-  if (Array.isArray(base)) return Array.isArray(raw) ? raw : structuredClone(base);
+  if (Array.isArray(base)) {
+    if (Array.isArray(raw)) return raw;
+    problems.push(`${path}: expected a list, using the default`);
+    return structuredClone(base);
+  }
   if (typeof raw === typeof base && (typeof raw !== 'number' || Number.isFinite(raw))) return raw;
   problems.push(`${path}: wrong type, using the default`);
   return base;
@@ -52,6 +56,11 @@ export function resolveTheme(raw) {
       problems.push(`${f.path}: ${why}, using the default`);
       setPath(theme, f.path, structuredClone(getPath(DEFAULT_THEME, f.path)));
     }
+  }
+  const bg = theme.cells?.background;
+  if (bg !== undefined && !(typeof bg === 'string' && COLOR.test(bg))) {
+    problems.push('cells.background: bad colour, using the default');
+    delete theme.cells.background;
   }
   const grid = theme.layout.grid;
   const cellsRaw = src.layout?.cells;

@@ -181,14 +181,15 @@ export function createThemePanel(opts) {
           inp = /** @type {HTMLInputElement} */ (make('input', {
             type: f.type === 'color' ? 'color' : f.type === 'bool' ? 'checkbox' : f.type === 'number' ? 'number' : 'text',
             ...(f.type === 'number' ? { min: String(f.min), max: String(f.max), step: String(f.step) } : {}),
-            ...(f.type === 'text' ? { maxlength: String(f.maxLen ?? 24) } : {}),
+            ...(f.type === 'text' || f.type === 'numlist' ? { maxlength: String(f.maxLen ?? 24) } : {}),
           }));
         }
         inp.dataset.testid = `f-${f.path}`;
         inp.setAttribute('aria-label', f.label);
         inp.addEventListener('input', () => {
           const raw = f.type === 'bool' ? /** @type {HTMLInputElement} */ (inp).checked
-            : f.type === 'number' ? (inp.value === '' ? NaN : Number(inp.value)) : inp.value;
+            : f.type === 'number' ? (inp.value === '' ? NaN : Number(inp.value))
+              : f.type === 'numlist' ? inp.value.split(/[,\s]+/).filter(Boolean).map(Number) : inp.value;
           const why = f.type === 'color' ? '' : fieldProblem(f, raw);
           inp.setAttribute('aria-invalid', String(!!why));
           inp.title = why;
@@ -216,7 +217,7 @@ export function createThemePanel(opts) {
         if (f.path === 'font.family' && !FONT_CHOICES.includes(String(v))) {
           inp.append(make('option', { value: String(v) }, String(v)));
         }
-        inp.value = String(v);
+        inp.value = Array.isArray(v) ? v.join(', ') : String(v);
       }
       inp.setAttribute('aria-invalid', 'false');
     }

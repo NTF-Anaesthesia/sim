@@ -7,7 +7,8 @@
     "numericWeight": 700,
     "labelWeight": 500,
     "numericScale": 1,
-    "labelScale": 1
+    "labelScale": 1,
+    "waveLabelScale": 1
   },
   "colors": {
     "ecg": "#00e000",
@@ -156,7 +157,8 @@
     "grid": false,
     "ecg": {
       "speed": 25,
-      "gain": 1
+      "gain": 1,
+      "scaleLines": []
     },
     "spo2": {
       "speed": 25,
@@ -164,11 +166,20 @@
     },
     "etco2": {
       "speed": 12.5,
-      "gain": 1
+      "gain": 1,
+      "scaleLines": []
     },
     "abp": {
       "speed": 25,
-      "gain": 1
+      "gain": 1,
+      "scaleLines": []
+    }
+  },
+  "cells": {
+    "border": {
+      "color": "#404040",
+      "width": 0,
+      "radius": 0
     }
   },
   "audio": {
@@ -185,6 +196,7 @@
   "numerics": {
     "showLimits": true,
     "limitsPosition": "beside",
+    "meanPosition": "below",
     "decimals": {
       "temp": 1
     },
@@ -195,6 +207,7 @@
     "measureMs": 0
   },
   "labels": {
+    "colorMode": "parameter",
     "ecg": "HR",
     "spo2": "SpO2",
     "etco2": "EtCO2",
