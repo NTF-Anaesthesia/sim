@@ -48,7 +48,7 @@ six entries.
 - `/` shows "New room": the page asks `POST /api/room`, the Worker picks a random code, creates nothing yet (the
   object is created on first connection), and the page shows the code, a QR code of `https://<host>/c/<code>`, and a
   link to open the monitor (`/m/<code>`) on this device. A "Join with code" box opens `/c/<code>` or `/m/<code>`.
-- `/m/<code>` monitor, `/c/<code>` controller. Any number of monitors and controllers may join one room.
+- `/m/<code>` monitor (optional `?p=<patientId>` picks the bed; default the first), `/c/<code>` controller. Any number of monitors and controllers may join one room.
 - State lives only in the Room's SQLite-backed storage (key `state`, plus `last` = time of the last message). No accounts, no personal data. Nothing is stored
   in the browser except per-device options (localStorage; section 9).
 - **Expiry:** each message from any client sets an alarm `lastActive + 24 h` (`storage.setAlarm`). When the alarm fires and the
@@ -66,27 +66,42 @@ the **server** clock.
 {
   "schema": 1,
   "rev": 42,                       // integer, +1 on every accepted change
-  "patient": {                     // targets the controller sets (what values glide TO)
-    "rhythm": "sinus",             // see rhythm list below
-    "hr": 80,                      // 0-300; ignored for VF, asystole
-    "spo2": 98,                    // 0-100
-    "etco2": 38,                   // 0-100 mmHg
-    "rr": 14,                      // 0-60 /min
-    "temp": 36.8,                  // 25.0-43.0 C, one decimal
-    "nibp": { "sys": 120, "dia": 75 },        // targets for the next NIBP reading
-    "abp": { "sys": 120, "dia": 75 },         // only shown when module "abp" is on
-    "glideMs": 0                   // default glide time applied when a change carries none
-  },
-  "glide": {                       // when the latest change started and how long it takes
-    "startedAt": 1761000000000,    // server ms
-    "durationMs": 10000,
-    "from": { /* same shape as patient numerics: hr, spo2, etco2, rr, temp, nibp, abp */ }
-  },
-  "nibp": {                        // last measured reading (monitor shows it with its time)
-    "sys": 118, "dia": 74, "at": 1760999900000, "mode": "manual",   // mode: "manual" | "cycle"
-    "cycleSec": 300                // used when mode = "cycle"; 0 otherwise
-  },
-  "modules": ["ecg", "spo2", "etco2", "nibp", "rr", "temp"],  // enabled modules, order = display order (section 4)
+  "patients": [                    // 1 to 8 "beds"; each screen shows one (monitor URL ?p=<id>, default the first)
+    {
+      "id": "p1", "label": "Bed 1",   // id is server-made (p1, p2, ...), label 1-24 chars
+      // targets the controller sets (what values glide TO)
+      "rhythm": "sinus",             // see rhythm list below
+      "hr": 80,                      // 0-300; ignored for VF, asystole
+      "spo2": 98,                    // 0-100
+      "etco2": 38,                   // 0-100 mmHg
+      "rr": 14,                      // 0-60 /min
+      "temp": 36.8,                  // 25.0-43.0 C, one decimal
+      "nibp": { "sys": 120, "dia": 75 },        // targets for the next NIBP reading
+      "abp": { "sys": 120, "dia": 75 },         // only shown when module "abp" is on
+      "glideMs": 0,                  // default glide time applied when a change carries none
+      // rhythm and wave details
+      "pulse": true,                 // only read for vt: false = pulseless VT
+      "flutterRatio": 2,             // 2 | 3 | 4 (AV conduction, flutter only)
+      "st": 0,                       // -3..+3 mm ST shift, integer or half steps
+      "pvcPerMin": 0,                // 0-30 ventricular ectopics per minute (integer)
+      "ie": 2,                       // 0.5-5, expiratory:inspiratory time ratio of the breath
+      "etco2Shape": "normal",        // normal | obstructive | curare | rebreathing | none
+      "spo2Quality": "good",         // good | poor | none (poor = small, noisy; none = no pleth drawn)
+      "abpDamping": "normal",        // normal | over | under
+      // sensors: true = lead/probe/cuff/line off, that wave and numeric read "---"
+      "off": { "ecg": false, "spo2": false, "nibp": false, "abp": false, "etco2": false },
+      "glide": {                     // when this patient's latest change started and how long it takes
+        "startedAt": 1761000000000,  // server ms
+        "durationMs": 10000,
+        "from": { /* same shape as the numerics: hr, spo2, etco2, rr, temp, nibp, abp */ }
+      },
+      "nibpRead": {                  // last measured reading (monitor shows it with its time)
+        "sys": 118, "dia": 74, "at": 1760999900000, "mode": "manual",   // mode: "manual" | "cycle"
+        "cycleSec": 300              // used when mode = "cycle"; 0 otherwise
+      }
+    }
+  ],
+  "modules": ["ecg", "spo2", "etco2", "nibp", "rr", "temp"],  // shown modules (room-wide), order = display order (section 4)
   "alarms": {
     "limits": { "hr": [50, 120], "spo2": [90, 100], "etco2": [30, 50], "rr": [8, 30],
                 "nibpSys": [90, 180], "temp": [35.5, 38.5], "abpSys": [90, 180] },
@@ -104,8 +119,27 @@ the **server** clock.
 Rhythms (id): `sinus`, `sinus_brady`, `sinus_tachy`, `af`, `flutter`, `svt`, `vt`, `vf`, `asystole`, `pea` (normal
 ECG, flat pleth). `hr` for sinus is the exact rate; for `sinus_brady`/`sinus_tachy` the controller sets a sensible `hr`
 and the id is a label; for `vf` and `asystole` `hr` is displayed `0`/`--` and ECG is the rhythm's own wave.
-Defaults (new room): sinus, hr 80, spo2 98, etco2 38, rr 14, temp 36.8, nibp 120/75, abp 120/75, glideMs 0, modules
-`["ecg","spo2","etco2","nibp","rr","temp"]`, alarms enabled, silencedUntil 0.
+**Reserved rhythm ids** `first_degree_block`, `mobitz1`, `mobitz2`, `chb`, `torsades`, `paced` are valid in the schema
+from v1 (stored, broadcast) but drawn from S2; until then a monitor draws them as sinus. They use the fields above:
+`flutterRatio` (flutter), `st` (any rhythm with a P-QRS-T), `pvcPerMin`.
+
+**Pulseless rule** (engine, `shown()` in `src/engine/rhythm.js`): a patient has no pulse when the rhythm is `vf`,
+`asystole` or `pea`, or `vt` with `pulse: false` (`pulse` defaults to true and is ignored for other rhythms). While
+pulseless the pleth and the ABP wave flatten and the SpO2 and ABP numerics read `---`; the ECG is the rhythm's own,
+and EtCO2 keeps its target. Nothing is stored or changed: targets stay as set, so choosing a perfusing rhythm
+restores pleth, ABP and the numerics at once (no new glide).
+
+**Sensor-off flags** (`off.<sensor>`) are independent of the rhythm: `ecg` blanks the ECG wave and HR, `spo2` the pleth
+and SpO2, `nibp` the NIBP numeric (a measure-now still stamps the reading but the monitor shows `---`), `abp` the ABP
+wave and numerics, `etco2` the capnogram, EtCO2 and RR. A flag change is instant (no glide). `shown()` returns `null`
+for a blank value.
+
+**Units** (CO2 mmHg or kPa, temperature C or F) are a per-device display choice kept in that device's `localStorage`
+(`sim.units`); state and messages always hold mmHg and C.
+
+Defaults (new room): one patient `p1` "Bed 1": sinus, hr 80, spo2 98, etco2 38, rr 14, temp 36.8, nibp 120/75, abp
+120/75, glideMs 0, pulse true, flutterRatio 2, st 0, pvcPerMin 0, ie 2, all sensors on, etco2Shape normal, spo2Quality
+good, abpDamping normal; modules `["ecg","spo2","etco2","nibp","rr","temp"]`, alarms enabled, silencedUntil 0.
 
 Unknown fields are kept and ignored (forward compatible). A client that gets `schema` greater than it knows shows
 "update needed" and stops drawing.
@@ -116,16 +150,16 @@ A module is a named block of one screen, switched on or off from the controller.
 
 | id | Shows | Needs |
 |---|---|---|
-| `ecg` | ECG II wave, HR numeric | always on in v1 |
+| `ecg` | ECG II wave, HR numeric | |
 | `spo2` | pleth wave, SpO2 numeric | |
-| `etco2` | capnogram wave, EtCO2 and RR numerics | |
+| `etco2` | capnogram wave, EtCO2 and RR numerics (wave shape from `etco2Shape`) | |
 | `nibp` | NIBP numeric (sys/dia (mean)) with time | |
 | `rr` | RR numeric (when `etco2` is off) | |
 | `temp` | temperature numeric | |
 | `abp` | arterial line: ABP wave and sys/dia (mean) | **off by default** (the "art line") |
 
 Later (reserved ids, not drawn in v1): `cvp`, `pap`. A client ignores module ids it does not know.
-The list in `state.modules` is the truth for **every** screen in the room. Per-screen module lists (two monitors
+**Every** module can be hidden, ECG included (a screen may show only the EtCO2 wave). The list in `state.modules` is the truth for **every** screen in the room. Per-screen module lists (two monitors
 showing different things) are Later; v1 reserves `screens: { "<screenId>": { "modules": [...] } }` in state and ignores
 it.
 
@@ -140,8 +174,10 @@ Client to server:
 | t | fields | effect |
 |---|---|---|
 | `hello` | `schema` | optional; server always sends `state` on connect anyway |
-| `set` | `patch`, `glideMs?`, `baseRev?` | merge `patch` (deep, only known paths: `patient.*`, `modules`, `alarms.limits`, `alarms.enabled`, `nibp.mode`, `nibp.cycleSec`, `theme`, `themeJson`) into state. If `glideMs` is a number it replaces the glide time for the changed numerics; otherwise `patient.glideMs`. Starts a new glide (section 6). `rev` +1. |
-| `nibp` | `after?` | "measure now": server sets `nibp.sys/dia` to current glided `patient.nibp` values and `nibp.at` = now. `rev` +1. |
+| `set` | `p?`, `patch`, `glideMs?`, `baseRev?` | merge `patch` (deep, only known paths: `patient.*` = every patient field above except `id`, `glide`, `nibpRead`; `modules`, `alarms.limits`, `alarms.enabled`, `nibp.mode`, `nibp.cycleSec` (these two go to `nibpRead`), `theme`, `themeJson`) into patient `p` (default: the first) or the room. If `glideMs` is a number it replaces the glide time for the changed numerics; otherwise the patient's `glideMs`. Starts that patient's glide (section 6). `rev` +1. |
+| `nibp` | `p?`, `after?` | "measure now" for patient `p`: server sets `nibpRead.sys/dia` to the current glided `nibp` values and `nibpRead.at` = now. `rev` +1. |
+| `addPatient` | `label?` | adds a default patient (id `p<n>`, label default `Bed <count>`); max 8. |
+| `removePatient` | `p` | removes that patient; the last one cannot be removed. |
 | `silence` | none | `alarms.silencedUntil` = now + 120000. |
 | `ping` | `n` | server replies `pong` with same `n`; used to measure delay and keep the connection alive. |
 | `test` | `value` | v1 shell: stores `value` (any JSON up to 1 KB) in `state.test`, broadcast. Removed by S2/S3. |
@@ -157,7 +193,7 @@ Server to client:
 Rules:
 - Every accepted change is broadcast as a full `state` to **all** sockets (including the sender) in one go; total state
   is well under 4 KB, so no diffs in v1.
-- Server is the only writer of `rev`, `glide.startedAt`, `nibp.at`, `silencedUntil`, `events`.
+- Server is the only writer of `rev`, `patients[].id`, `glide.startedAt`, `nibpRead.at`, `silencedUntil`, `events`.
 - Last write wins; `baseRev` is optional and only recorded in `events` (no rejection) in v1.
 - Clients reconnect with backoff 0.5, 1, 2, 4, 8 s (max 8 s), then keep trying; on reconnect the server's `state` replaces
   local state. The monitor keeps drawing from the last state while disconnected and shows a small "reconnecting"
@@ -171,18 +207,18 @@ Rules:
 
 Values glide **on the monitor** from a start to a target; the network carries only the change, not each step.
 
-- A `set` that changes numerics records `glide = { startedAt, durationMs, from }` where `from` is the **currently
+- Glide is per patient. A `set` that changes that patient's numerics records `glide = { startedAt, durationMs, from }` where `from` is the **currently
   displayed** values at that moment, computed server-side by evaluating the previous glide at `now` (so a second
   change mid-glide starts from where the numbers actually are).
-- Displayed value at time `t` for numeric `x`: `from.x + (patient.x - from.x) * ease(clamp((t - startedAt) / durationMs, 0, 1))`
+- Displayed value at time `t` for numeric `x`: `from.x + (target.x - from.x) * ease(clamp((t - startedAt) / durationMs, 0, 1))`
   with `ease(u) = u` (linear) in v1. `durationMs = 0` is an immediate jump.
 - `t` is the monitor's local time plus `offset` (server `now` minus local time at the moment `state` arrived, minimum-
   round-trip estimate from `ping`/`pong`), so all monitors show the same value at the same moment.
 - Integers shown rounded (HR, SpO2, RR, EtCO2, pressures); temperature one decimal.
 - Rhythm, module and limit changes are instant (no glide). Changing rhythm keeps the glided HR as the start.
-- Wave generators read the glided values every frame (heart rate sets beat interval; SpO2 sets pleth amplitude; RR
+- Wave generators read the glided values every frame (`etco2Shape`, `spo2Quality`, `abpDamping`, `ie`, `st`, `pvcPerMin` shape the waves; heart rate sets beat interval; SpO2 sets pleth amplitude; RR
   sets breath interval; EtCO2 sets capnogram plateau; ABP sys/dia set the arterial wave height).
-- Presets (S3) are just a `set` with many fields and a glide time.
+- Presets (S3) are just a `set` with many fields and a glide time, sent to a chosen patient (`p`).
 
 ## 7. Alarm model
 
@@ -271,24 +307,24 @@ sends it into the room (`theme: "custom"`, `themeJson`), in which case every mon
 Answers to questions a fresh reader asked; they override anything looser above.
 
 - **Atomic patches.** One bad path or value rejects the whole `set` (`bad_patch`); nothing changes, no `rev` bump.
-  `modules` replaces the list (not a merge); `ecg` is always drawn even if missing from the list; unknown ids are kept
+  `modules` replaces the list (not a merge); every module, ECG included, can be missing from it; unknown ids are kept
   and ignored. Limits merge per parameter name; `low <= high`. `temp` is rounded to 0.1 on the server.
-- **Initial glide:** `startedAt` = room creation time, `durationMs` 0, `from` = default numerics (so the displayed
+- **Initial glide (each new patient):** `startedAt` = creation time, `durationMs` 0, `from` = default numerics (so the displayed
   values equal the targets).
-- **One glide at a time.** `glide` has a single `durationMs` for all numerics. A `set` restarts the glide only if its
+- **One glide per patient.** Each patient's `glide` has a single `durationMs` for all its numerics; other patients are untouched. A `set` restarts that patient's glide only if its
   patch changes at least one numeric target (`hr spo2 etco2 rr temp nibp abp`; sending the same value still restarts it).
-  Rhythm, modules, limits and `patient.glideMs` alone never restart it. Duration = message `glideMs` if given, else
-  `patient.glideMs` (after the patch). `glideMs` is 0 to 600000; message `glideMs` is not stored. `from` is stored raw
+  Rhythm, modules, limits, sensor-off flags, wave shapes, `pvcPerMin`, `ie`, `pulse`, `st`, `flutterRatio`, `label` and `glideMs` alone never restart it. Duration = message `glideMs` if given, else
+  the patient's `glideMs` (after the patch). `glideMs` is 0 to 600000; message `glideMs` is not stored. `from` is stored raw
   (unrounded); only display and the `nibp` reading round, with `Math.round`.
 - **Rhythm change** does not touch the glide; the HR keeps gliding. `hr` is validated 0-300 whatever the rhythm; for
   `vf` and `asystole` the monitor shows `--`.
-- **NIBP cycle.** The server has no timer. When `nibp.mode` is `cycle`, each monitor, when `nibp.at + cycleSec*1000`
-  passes, sends `{t:"nibp", after:<the nibp.at it saw>}`. The server ignores a `nibp` whose `after` is not the current
-  `nibp.at`, so with several monitors only the first counts. A `nibp` without `after` (controller "measure now") always
+- **NIBP cycle.** The server has no timer. When a patient's `nibpRead.mode` is `cycle`, each monitor showing it, when `nibpRead.at + cycleSec*1000`
+  passes, sends `{t:"nibp", p, after:<the nibpRead.at it saw>}`. The server ignores a `nibp` whose `after` is not the current
+  `nibpRead.at`, so with several monitors only the first counts. A `nibp` without `after` (controller "measure now") always
   counts.
 - **Roles** are labels only in v1: any client may send any message. `id` is for the event log; duplicates are harmless.
   `hello` is optional and answered with `state`.
-- **Expiry** is extended only by accepted changes (`set`, `nibp`, `silence`, `test`), not by `ping`, `hello` or a
+- **Expiry** is extended only by accepted changes (`set`, `nibp`, `addPatient`, `removePatient`, `silence`, `test`), not by `ping`, `hello` or a
   connection. On close code 4001 the client does not reconnect: it shows "room ended" with a link to start a new one.
   Code 4002 is sent after accepting the socket when 20 others are already connected.
 - **Errors:** `bad_json` (not JSON, no `t`, or unknown `t`), `too_big`, `rate`, `bad_patch`. At the rate limit, excess
@@ -302,6 +338,11 @@ Answers to questions a fresh reader asked; they override anything looser above.
   or HR > 150; plus asystole, VF, VT regardless of limits. Silencing is per monitor (its own `silencedUntil` is shared, but
   a "higher priority ends the silence" is evaluated locally), so monitors may differ for a moment. "Similar notices" for
   low priority: "NIBP not measured > 10 min" only in v1 (never raised if no reading has been taken yet).
-- **Event text** is `set <top-level keys>`, `nibp`, `silence`, `test`. `baseRev` is accepted and ignored in v1.
+- **Event text** is `set <top-level keys>`, `nibp`, `add <id>`, `remove <id>`, `silence`, `test`. `baseRev` is accepted and ignored in v1.
 - **Clock offset:** ping on open and every 10 s; keep the sample with the smallest round trip.
 - **Defaults (new room)** are exactly `defaultState()` in `src/shared/schema.js`.
+- **Patients.** `p` on `set`/`nibp` names a patient; an unknown `p` is `bad_patch`; no `p` means the first. New ids are the
+  lowest free `p<n>`. A monitor with `?p=<id>` for a removed or unknown patient shows the first patient. `id` is not
+  patchable. Alarm limits and modules are room-wide, not per patient.
+- **Schema stays v1.** All additions are new fields with defaults; a stored room from before this change is not migrated
+  (rooms expire after 24 h and nothing was deployed with the old shape).

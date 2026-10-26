@@ -7,21 +7,38 @@ export const SCHEMA_VERSION = 1;
 export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const CODE_LENGTH = 6;
 
-export const RHYTHMS = ['sinus', 'sinus_brady', 'sinus_tachy', 'af', 'flutter', 'svt', 'vt', 'vf', 'asystole', 'pea'];
+export const RHYTHMS = [
+  'sinus', 'sinus_brady', 'sinus_tachy', 'af', 'flutter', 'svt', 'vt', 'vf', 'asystole', 'pea',
+  // reserved for S2: accepted and stored now so the schema does not change later
+  'first_degree_block', 'mobitz1', 'mobitz2', 'chb', 'torsades', 'paced',
+];
+/** Rhythms with no pulse; `vt` has one unless the patient says `pulse: false`. */
+export const PULSELESS_RHYTHMS = ['vf', 'asystole', 'pea'];
+export const ETCO2_SHAPES = ['normal', 'obstructive', 'curare', 'rebreathing', 'none'];
+export const SPO2_QUALITIES = ['good', 'poor', 'none'];
+export const ABP_DAMPINGS = ['normal', 'over', 'under'];
+/** Sensors that can be switched off per patient. */
+export const SENSORS = ['ecg', 'spo2', 'nibp', 'abp', 'etco2'];
+export const MAX_PATIENTS = 8;
 export const MODULE_IDS = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp', 'abp'];
 export const DEFAULT_MODULES = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp'];
 
 /**
  * @typedef {{ sys: number, dia: number }} Pressure
  * @typedef {{ hr: number, spo2: number, etco2: number, rr: number, temp: number, nibp: Pressure, abp: Pressure }} Numerics
- * @typedef {Numerics & { rhythm: string, glideMs: number }} Patient
+ * @typedef {Record<string, boolean>} SensorOff
  * @typedef {{ startedAt: number, durationMs: number, from: Numerics }} Glide
  * @typedef {{ sys: number, dia: number, at: number, mode: 'manual' | 'cycle', cycleSec: number }} NibpReading
+ * @typedef {Numerics & {
+ *   id: string, label: string, rhythm: string, glideMs: number, pulse: boolean, flutterRatio: number, st: number,
+ *   pvcPerMin: number, ie: number, off: SensorOff, etco2Shape: string, spo2Quality: string, abpDamping: string,
+ *   glide: Glide, nibpRead: NibpReading
+ * }} Patient
  * @typedef {Record<string, [number, number]>} Limits
  * @typedef {{ limits: Limits, enabled: boolean, silencedUntil: number, latched: string[] }} Alarms
  * @typedef {{ t: number, by: string, what: string }} RoomEvent
  * @typedef {{
- *   schema: number, rev: number, patient: Patient, glide: Glide, nibp: NibpReading, modules: string[],
+ *   schema: number, rev: number, patients: Patient[], modules: string[],
  *   alarms: Alarms, events: RoomEvent[], theme: string, themeJson?: object, test?: unknown
  * }} RoomState
  */
@@ -32,6 +49,22 @@ export function defaultNumerics() {
 }
 
 /**
+ * @param {string} id
+ * @param {string} label
+ * @param {number} now server ms
+ * @returns {Patient}
+ */
+export function defaultPatient(id, label, now) {
+  return {
+    id, label, rhythm: 'sinus', ...defaultNumerics(), glideMs: 0, pulse: true, flutterRatio: 2, st: 0,
+    pvcPerMin: 0, ie: 2, off: { ecg: false, spo2: false, nibp: false, abp: false, etco2: false },
+    etco2Shape: 'normal', spo2Quality: 'good', abpDamping: 'normal',
+    glide: { startedAt: now, durationMs: 0, from: defaultNumerics() },
+    nibpRead: { sys: 120, dia: 75, at: now, mode: 'manual', cycleSec: 0 },
+  };
+}
+
+/**
  * @param {number} now server ms
  * @returns {RoomState}
  */
@@ -39,9 +72,7 @@ export function defaultState(now) {
   return {
     schema: SCHEMA_VERSION,
     rev: 0,
-    patient: { rhythm: 'sinus', ...defaultNumerics(), glideMs: 0 },
-    glide: { startedAt: now, durationMs: 0, from: defaultNumerics() },
-    nibp: { sys: 120, dia: 75, at: now, mode: 'manual', cycleSec: 0 },
+    patients: [defaultPatient('p1', 'Bed 1', now)],
     modules: [...DEFAULT_MODULES],
     alarms: {
       limits: {
@@ -79,7 +110,12 @@ export function newCode(rand) {
 const RANGES = {
   hr: [0, 300], spo2: [0, 100], etco2: [0, 100], rr: [0, 60], temp: [25, 43],
   sys: [0, 350], dia: [0, 300], glideMs: [0, 600000], cycleSec: [0, 3600],
+  pvcPerMin: [0, 30], ie: [0.5, 5], st: [-3, 3],
 };
+const ENUMS = { etco2Shape: ETCO2_SHAPES, spo2Quality: SPO2_QUALITIES, abpDamping: ABP_DAMPINGS };
+const TARGET_KEYS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'nibp', 'abp'];
+/** Patient fields that are plain numbers with a range (everything but the objects and enums). */
+const NUMBER_KEYS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'glideMs', 'pvcPerMin', 'ie', 'st'];
 
 /**
  * @param {unknown} v
@@ -113,6 +149,26 @@ export function validatePatch(patch) {
         if (k === 'rhythm') {
           if (!RHYTHMS.includes(x)) return { ok: false, msg: 'unknown rhythm' };
           pt.rhythm = x;
+        } else if (k === 'label') {
+          if (typeof x !== 'string' || !x.trim() || x.length > 24) return { ok: false, msg: 'label must be 1-24 characters' };
+          pt.label = x.trim();
+        } else if (k === 'pulse') {
+          if (typeof x !== 'boolean') return { ok: false, msg: 'pulse must be true or false' };
+          pt.pulse = x;
+        } else if (k === 'flutterRatio') {
+          if (x !== 2 && x !== 3 && x !== 4) return { ok: false, msg: 'flutterRatio must be 2, 3 or 4' };
+          pt.flutterRatio = x;
+        } else if (k === 'off') {
+          if (!isObj(x)) return { ok: false, msg: 'off must be an object' };
+          pt.off = {};
+          for (const kk of Object.keys(x)) {
+            if (!SENSORS.includes(kk)) return { ok: false, msg: `unknown sensor off.${kk}` };
+            if (typeof x[kk] !== 'boolean') return { ok: false, msg: `off.${kk} must be true or false` };
+            pt.off[kk] = x[kk];
+          }
+        } else if (k in ENUMS) {
+          if (!ENUMS[/** @type {keyof typeof ENUMS} */ (k)].includes(x)) return { ok: false, msg: `unknown ${k}` };
+          pt[k] = x;
         } else if (k === 'nibp' || k === 'abp') {
           if (!isObj(x)) return { ok: false, msg: `${k} must be an object` };
           pt[k] = {};
@@ -121,11 +177,11 @@ export function validatePatch(patch) {
             if (!inRange(x[kk], /** @type {[number, number]} */ (RANGES[kk]))) return { ok: false, msg: `${k}.${kk} out of range` };
             pt[k][kk] = x[kk];
           }
-        } else if (k in RANGES && k !== 'sys' && k !== 'dia' && k !== 'cycleSec') {
+        } else if (NUMBER_KEYS.includes(k)) {
           if (!inRange(x, /** @type {[number, number]} */ (RANGES[/** @type {keyof typeof RANGES} */ (k)]))) {
             return { ok: false, msg: `${k} out of range` };
           }
-          pt[k] = k === 'temp' ? Math.round(x * 10) / 10 : x;
+          pt[k] = k === 'temp' ? Math.round(x * 10) / 10 : k === 'pvcPerMin' ? Math.round(x) : x;
         } else return { ok: false, msg: `unknown field patient.${k}` };
       }
       out.patient = pt;
@@ -180,6 +236,8 @@ export function validatePatch(patch) {
   }
   return { ok: true, patch: out };
 }
+
+export const TARGETS = TARGET_KEYS;
 
 /** The numeric fields that glide. */
 export function numericsOf(/** @type {Numerics} */ o) {

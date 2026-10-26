@@ -8,7 +8,7 @@ test('a new client gets the current state (late joiner)', async () => {
   await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { hr: 130 } } }));
   const first = await hub.hello();
   assert.equal(first.t, 'state');
-  assert.equal(first.state.patient.hr, 130);
+  assert.equal(first.state.patients[0].hr, 130);
   assert.equal(first.state.rev, 1);
 });
 
@@ -16,8 +16,8 @@ test('set is broadcast to everyone and bumps rev by one', async () => {
   const { hub } = makeHub();
   const a = await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { spo2: 85, rhythm: 'af' } } }));
   assert.equal(a.broadcast.t, 'state');
-  assert.equal(a.broadcast.state.patient.spo2, 85);
-  assert.equal(a.broadcast.state.patient.rhythm, 'af');
+  assert.equal(a.broadcast.state.patients[0].spo2, 85);
+  assert.equal(a.broadcast.state.patients[0].rhythm, 'af');
   assert.equal(a.broadcast.state.rev, 1);
   const b = await hub.onMessage('c-2', msg({ t: 'set', patch: { modules: ['ecg', 'abp'] } }));
   assert.equal(b.broadcast.state.rev, 2);
@@ -63,7 +63,7 @@ test('state persists across a restart (hibernation wake) via storage', async () 
   await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { hr: 55 } } }));
   const { RoomHub } = await import('../src/room/hub.js');
   const woke = new RoomHub(storage, () => clock.t);
-  assert.equal((await woke.state()).patient.hr, 55);
+  assert.equal((await woke.state()).patients[0].hr, 55);
 });
 
 test('silence sets silencedUntil to now + 2 min', async () => {
@@ -77,9 +77,9 @@ test('glide: a change records a glide from the values shown at that moment', asy
   await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { hr: 180 } }, glideMs: 10000 }));
   clock.t += 5000; // halfway: 130
   const r = await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { hr: 60 } }, glideMs: 10000 }));
-  assert.equal(Math.round(r.broadcast.state.glide.from.hr), 130);
-  assert.equal(r.broadcast.state.glide.durationMs, 10000);
-  assert.equal(r.broadcast.state.glide.startedAt, clock.t);
+  assert.equal(Math.round(r.broadcast.state.patients[0].glide.from.hr), 130);
+  assert.equal(r.broadcast.state.patients[0].glide.durationMs, 10000);
+  assert.equal(r.broadcast.state.patients[0].glide.startedAt, clock.t);
 });
 
 test('nibp now takes the glided target values and stamps the time', async () => {
@@ -87,8 +87,8 @@ test('nibp now takes the glided target values and stamps the time', async () => 
   await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { nibp: { sys: 80, dia: 40 } } }, glideMs: 0 }));
   clock.t += 1;
   const r = await hub.onMessage('c-1', msg({ t: 'nibp' }));
-  assert.equal(r.broadcast.state.nibp.sys, 80);
-  assert.equal(r.broadcast.state.nibp.at, clock.t);
+  assert.equal(r.broadcast.state.patients[0].nibpRead.sys, 80);
+  assert.equal(r.broadcast.state.patients[0].nibpRead.at, clock.t);
 });
 
 test('rooms expire after 24 h idle: alarm deletes state; before that it re-arms', async () => {
@@ -102,7 +102,7 @@ test('rooms expire after 24 h idle: alarm deletes state; before that it re-arms'
   clock.t = t0 + IDLE_MS;
   assert.deepEqual(await hub.onAlarm(), { expired: true });
   assert.equal(storage.data.size, 0);
-  assert.equal((await hub.state()).patient.hr, 80); // fresh default room
+  assert.equal((await hub.state()).patients[0].hr, 80); // fresh default room
 });
 
 test('activity extends the expiry', async () => {
@@ -125,7 +125,7 @@ test('events log keeps the newest 20', async () => {
 
 test('nibp with a stale "after" is ignored (several monitors, one reading)', async () => {
   const { hub, clock } = makeHub();
-  const at0 = (await hub.state()).nibp.at;
+  const at0 = (await hub.state()).patients[0].nibpRead.at;
   clock.t += 10;
   const first = await hub.onMessage('m-1', msg({ t: 'nibp', after: at0 }));
   assert.equal(first.broadcast.state.rev, 1);
@@ -138,5 +138,43 @@ test('one bad value rejects the whole set', async () => {
   const { hub } = makeHub();
   const r = await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { hr: 100 }, modules: 'x' } }));
   assert.equal(r.reply.code, 'bad_patch');
-  assert.equal((await hub.state()).patient.hr, 80);
+  assert.equal((await hub.state()).patients[0].hr, 80);
+});
+
+test('patients: set targets one patient by id; default is the first', async () => {
+  const { hub } = makeHub();
+  const add = await hub.onMessage('c-1', msg({ t: 'addPatient', label: 'Bed B' }));
+  const ids = add.broadcast.state.patients.map((p) => p.id);
+  assert.deepEqual(ids, ['p1', 'p2']);
+  await hub.onMessage('c-1', msg({ t: 'set', p: 'p2', patch: { patient: { hr: 40, off: { spo2: true } } } }));
+  const s = await hub.state();
+  assert.equal(s.patients[0].hr, 80);
+  assert.equal(s.patients[1].hr, 40);
+  assert.equal(s.patients[1].off.spo2, true);
+  assert.equal(s.patients[1].off.ecg, false);
+  const bad = await hub.onMessage('c-1', msg({ t: 'set', p: 'zz', patch: { patient: { hr: 40 } } }));
+  assert.equal(bad.reply.code, 'bad_patch');
+});
+
+test('patients: glide and NIBP are per patient', async () => {
+  const { hub } = makeHub();
+  await hub.onMessage('c-1', msg({ t: 'addPatient' }));
+  await hub.onMessage('c-1', msg({ t: 'set', p: 'p2', patch: { patient: { hr: 150 } }, glideMs: 5000 }));
+  const s = await hub.state();
+  assert.equal(s.patients[0].glide.durationMs, 0);
+  assert.equal(s.patients[1].glide.durationMs, 5000);
+  const at0 = s.patients[0].nibpRead.at;
+  const r = await hub.onMessage('c-1', msg({ t: 'nibp', p: 'p2' }));
+  assert.equal(r.broadcast.state.patients[0].nibpRead.at, at0);
+});
+
+test('patients: max 8, cannot remove the last, remove by id', async () => {
+  const { hub } = makeHub();
+  for (let i = 0; i < 7; i++) assert.ok((await hub.onMessage('c-1', msg({ t: 'addPatient' }))).broadcast);
+  assert.equal((await hub.onMessage('c-1', msg({ t: 'addPatient' }))).reply.code, 'bad_patch');
+  assert.ok((await hub.onMessage('c-1', msg({ t: 'removePatient', p: 'p3' }))).broadcast);
+  assert.equal((await hub.state()).patients.length, 7);
+  const { hub: one } = makeHub();
+  assert.equal((await one.onMessage('c-1', msg({ t: 'removePatient', p: 'p1' }))).reply.code, 'bad_patch');
+  assert.equal((await hub.onMessage('c-1', msg({ t: 'removePatient', p: 'nope' }))).reply.code, 'bad_patch');
 });

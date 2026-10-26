@@ -1,7 +1,7 @@
 // @ts-check
 // Room logic with no Cloudflare or DOM types: takes a storage object, returns what to send. The Durable Object
 // (worker/room.js) is a thin shell around this, so node can test it with a fake storage (DESIGN.md sections 2, 5).
-import { SCHEMA_VERSION, defaultState, numericsOf, validatePatch } from '../shared/schema.js';
+import { MAX_PATIENTS, SCHEMA_VERSION, TARGETS, numericsOf, defaultPatient, defaultState, validatePatch } from '../shared/schema.js';
 import { displayed, restartGlide } from '../engine/glide.js';
 
 /** @typedef {import('../shared/schema.js').RoomState} RoomState */
@@ -70,9 +70,12 @@ export class RoomHub {
       case 'hello': return { reply: await this.hello() };
       case 'set': return this.apply(clientId, now, msg, (s) => this.doSet(s, msg, now));
       case 'nibp': {
-        if (msg.after !== undefined && msg.after !== (await this.state()).nibp.at) return {};
-        return this.apply(clientId, now, msg, (s) => this.doNibp(s, now));
+        const cur = pick(await this.state(), msg.p);
+        if (cur && msg.after !== undefined && msg.after !== cur.nibpRead.at) return {};
+        return this.apply(clientId, now, msg, (s) => this.doNibp(s, msg.p, now));
       }
+      case 'addPatient': return this.apply(clientId, now, msg, (s) => this.doAdd(s, msg, now));
+      case 'removePatient': return this.apply(clientId, now, msg, (s) => this.doRemove(s, msg));
       case 'silence': return this.apply(clientId, now, msg, (s) => { s.alarms.silencedUntil = now + SILENCE_MS; return 'silence'; });
       case 'test': return this.apply(clientId, now, msg, (s) => {
         if (JSON.stringify(msg.value ?? null).length > MAX_TEST_CHARS) throw new BadPatch('test value too large');
@@ -111,51 +114,86 @@ export class RoomHub {
 
   /**
    * @param {RoomState} s the copy to change
-   * @param {any} msg
+   * @param {any} msg `p` names the patient (default: the first)
    * @param {number} now
    */
   doSet(s, msg, now) {
     const v = validatePatch(msg.patch);
     if (!v.ok) throw new BadPatch(v.msg);
     const p = v.patch;
-    const before = structuredClone(s);
+    const pt = pick(s, msg.p);
+    if (!pt) throw new BadPatch('unknown patient');
+    const before = structuredClone(pt);
     if (p.patient) {
-      const { nibp, abp, ...flat } = p.patient;
-      Object.assign(s.patient, flat);
-      if (nibp) Object.assign(s.patient.nibp, nibp);
-      if (abp) Object.assign(s.patient.abp, abp);
+      const { nibp, abp, off, ...flat } = p.patient;
+      Object.assign(pt, flat);
+      if (nibp) Object.assign(pt.nibp, nibp);
+      if (abp) Object.assign(pt.abp, abp);
+      if (off) Object.assign(pt.off, off);
     }
     if (p.modules) s.modules = p.modules;
     if (p.alarms) {
       if (p.alarms.limits) Object.assign(s.alarms.limits, p.alarms.limits);
       if ('enabled' in p.alarms) s.alarms.enabled = p.alarms.enabled;
     }
-    if (p.nibp) Object.assign(s.nibp, p.nibp);
+    if (p.nibp) Object.assign(pt.nibpRead, p.nibp);
     if (p.theme) s.theme = p.theme;
     if (p.themeJson) s.themeJson = p.themeJson;
 
-    const targetKeys = p.patient ? Object.keys(p.patient).filter((k) => k !== 'rhythm' && k !== 'glideMs') : [];
-    if (targetKeys.length) {
-      let ms = s.patient.glideMs;
+    if (p.patient && TARGETS.some((k) => k in p.patient)) {
+      let ms = pt.glideMs;
       if (msg.glideMs !== undefined) {
         if (typeof msg.glideMs !== 'number' || !(msg.glideMs >= 0 && msg.glideMs <= 600000)) throw new BadPatch('glideMs out of range');
         ms = msg.glideMs;
       }
-      s.glide = restartGlide(before, now, ms);
+      pt.glide = restartGlide(before, now, ms);
     }
     return `set ${Object.keys(p).join(',')}`;
   }
 
   /**
    * @param {RoomState} s
+   * @param {string | undefined} id
    * @param {number} now
    */
-  doNibp(s, now) {
-    const d = displayed(s, now).nibp;
-    s.nibp.sys = Math.round(d.sys);
-    s.nibp.dia = Math.round(d.dia);
-    s.nibp.at = now;
+  doNibp(s, id, now) {
+    const pt = pick(s, id);
+    if (!pt) throw new BadPatch('unknown patient');
+    const d = displayed(pt, now).nibp;
+    pt.nibpRead.sys = Math.round(d.sys);
+    pt.nibpRead.dia = Math.round(d.dia);
+    pt.nibpRead.at = now;
     return 'nibp';
+  }
+
+  /**
+   * @param {RoomState} s
+   * @param {any} msg
+   * @param {number} now
+   */
+  doAdd(s, msg, now) {
+    if (s.patients.length >= MAX_PATIENTS) throw new BadPatch(`at most ${MAX_PATIENTS} patients`);
+    let label = `Bed ${s.patients.length + 1}`;
+    if (msg.label !== undefined) {
+      if (typeof msg.label !== 'string' || !msg.label.trim() || msg.label.length > 24) throw new BadPatch('label must be 1-24 characters');
+      label = msg.label.trim();
+    }
+    let n = 1;
+    while (s.patients.some((x) => x.id === `p${n}`)) n++;
+    s.patients.push(defaultPatient(`p${n}`, label, now));
+    return `add p${n}`;
+  }
+
+  /**
+   * @param {RoomState} s
+   * @param {any} msg
+   */
+  doRemove(s, msg) {
+    if (s.patients.length <= 1) throw new BadPatch('cannot remove the last patient');
+    const i = s.patients.findIndex((x) => x.id === msg.p);
+    if (i < 0) throw new BadPatch('unknown patient');
+    s.patients.splice(i, 1);
+    return `remove ${msg.p}`;
   }
 
   /**
@@ -190,6 +228,14 @@ export class RoomHub {
 }
 
 class BadPatch extends Error {}
+
+/**
+ * @param {RoomState} s
+ * @param {unknown} id patient id, or undefined for the first patient
+ */
+function pick(s, id) {
+  return id === undefined ? s.patients[0] : s.patients.find((x) => x.id === id);
+}
 
 /**
  * @param {string} code
