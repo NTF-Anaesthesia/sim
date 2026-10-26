@@ -2,3 +2,4 @@
 node_modules/
 *-debug.log
 dist/
+test/e2e/out/

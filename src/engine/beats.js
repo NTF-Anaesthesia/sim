@@ -53,7 +53,7 @@ export const CHB_ATRIAL_RATE = 78;
 
 /** @param {string} rhythm */
 export function rhythmInfo(rhythm) {
-  return /** @type {Record<string, typeof RHYTHM_INFO.sinus>} */ (RHYTHM_INFO)[rhythm] ?? RHYTHM_INFO.sinus;
+  return /** @type {Record<string, typeof RHYTHM_INFO.sinus>} */ (/** @type {unknown} */ (RHYTHM_INFO))[rhythm] ?? RHYTHM_INFO.sinus;
 }
 
 export class BeatScheduler {

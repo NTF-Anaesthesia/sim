@@ -7,11 +7,11 @@
 <meta name="theme-color" content="#000000">
 <link rel="manifest" href="../manifest.webmanifest">
 <link rel="icon" href="../icons/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../src/ui/page.css">
+<link rel="stylesheet" href="../src/ui/monitor.css">
 <script>addEventListener('beforeinstallprompt', e => e.preventDefault());</script>
 </head>
 <body>
-<main id="app"><p class="hint">Loading…</p></main>
+<div id="app"><p class="hint">Loading…</p></div>
 <script type="module">
 import { mountMonitor } from '../src/monitor/index.js';
 import { isCode, normalizeCode } from '../src/shared/schema.js';

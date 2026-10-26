@@ -286,6 +286,17 @@ Rules: a theme file is at most 32 KB; colours are `#rrggbb`; unknown keys are ig
 not a whole-theme failure. The theme is **per device** (stored in the monitor's localStorage) unless the controller
 sends it into the room (`theme: "custom"`, `themeJson`), in which case every monitor in the room uses it.
 
+**S2 additions (all optional, defaulted in `src/theme/default.js`, which is the in-code source of the default theme):**
+`colors.grid` and `colors.flashText`; `waves.pxPerMm` (pixels per mm, so speed 25 mm/s is 100 px/s at 4), `waves.grid`
+(draws a 5 mm grid behind the waves); `numerics.fontScale`; `nibp.inflateMs` / `nibp.measureMs` (0 = result at once);
+`layout.grid.rows` may be fractional in cells; `layout.cells[].stack`: cells that share a stack name split the stack's
+area top to bottom by their `h` shares, so a module that is off (or a cell skipped, e.g. the capnography RR when the `rr`
+module is on) hands its space to the others; `labels.wave` (wave captions) and `labels.off` (sensor-off texts).
+Wave speed and gain, units (`units`: co2 mmHg or kPa, temp C or F), volumes and `jitter` are also per-device settings
+under `sim.settings.<key>` (`sweep.<wave>`, `gain.<wave>`, `vol.<channel>`); a device setting wins over the theme.
+Modules register themselves (`src/monitor/modules.js`, waves in `src/waves/registry.js`): a new module is a
+`register({...})` call, not a change to the layout or drawing code.
+
 ## 9. Build rules and options
 
 - Installable but never prompted: the pages have a manifest and a pass-through service worker (offline mode is Later); each page calls

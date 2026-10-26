@@ -11,3 +11,11 @@ Lasting rules live in `AGENTS.md`. Points worth remembering go here.
 - Pages use relative paths. `/m/<code>` is the same page for any code, so `../src/...` imports work from there.
 - Local browser test: `CHROMIUM_PATH=<chrome> npm run e2e` with `npx wrangler dev --port 8787` running.
 - Actions cannot open PRs in this repo (the org setting returned a conflict when set); sessions open PRs with the GitHub tools.
+- Monitor (S2): beat events drive ECG, pleth, ABP and the QRS beep; breath events drive the capnogram; both are made 0.6 s
+  ahead on the display clock (`performance.now()`), so a rhythm change shows at the next beat. Glide, silence and NIBP use
+  the server clock (`client.serverNow()`). The schedulers run in real time: tests step them like frames (a jump of more than
+  a couple of seconds counts as a pause and restarts them).
+- Monitor code adapted from the owner's private notes and the `ot` repo (read-only reference): lane sweep, synth tones,
+  alarm tones, rhythm model, numerics jitter. Rewritten as plain modules with the theme and registries; no code is shared.
+- The monitor keeps a hidden `data-testid="value"` element with the S1 test value until S3 drops the controller test input.
+- Monitor e2e: `CHROMIUM_PATH=<chrome> node test/e2e/monitor.mjs` (screenshots go to `test/e2e/out/`, ignored by git).
