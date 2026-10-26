@@ -46,7 +46,7 @@ Every example value is the default unless stated. Ranges are enforced; a value o
 | `font.numericScale`, `font.labelScale` | `1` | Size multiplier, 0.3 to 3. |
 | `font.waveLabelScale` | `1` | Extra size multiplier for wave captions only (on top of `font.labelScale`), 0.3 to 3. |
 | `font.numericWeight`, `font.labelWeight` | `700`, `500` | 100 to 900. |
-| `colors.ecg spo2 etco2 abp abp2 cvp eeg` | `"#00e000"` | Wave line colour and the matching numeric colour. |
+| `colors.ecg ecg2 spo2 etco2 abp abp2 cvp eeg` | `"#00e000"` | Wave line colour and the matching numeric colour. |
 | `colors.bis` | `"#c080ff"` | BIS numeric colour (the strip uses `colors.eeg`). |
 | `colors.nibp rr temp hr` | `"#ffffff"` | Numeric colours (`hr` is the heart rate numeric). |
 | `colors.alarmHigh alarmMed alarmLow` | `"#ff2020"` | Alarm bar and flashing numeric colours by priority. |
@@ -60,7 +60,7 @@ Every example value is the default unless stated. Ranges are enforced; a value o
 | `layout.cells[]` | see below | One entry per module part. At most 60. |
 | `layout.alarmBar` | `{ "x": 8, "y": 0, "w": 4, "h": 1 }` | Where the alarm message bar sits. |
 | `waves.speedMmPerSec` | `25` | Sweep speed for every wave, 1 to 100 mm/s. |
-| `waves.<id>.speed` | `{ "ecg": { "speed": 25 } }` | Per-wave speed (`ecg`, `spo2`, `etco2`, `abp`, `abp2`, `cvp`, `eeg`), 1 to 100; falls back to `speedMmPerSec`. |
+| `waves.<id>.speed` | `{ "ecg": { "speed": 25 } }` | Per-wave speed (`ecg`, `ecg2`, `spo2`, `etco2`, `abp`, `abp2`, `cvp`, `eeg`), 1 to 100; falls back to `speedMmPerSec`. |
 | `waves.<id>.gain` | `{ "ecg": { "gain": 1 } }` | Per-wave gain, 0.1 to 10. |
 | `waves.<id>.scaleLines` | `{ "abp": { "scaleLines": [80, 120] } }` | Up to 4 dotted reference lines in the wave's units, with the value in small text at the left, in the wave's colour but dim. `abp` and `abp2` (0 to 300), `cvp` (-5 to 40) and `etco2` (0 to 100) in mmHg, `ecg` in mV (-2 to 5). Default `[]` (none). |
 | `waves.pxPerMm` | `4` | Pixels per mm (25 mm/s at 4 is 100 px/s), 1 to 12. |
@@ -81,7 +81,7 @@ Every example value is the default unless stated. Ranges are enforced; a value o
 | `labels.colorMode` | `"parameter"` | `parameter`: captions, units and limits in the parameter's colour (the look before this field existed); `text`: in `colors.text`. |
 | `labels.<id>` | `"ecg": "HR"` | Numeric captions for `ecg spo2 etco2 rr nibp temp abp abp2 cvp bis`; up to 24 characters, no `< > { }` or backslash. |
 | `labels.units.<id>` | `"etco2": "mmHg"` | Unit text next to a numeric. |
-| `labels.wave.<id>` | `"ecg": "II"` | Caption on each wave. |
+| `labels.wave.<id>` | `"ecg": "II"` | Caption on each wave (`ecg2`, the second lead, defaults to `"V1"`). |
 | `labels.off.<id>` | `"ecg": "LEADS OFF"` | Text shown when a sensor is switched off. |
 | `alarmStyle.barPosition` | `"top-right"` | Where the message sits in the bar: `top`/`bottom` plus `left`/`center`/`right`. |
 | `alarmStyle.flashHz` | `1` | Flash rate of a flashing numeric or bar, 0.2 to 4. |

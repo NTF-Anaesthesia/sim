@@ -92,6 +92,9 @@ html, body { margin: 0; height: 100%; background: var(--m-bg, #000); color: var(
 .defib .d-energy { display: flex; align-items: center; gap: 6px; }
 .defib .d-j { min-width: 5.5em; text-align: center; font-size: 30px; font-weight: 700; }
 .defib .d-big { flex: 1; min-height: 72px; font-size: 24px; font-weight: 700; letter-spacing: .05em; }
+.defib .d-pace { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.defib .d-lbl { font-size: 12px; opacity: .7; text-transform: uppercase; letter-spacing: .05em; }
+.defib .d-pacer[aria-pressed=true] { background: var(--accent, #2d8cff); color: #fff; }
 .defib .d-shock[data-armed="1"] { background: var(--c-alarmHigh, #ff2020); color: var(--c-flashText, #000); border-color: var(--c-alarmHigh, #ff2020); }
 .defib .d-sync[aria-pressed="true"] { background: var(--c-alarmMed, #ffd000); color: var(--c-flashText, #000); border-color: var(--c-alarmMed, #ffd000); }
 .defib[data-waiting="1"] .d-msg { font-weight: 700; }

@@ -14,6 +14,12 @@ export function registerBuiltinWaves(registry) {
     blank: ({ patient }) => !!patient.off?.ecg,
   });
   registry.register({
+    id: 'ecg2', // a second ECG lead on the same beats (lead label comes from the theme, per screen)
+    sample: (src, t) => shockEcg(src, t) ?? ecgSample(src, t, 'v1'),
+    range: (gain) => [-0.9 / gain, 1.1 / gain],
+    blank: ({ patient }) => !!patient.off?.ecg,
+  });
+  registry.register({
     id: 'spo2',
     sample: (src, t, ctx) => shockPleth(src, t) ?? plethSample(src, t, ctx.patient.spo2Quality),
     range: (gain) => [-0.1 / gain, 1.4 / gain],

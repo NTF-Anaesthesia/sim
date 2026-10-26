@@ -13,6 +13,8 @@ export const RHYTHMS = [
   'sinus', 'sinus_brady', 'sinus_tachy', 'af', 'flutter', 'svt', 'vt', 'vf', 'asystole', 'pea',
   // reserved for S2: accepted and stored now so the schema does not change later
   'first_degree_block', 'mobitz1', 'mobitz2', 'chb', 'torsades', 'paced',
+  // V2 S8
+  'junctional', 'bigeminy', 'trigeminy',
 ];
 /** Rhythms with no pulse; `vt` has one unless the patient says `pulse: false`. */
 export const PULSELESS_RHYTHMS = ['vf', 'asystole', 'pea'];
@@ -26,11 +28,16 @@ export const SENSORS = ['ecg', 'spo2', 'nibp', 'abp', 'etco2', 'cvp', 'abp2', 'b
 /** Defib: what the rhythm becomes after a shock (`none` = no change; the phone sets it per patient), and the energy range in joules. */
 export const POST_SHOCK = ['none', 'sinus', 'sinus_brady', 'sinus_tachy', 'af', 'flutter', 'svt', 'vt', 'vf', 'asystole', 'pea'];
 export const SHOCK_JOULES = [1, 360];
+/** Transcutaneous pacing (V2 S8): `demand` fires only when no beat is sensed, `fixed` fires at the rate regardless. */
+export const PACE_MODES = ['demand', 'fixed'];
+/** Rhythms a pacing stimulus cannot capture (fibrillation and fast ventricular rhythms). */
+export const NO_CAPTURE_RHYTHMS = ['vf', 'vt', 'torsades'];
 /** Below this signal quality the BIS number is not trusted: shown as dashes and not judged against limits. */
 export const BIS_MIN_SQI = 15;
-const BIS_KEYS = ['bis', 'bisSqi', 'bisEmg', 'bisSr'];
+/** Numbers kept as whole numbers (BIS fields and pacing rate, mA, threshold). */
+const WHOLE_KEYS = ['bis', 'bisSqi', 'bisEmg', 'bisSr', 'paceRate', 'paceMa', 'paceThreshold'];
 export const MAX_PATIENTS = 8;
-export const MODULE_IDS = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp', 'abp', 'cvp', 'abp2', 'bis'];
+export const MODULE_IDS = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp', 'abp', 'cvp', 'abp2', 'bis', 'ecg2'];
 export const DEFAULT_MODULES = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp'];
 /** Named screens (S1 of V2): ids are server-made `s1`, `s2`, ...; `defib` is reserved for the defib screen. */
 export const MAX_SCREENS = 12;
@@ -49,6 +56,7 @@ export const DEVICE_CHOICES = ['theme', 'p'];
  *   id: string, label: string, rhythm: string, glideMs: number, pulse: boolean, flutterRatio: number, st: number,
  *   pvcPerMin: number, ie: number, off: SensorOff, etco2Shape: string, spo2Quality: string, abpDamping: string,
  *   cvpV: string, ppv: number, abp2Label: string, postShock: string, bisSqi: number, bisEmg: number, bisSr: number,
+ *   paceOn: boolean, paceRate: number, paceMa: number, paceMode: string, paceThreshold: number, paceNoSense: boolean,
  *   glide: Glide, nibpRead: NibpReading
  * }} Patient
  * @typedef {Record<string, [number, number]>} Limits
@@ -85,6 +93,7 @@ export function defaultPatient(id, label, now) {
     id, label, rhythm: 'sinus', ...defaultNumerics(), glideMs: 0, pulse: true, flutterRatio: 2, st: 0,
     pvcPerMin: 0, ie: 2, off: defaultOff(),
     etco2Shape: 'normal', spo2Quality: 'good', abpDamping: 'normal', cvpV: 'normal', ppv: 0, abp2Label: '', bisSqi: 98, bisEmg: 5, bisSr: 0, postShock: 'none',
+    paceOn: false, paceRate: 70, paceMa: 0, paceMode: 'demand', paceThreshold: 60, paceNoSense: false,
     glide: { startedAt: now, durationMs: 0, from: defaultNumerics() },
     nibpRead: { sys: 120, dia: 75, at: now, mode: 'manual', cycleSec: 0 },
   };
@@ -137,11 +146,12 @@ export const RANGES = {
   hr: [0, 300], spo2: [0, 100], etco2: [0, 100], rr: [0, 60], temp: [25, 43],
   sys: [0, 350], dia: [0, 300], glideMs: [0, 600000], cycleSec: [0, 3600],
   pvcPerMin: [0, 30], ie: [0.5, 5], st: [-3, 3], cvp: [-5, 40], ppv: [0, 40], bis: [0, 100], bisSqi: [0, 100], bisEmg: [0, 100], bisSr: [0, 100],
+  paceRate: [30, 180], paceMa: [0, 200], paceThreshold: [10, 250],
 };
-const ENUMS = { etco2Shape: ETCO2_SHAPES, spo2Quality: SPO2_QUALITIES, abpDamping: ABP_DAMPINGS, cvpV: CVP_VS, postShock: POST_SHOCK };
+const ENUMS = { etco2Shape: ETCO2_SHAPES, spo2Quality: SPO2_QUALITIES, abpDamping: ABP_DAMPINGS, cvpV: CVP_VS, postShock: POST_SHOCK, paceMode: PACE_MODES };
 const TARGET_KEYS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'nibp', 'abp', 'cvp', 'abp2', 'bis'];
 /** Patient fields that are plain numbers with a range (everything but the objects and enums). */
-const NUMBER_KEYS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'glideMs', 'pvcPerMin', 'ie', 'st', 'cvp', 'ppv', 'bis', 'bisSqi', 'bisEmg', 'bisSr'];
+const NUMBER_KEYS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'glideMs', 'pvcPerMin', 'ie', 'st', 'cvp', 'ppv', 'bis', 'bisSqi', 'bisEmg', 'bisSr', 'paceRate', 'paceMa', 'paceThreshold'];
 /** Second art line name shown on the monitor: up to 8 letters, digits, spaces and . - / (empty = the theme's label). */
 export const ABP2_LABEL = /^[A-Za-z0-9 ./-]{0,8}$/;
 
@@ -183,6 +193,9 @@ export function validatePatch(patch) {
         } else if (k === 'pulse') {
           if (typeof x !== 'boolean') return { ok: false, msg: 'pulse must be true or false' };
           pt.pulse = x;
+        } else if (k === 'paceOn' || k === 'paceNoSense') {
+          if (typeof x !== 'boolean') return { ok: false, msg: `${k} must be true or false` };
+          pt[k] = x;
         } else if (k === 'flutterRatio') {
           if (x !== 2 && x !== 3 && x !== 4) return { ok: false, msg: 'flutterRatio must be 2, 3 or 4' };
           pt.flutterRatio = x;
@@ -212,7 +225,7 @@ export function validatePatch(patch) {
           if (!inRange(x, /** @type {[number, number]} */ (RANGES[/** @type {keyof typeof RANGES} */ (k)]))) {
             return { ok: false, msg: `${k} out of range` };
           }
-          pt[k] = k === 'temp' ? Math.round(x * 10) / 10 : k === 'pvcPerMin' ? Math.round(x) : k === 'cvp' || k === 'ppv' ? Math.round(x * 2) / 2 : BIS_KEYS.includes(k) ? Math.round(x) : x;
+          pt[k] = k === 'temp' ? Math.round(x * 10) / 10 : k === 'pvcPerMin' ? Math.round(x) : k === 'cvp' || k === 'ppv' ? Math.round(x * 2) / 2 : WHOLE_KEYS.includes(k) ? Math.round(x) : x;
         } else return { ok: false, msg: `unknown field patient.${k}` };
       }
       out.patient = pt;
@@ -358,6 +371,31 @@ export function validateIam(msg) {
   const dev = msg?.dev ?? [];
   if (!Array.isArray(dev) || !dev.every((d) => DEVICE_CHOICES.includes(d))) return { ok: false, msg: 'bad device choices' };
   return { ok: true, s, dev: [...new Set(dev)] };
+}
+
+/**
+ * The learner's side of pacing (`pace` message from a defib screen): any of `on`, `rate`, `ma`, `mode`. The threshold
+ * and failure to sense are the phone's (`set`), so they are not accepted here.
+ * @param {any} msg
+ * @returns {{ ok: true, patch: Record<string, any> } | { ok: false, msg: string }}
+ */
+export function validatePace(msg) {
+  /** @type {Record<string, any>} */
+  const out = {};
+  if (msg.on !== undefined) {
+    if (typeof msg.on !== 'boolean') return { ok: false, msg: 'pace on must be true or false' };
+    out.paceOn = msg.on;
+  }
+  for (const [k, key] of /** @type {const} */ ([['rate', 'paceRate'], ['ma', 'paceMa']])) {
+    if (msg[k] === undefined) continue;
+    if (!inRange(msg[k], /** @type {[number, number]} */ (RANGES[key])) || !Number.isInteger(msg[k])) return { ok: false, msg: `pace ${k} must be a whole number from ${RANGES[key][0]} to ${RANGES[key][1]}` };
+    out[key] = msg[k];
+  }
+  if (msg.mode !== undefined) {
+    if (!PACE_MODES.includes(msg.mode)) return { ok: false, msg: 'pace mode must be demand or fixed' };
+    out.paceMode = msg.mode;
+  }
+  return Object.keys(out).length ? { ok: true, patch: out } : { ok: false, msg: 'pace needs on, rate, ma or mode' };
 }
 
 export const TARGETS = TARGET_KEYS;

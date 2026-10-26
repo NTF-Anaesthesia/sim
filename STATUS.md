@@ -39,6 +39,7 @@
 - Playwright: two contexts, preset applied on the phone reaches the monitor within 1 s; late joiner gets current state.
 
 ## Recently done
+- V2 S8: transcutaneous pacing on the defib screen (spikes, capture by threshold, failure to capture and to sense), junctional, bigeminy/trigeminy and a second ECG lead lane.
 - Repo created (26 Oct).
 
 ## Decisions

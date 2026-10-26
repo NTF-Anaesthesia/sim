@@ -390,7 +390,7 @@ export function mountScreen(root, opts) {
     src.update(t, patient, dd);
     if (t - lastBeepT > 0.5) lastBeepT = t; // tab was hidden: no burst of old beeps
     for (const b of src.beats) {
-      if (b.t > lastBeepT && b.t <= t && b.kind !== 'dropped') {
+      if (b.t > lastBeepT && b.t <= t && b.kind !== 'dropped' && b.kind !== 'spike') {
         audio.beep(modsOn().includes('spo2') && typeof latestVals.spo2 === 'number' ? latestVals.spo2 : null);
       }
     }

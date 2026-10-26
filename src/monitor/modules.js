@@ -63,6 +63,7 @@ export function registerBuiltinModules(registry) {
       }),
     },
   });
+  registry.register({ id: 'ecg2', wave: 'ecg2', parts: {} }); // a second ECG lead lane; its label is the theme's wave label
   registry.register({
     id: 'spo2', wave: 'spo2',
     parts: {

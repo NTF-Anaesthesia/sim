@@ -12,6 +12,7 @@
   },
   "colors": {
     "ecg": "#00e000",
+    "ecg2": "#00e000",
     "spo2": "#00d8ff",
     "etco2": "#ffe000",
     "abp": "#ff3030",
@@ -44,6 +45,15 @@
         "y": 0,
         "w": 8,
         "h": 3,
+        "stack": "left"
+      },
+      {
+        "module": "ecg2",
+        "part": "wave",
+        "x": 0,
+        "y": 3,
+        "w": 8,
+        "h": 2,
         "stack": "left"
       },
       {
@@ -218,6 +228,10 @@
       "gain": 1,
       "scaleLines": []
     },
+    "ecg2": {
+      "speed": 25,
+      "gain": 1
+    },
     "spo2": {
       "speed": 25,
       "gain": 1
@@ -309,6 +323,7 @@
     },
     "wave": {
       "ecg": "II",
+      "ecg2": "V1",
       "spo2": "Pleth",
       "etco2": "CO2",
       "abp": "ABP",
@@ -318,6 +333,7 @@
     },
     "off": {
       "ecg": "LEADS OFF",
+      "ecg2": "LEADS OFF",
       "spo2": "PROBE OFF",
       "etco2": "CO2 LINE OFF",
       "abp": "ART LINE OFF",

@@ -2,7 +2,7 @@
 // Room logic with no Cloudflare or DOM types: takes a storage object, returns what to send. The Durable Object
 // (worker/room.js) is a thin shell around this, so node can test it with a fake storage (DESIGN.md sections 2, 5).
 import {
-  DEVICE_CHOICES, MAX_PATIENTS, MAX_SCREENS, SCHEMA_VERSION, SCREEN_ID, SCREEN_KINDS, SHOCK_JOULES, TARGETS, numericsOf, defaultPatient,
+  DEVICE_CHOICES, MAX_PATIENTS, MAX_SCREENS, SCHEMA_VERSION, SCREEN_ID, SCREEN_KINDS, SHOCK_JOULES, TARGETS, validatePace, numericsOf, defaultPatient,
   defaultState, fillDefaults, screenName, validateIam, validatePatch,
 } from '../shared/schema.js';
 import { displayed, restartGlide } from '../engine/glide.js';
@@ -141,6 +141,7 @@ export class RoomHub {
         return this.apply(clientId, now, msg, (s) => this.doDrug(s, v.drug, msg.p, now));
       }
       case 'shock': return this.apply(clientId, now, msg, (s) => this.doShock(s, msg));
+      case 'pace': return this.apply(clientId, now, msg, (s) => this.doPace(s, msg));
       case 'flush': return this.apply(clientId, now, msg, (s) => this.doFlush(s, msg));
       case 'test': return this.apply(clientId, now, msg, (s) => {
         if (JSON.stringify(msg.value ?? null).length > MAX_TEST_CHARS) throw new BadPatch('test value too large');
@@ -376,6 +377,24 @@ export class RoomHub {
     const sync = msg.sync === true;
     if (pt.postShock && pt.postShock !== 'none') pt.rhythm = pt.postShock;
     return { kind: 'shock', what: `${j}J${sync ? ' sync' : ''}`, p: pt.id };
+  }
+
+  /**
+   * Pacing set from a defib screen: rate, mA, mode, on/off. One event (kind `pace`) so every screen and the log agree.
+   * Pads off blocks turning it on. The capture threshold and failure to sense stay with the phone.
+   * @param {RoomState} s
+   * @param {{ p?: string }} msg
+   * @returns {EventInfo}
+   */
+  doPace(s, msg) {
+    const pt = pick(s, msg.p);
+    if (!pt) throw new BadPatch('unknown patient');
+    const v = validatePace(msg);
+    if (!v.ok) throw new BadPatch(v.msg);
+    if (v.patch.paceOn && pt.off?.pads) throw new BadPatch('pads are off: pacing cannot start');
+    Object.assign(pt, v.patch);
+    const what = pt.paceOn ? `on ${pt.paceRate}/min ${pt.paceMa}mA ${pt.paceMode}` : 'off';
+    return { kind: 'pace', what, p: pt.id };
   }
 
   /**

@@ -10,7 +10,7 @@ export const LIGHT_THEME = {
   background: '#f3f1ea',
   font: { family: 'ui-monospace, Menlo, Consolas, monospace', numericWeight: 800, labelWeight: 600, numericScale: 0.9, labelScale: 1.1 },
   colors: {
-    ecg: '#0b6b1e', spo2: '#0b5cad', etco2: '#8a6100', abp: '#b3261e', abp2: '#b25a1e', cvp: '#1e4fb3', bis: '#6a3fb5', eeg: '#6a3fb5',
+    ecg: '#0b6b1e', ecg2: '#0b6b1e', spo2: '#0b5cad', etco2: '#8a6100', abp: '#b3261e', abp2: '#b25a1e', cvp: '#1e4fb3', bis: '#6a3fb5', eeg: '#6a3fb5',
     nibp: '#222222', rr: '#8a6100', temp: '#222222', hr: '#0b6b1e',
     alarmHigh: '#d32f2f', alarmMed: '#f2b300', alarmLow: '#1e88e5', text: '#444444',
     grid: '#d9d4c3', flashText: '#ffffff',
@@ -19,6 +19,7 @@ export const LIGHT_THEME = {
     grid: { columns: 12, rows: 12, gap: 8 },
     cells: [
       { module: 'ecg', part: 'wave', x: 4, y: 1, w: 8, h: 3, stack: 'waves' },
+      { module: 'ecg2', part: 'wave', x: 4, y: 4, w: 8, h: 2, stack: 'waves' },
       { module: 'spo2', part: 'wave', x: 4, y: 4, w: 8, h: 2, stack: 'waves' },
       { module: 'abp', part: 'wave', x: 4, y: 6, w: 8, h: 2, stack: 'waves' },
       { module: 'abp2', part: 'wave', x: 4, y: 6, w: 8, h: 2, stack: 'waves' },
@@ -41,7 +42,7 @@ export const LIGHT_THEME = {
   },
   waves: {
     speedMmPerSec: 25, pxPerMm: 3, lineWidth: 2.5, sweepGapPx: 18, fill: false, grid: true,
-    ecg: { speed: 25, gain: 1 }, spo2: { speed: 25, gain: 1 }, etco2: { speed: 12.5, gain: 1 }, abp: { speed: 25, gain: 1 }, abp2: { speed: 25, gain: 1 }, cvp: { speed: 25, gain: 1 }, eeg: { speed: 25, gain: 1 },
+    ecg: { speed: 25, gain: 1 }, ecg2: { speed: 25, gain: 1 }, spo2: { speed: 25, gain: 1 }, etco2: { speed: 12.5, gain: 1 }, abp: { speed: 25, gain: 1 }, abp2: { speed: 25, gain: 1 }, cvp: { speed: 25, gain: 1 }, eeg: { speed: 25, gain: 1 },
   },
   audio: { alarm: { volume: 1 }, qrs: { volume: 0.5 }, spo2: { volume: 0.5 } },
   numerics: { showLimits: true, limitsPosition: 'below', decimals: { temp: 1 }, fontScale: 1 },
@@ -49,8 +50,8 @@ export const LIGHT_THEME = {
   labels: {
     ecg: 'Pulse', spo2: 'Sat', etco2: 'CO2', rr: 'Resp', nibp: 'Cuff', temp: 'Temp', abp: 'Art', abp2: 'Art 2', cvp: 'CVP', bis: 'BIS',
     units: { hr: '/min', spo2: '%', etco2: 'mmHg', rr: '/min', temp: '°C', nibp: 'mmHg', abp: 'mmHg', abp2: 'mmHg', cvp: 'mmHg', bis: '' },
-    wave: { ecg: 'ECG', spo2: 'SpO2', etco2: 'CO2', abp: 'ART', abp2: 'ART2', cvp: 'CVP', bis: 'EEG' },
-    off: { ecg: 'LEADS OFF', spo2: 'PROBE OFF', etco2: 'CO2 LINE OFF', abp: 'ART LINE OFF', abp2: 'ART2 LINE OFF', cvp: 'CVP LINE OFF', bis: 'BIS SENSOR OFF' },
+    wave: { ecg: 'ECG', ecg2: 'V1', spo2: 'SpO2', etco2: 'CO2', abp: 'ART', abp2: 'ART2', cvp: 'CVP', bis: 'EEG' },
+    off: { ecg: 'LEADS OFF', ecg2: 'LEADS OFF', spo2: 'PROBE OFF', etco2: 'CO2 LINE OFF', abp: 'ART LINE OFF', abp2: 'ART2 LINE OFF', cvp: 'CVP LINE OFF', bis: 'BIS SENSOR OFF' },
   },
   alarmStyle: { barPosition: 'top-center', flashHz: 1.5, limitStyle: 'bold', tones: 'soft', toneHz: { high: 880, medium: 700, low: 560 } },
 };
