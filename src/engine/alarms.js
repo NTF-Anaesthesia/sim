@@ -17,7 +17,7 @@ export const TONE_PULSES = { 3: 10, 2: 3, 1: 2 };
  * @typedef {{ id: string, param: string, priority: number, text: string }} Alarm
  * @typedef {{
  *   hr: number | null, spo2: number | null, etco2: number | null, rr: number | null, temp: number | null,
- *   nibpSys: number | null, abpSys: number | null
+ *   nibpSys: number | null, abpSys: number | null, cvp?: number | null, abp2Sys?: number | null
  * }} AlarmValues the values the monitor shows (after jitter), null when blank
  */
 
@@ -83,6 +83,15 @@ export function evaluateAlarms(p, state, v, now) {
     if (off.abp) add('abp-off', 'abp', PRIORITY.low, 'ABP LINE OFF');
     else if (v.abpSys === null) add('abp-nopulse', 'abp', PRIORITY.low, 'ABP NO PULSE');
     else limit('abp', 'abp', 'ABP SYS', v.abpSys, 'abpSys');
+  }
+  if (mods.includes('abp2')) {
+    if (off.abp2) add('abp2-off', 'abp2', PRIORITY.low, 'ABP2 LINE OFF');
+    else if ((v.abp2Sys ?? null) === null) add('abp2-nopulse', 'abp2', PRIORITY.low, 'ABP2 NO PULSE');
+    else limit('abp2', 'abp2', 'ABP2 SYS', v.abp2Sys ?? null, 'abp2Sys');
+  }
+  if (mods.includes('cvp')) {
+    if (off.cvp) add('cvp-off', 'cvp', PRIORITY.low, 'CVP LINE OFF');
+    else limit('cvp', 'cvp', 'CVP', v.cvp ?? null, 'cvp');
   }
   return out;
 }

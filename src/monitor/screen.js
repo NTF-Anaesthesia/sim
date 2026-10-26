@@ -61,6 +61,9 @@ export function mountScreen(root, opts) {
   let lastTick = 0;
   const startedAt = performance.now() / 1000; // before this there is no history to draw: leave the lanes blank
   let latestVals = /** @type {Record<string, any>} */ ({});
+  /** @type {import('../shared/schema.js').Numerics | undefined} */
+  let latestD;
+  let flushSeen = 0;
   /** @type {WakeLockSentinel | null} */
   let wake = null;
   let wakeWanted = false;
@@ -120,6 +123,19 @@ export function mountScreen(root, opts) {
     return !!def.parts[cell.part] && !def.skip?.(cell.part, modsOn());
   }
 
+  /** A flush event from the phone starts the square wave on that line, timed from when it happened on the server. */
+  function pickFlush() {
+    if (!state || !patient) return;
+    const nowMs = client.serverNow();
+    for (const e of state.events) {
+      if (e.kind !== 'flush' || e.t <= flushSeen || (e.p && e.p !== patient.id)) continue;
+      flushSeen = e.t;
+      if (nowMs - e.t > 4000) continue;
+      src.flush = { ...(src.flush ?? {}), [e.what]: performance.now() / 1000 - Math.max(0, nowMs - e.t) / 1000 };
+      needRefill = true;
+    }
+  }
+
   function pickPatient() {
     const ps = state?.patients ?? [];
     return ps.find((p) => p.id === pick) ?? ps.find((p) => p.id === screen?.p) ?? ps[0] ?? null;
@@ -155,7 +171,7 @@ export function mountScreen(root, opts) {
         scale: ref.scale && Array.isArray(theme.waves[id]?.scaleLines) && theme.waves[id].scaleLines.length
           ? { canvas: ref.scale, lines: theme.waves[id].scaleLines, font: theme.font.family, px: Math.round(10 * theme.font.labelScale * (theme.font.waveLabelScale ?? 1)) }
           : undefined,
-        sample: (t) => (patient && t >= startedAt ? wd.sample(src, t, { patient, perfusing: !pulseless(patient), tSec: t }) : null),
+        sample: (t) => (patient && t >= startedAt ? wd.sample(src, t, { patient, perfusing: !pulseless(patient), tSec: t, d: latestD }) : null),
       });
       lanes.push({ lane, id, ref });
     }
@@ -230,10 +246,12 @@ export function mountScreen(root, opts) {
     const tSec = perfNow / 1000;
     const s = shown(patient, nowMs);
     const jit = settings.get('jitter', true);
-    /** @type {(v: number | null, kind: 'hr' | 'spo2' | 'etco2' | 'rr' | 'temp' | 'sys' | 'dia', max?: number) => number | null} */
+    /** @type {(v: number | null, kind: 'hr' | 'spo2' | 'etco2' | 'rr' | 'temp' | 'sys' | 'dia' | 'cvp', max?: number) => number | null} */
     const J = (v, kind, max) => (jit ? jittered(v, kind, `${patient?.id}${kind}`, tSec, { max }) : v);
     const abp = s.abp ? { sys: /** @type {number} */ (J(s.abp.sys, 'sys')), dia: /** @type {number} */ (J(s.abp.dia, 'dia')) } : null;
+    const abp2 = s.abp2 ? { sys: /** @type {number} */ (J(s.abp2.sys, 'sys')), dia: /** @type {number} */ (J(s.abp2.dia, 'dia')) } : null;
     const v = {
+      cvp: s.cvp === null ? null : /** @type {number} */ (jit ? J(s.cvp, 'cvp') : s.cvp), abp2,
       hr: J(s.hr, 'hr'), spo2: J(s.spo2, 'spo2', 100), etco2: J(s.etco2, 'etco2'), rr: J(s.rr, 'rr'),
       temp: jit ? /** @type {number} */ (J(s.temp, 'temp')) : s.temp, abp,
     };
@@ -248,6 +266,7 @@ export function mountScreen(root, opts) {
       // alarms judge the glided value, not the display wobble, so a value near a limit does not flap
       hr: s.hr, spo2: s.spo2, etco2: s.etco2, rr: s.rr, temp: s.temp,
       nibpSys: nb.phase === 'result' ? nb.sys : null, abpSys: s.abp ? s.abp.sys : null,
+      cvp: s.cvp, abp2Sys: s.abp2 ? s.abp2.sys : null,
     }, nowMs);
     const av = tracker.update(alarms, { enabled: state.alarms.enabled, silencedUntil: state.alarms.silencedUntil }, nowMs);
 
@@ -320,6 +339,7 @@ export function mountScreen(root, opts) {
     if (!state || !patient || !view) return;
     const t = perfNow / 1000;
     const dd = displayed(patient, client.serverNow());
+    latestD = dd;
     src.update(t, patient, dd);
     if (t - lastBeepT > 0.5) lastBeepT = t; // tab was hidden: no burst of old beeps
     for (const b of src.beats) {
@@ -346,6 +366,7 @@ export function mountScreen(root, opts) {
     }
     state = st;
     applyState();
+    pickFlush();
   });
   client.on('status', () => renderChips());
   const refill = () => { needRefill = true; };

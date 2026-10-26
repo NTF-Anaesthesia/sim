@@ -19,8 +19,8 @@ const RHYTHM_LABELS = /** @type {Record<string, string>} */ ({
   vt: 'VT', vf: 'VF', asystole: 'Asystole', pea: 'PEA', first_degree_block: '1st degree block', mobitz1: 'Mobitz I',
   mobitz2: 'Mobitz II', chb: 'Complete heart block', torsades: 'Torsades', paced: 'Paced',
 });
-const SENSOR_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG leads', spo2: 'SpO₂ probe', nibp: 'NIBP cuff', abp: 'Art line', etco2: 'CO₂ line' });
-const MODULE_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG', spo2: 'Pleth', etco2: 'EtCO₂ and RR', nibp: 'NIBP', rr: 'RR', temp: 'Temp', abp: 'Arterial line' });
+const SENSOR_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG leads', spo2: 'SpO₂ probe', nibp: 'NIBP cuff', abp: 'Art line', etco2: 'CO₂ line', cvp: 'CVP line', abp2: 'Second art line' });
+const MODULE_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG', spo2: 'Pleth', etco2: 'EtCO₂ and RR', nibp: 'NIBP', rr: 'RR', temp: 'Temp', abp: 'Arterial line', cvp: 'CVP', abp2: 'Second arterial line' });
 const TABS = [['vitals', 'Vitals'], ['alarms', 'Alarms'], ['presets', 'Presets'], ['screens', 'Screens'], ['more', 'More']];
 const esc = (/** @type {unknown} */ s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
 
@@ -170,7 +170,7 @@ export function mountController(root, opts) {
   function viewVitals() {
     const s = /** @type {NonNullable<ReturnType<typeof state>>} */ (state());
     const pt = /** @type {NonNullable<ReturnType<typeof patient>>} */ (patient());
-    const list = paramList(units()).filter((sp) => !sp.id.startsWith('abp') || s.modules.includes('abp'));
+    const list = paramList(units()).filter((sp) => !sp.needs && !sp.id.startsWith('abp') || s.modules.includes(sp.needs ?? 'abp'));
     const rhythm = typeof pend().rhythm === 'string' ? String(pend().rhythm) : pt.rhythm;
     return `
       <label class="field">Rhythm
@@ -182,12 +182,26 @@ export function mountController(root, opts) {
       </div>
       ${list.map((sp) => paramRow(sp, pt)).join('')}
       <div class="sw-row"><span>Arterial line</span>${toggle('abp-module', s.modules.includes('abp'), 'Arterial line')}</div>
+      ${viewLines(s, pt)}
       <h2>NIBP</h2>
       <div class="row"><button type="button" class="wide" data-act="nibp-now" data-testid="nibp-now">Cycle now</button></div>
       <div class="glide" role="group" aria-label="NIBP interval"><span class="label">Interval</span>
         ${NIBP_INTERVALS.map((sec) => `<button type="button" class="pill" data-nibp-int="${sec}" aria-pressed="${(pt.nibpRead.mode === 'cycle' ? pt.nibpRead.cycleSec : 0) === sec}">${intervalLabel(sec)}</button>`).join('')}
       </div>
       <p class="hint">Last reading ${pt.nibpRead.sys}/${pt.nibpRead.dia}</p>`;
+  }
+
+  /** Line extras: damping, flush test, CVP v waves. Modules are off until switched on (More tab or here). */
+  function viewLines(/** @type {NonNullable<ReturnType<typeof state>>} */ s, /** @type {NonNullable<ReturnType<typeof patient>>} */ pt) {
+    const sel = (/** @type {string} */ id, /** @type {string} */ label, /** @type {[string, string][]} */ opts, /** @type {string} */ cur) =>
+      `<label class="field">${label}<select id="${id}" data-testid="${id}">${opts.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`;
+    const a1 = s.modules.includes('abp');
+    const a2 = s.modules.includes('abp2');
+    return `<div class="sw-row"><span>Second arterial line</span>${toggle('mod-abp2', a2, 'Second arterial line')}</div>
+      <div class="sw-row"><span>CVP</span>${toggle('mod-cvp', s.modules.includes('cvp'), 'CVP')}</div>
+      ${a1 || a2 ? sel('damping', 'Art line damping', [['normal', 'Normal'], ['over', 'Over-damped'], ['under', 'Under-damped']], pt.abpDamping) : ''}
+      ${a1 || a2 ? `<div class="row">${a1 ? '<button type="button" data-act="flush-abp" data-testid="flush-abp">Flush art line</button>' : ''}${a2 ? '<button type="button" data-act="flush-abp2" data-testid="flush-abp2">Flush line 2</button>' : ''}</div>` : ''}
+      ${s.modules.includes('cvp') ? sel('cvpv', 'CVP v wave', [['normal', 'Normal'], ['giant', 'Giant v (TR)']], pt.cvpV) : ''}`;
   }
 
   /** @param {string} id @param {boolean} on @param {string} label */
@@ -449,6 +463,8 @@ export function mountController(root, opts) {
       case 'apply': apply(); break;
       case 'cancel': delete ui.pending[pt.id]; render(); break;
       case 'nibp-now': actions.nibpNow(pt.id); break;
+      case 'flush-abp': actions.flush('abp', pt.id); break;
+      case 'flush-abp2': actions.flush('abp2', pt.id); break;
       case 'silence': actions.silence(); break;
       case 'theme': themePanel.open(); break;
       case 'add': actions.addPatient(); break;
@@ -520,6 +536,8 @@ export function mountController(root, opts) {
       const v = /** @type {HTMLSelectElement} */ (t).value;
       if (v === pt.rhythm) delete pend().rhythm; else pend().rhythm = v;
       renderDock();
+    } else if ((t.id === 'damping' || t.id === 'cvpv') && pt) {
+      act({ patient: t.id === 'damping' ? { abpDamping: /** @type {HTMLSelectElement} */ (t).value } : { cvpV: /** @type {HTMLSelectElement} */ (t).value } }, undefined, pt.id);
     } else if (t.id === 'file') {
       const f = /** @type {HTMLInputElement} */ (t).files?.[0];
       f?.text().then((text) => { const r = presets.importJson(text); ui.note = `Imported ${r.added}, skipped ${r.skipped}.`; renderView(); });

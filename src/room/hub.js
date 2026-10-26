@@ -3,7 +3,7 @@
 // (worker/room.js) is a thin shell around this, so node can test it with a fake storage (DESIGN.md sections 2, 5).
 import {
   DEVICE_CHOICES, MAX_PATIENTS, MAX_SCREENS, SCHEMA_VERSION, SCREEN_ID, SCREEN_KINDS, TARGETS, numericsOf, defaultPatient,
-  defaultState, screenName, validateIam, validatePatch,
+  defaultState, fillDefaults, screenName, validateIam, validatePatch,
 } from '../shared/schema.js';
 import { displayed, restartGlide } from '../engine/glide.js';
 
@@ -47,7 +47,7 @@ export class RoomHub {
   async state() {
     if (!this.cache) {
       const stored = await this.storage.get('state');
-      this.cache = /** @type {RoomState} */ (stored ?? defaultState(this.clock()));
+      this.cache = fillDefaults(/** @type {RoomState} */ (stored ?? defaultState(this.clock())));
     }
     return this.cache;
   }
@@ -105,6 +105,7 @@ export class RoomHub {
         if (!DEVICE_CHOICES.includes(msg.what)) return { reply: err('bad_patch', 'what must be theme or p') };
         return { broadcast: { t: 'clearDevice', s: msg.s, what: msg.what } };
       }
+      case 'flush': return this.apply(clientId, now, msg, (s) => this.doFlush(s, msg));
       case 'test': return this.apply(clientId, now, msg, (s) => {
         if (JSON.stringify(msg.value ?? null).length > MAX_TEST_CHARS) throw new BadPatch('test value too large');
         s.test = msg.value;
@@ -153,10 +154,11 @@ export class RoomHub {
     if (!pt) throw new BadPatch('unknown patient');
     const before = structuredClone(pt);
     if (p.patient) {
-      const { nibp, abp, off, ...flat } = p.patient;
+      const { nibp, abp, abp2, off, ...flat } = p.patient;
       Object.assign(pt, flat);
       if (nibp) Object.assign(pt.nibp, nibp);
       if (abp) Object.assign(pt.abp, abp);
+      if (abp2) Object.assign(pt.abp2, abp2);
       if (off) Object.assign(pt.off, off);
     }
     if (p.modules) s.modules = p.modules;
@@ -273,6 +275,20 @@ export class RoomHub {
     if (typeof msg.s !== 'string' || !s.screens?.[msg.s]) throw new BadPatch('unknown screen');
     delete s.screens[msg.s];
     return { kind: 'screen', what: `forget ${msg.s}` };
+  }
+
+  /**
+   * Flush test of an arterial line: only an event (kind `flush`, `what` = the line, `abp` or `abp2`); every monitor draws
+   * the square wave and ringing from the event time. Nothing in the patient changes.
+   * @param {RoomState} s
+   * @param {any} msg
+   */
+  doFlush(s, msg) {
+    const pt = pick(s, msg.p);
+    if (!pt) throw new BadPatch('unknown patient');
+    const line = msg.line ?? 'abp';
+    if (line !== 'abp' && line !== 'abp2') throw new BadPatch('line must be abp or abp2');
+    return { kind: 'flush', what: line, p: pt.id };
   }
 
   /**

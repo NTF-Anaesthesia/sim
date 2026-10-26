@@ -9,12 +9,13 @@ import { mulberry32 } from './rng.js';
  * kind: normal | pvc | pac | paced | dropped (a P with no QRS) | mech (a pulse with no ECG complex, torsades)
  * @typedef {{
  *   t: number, kind: string, rr: number, pr: number | null, qrsWidth: number, amp: number, st: number,
- *   pulse: boolean, sbp: number, dbp: number
+ *   pulse: boolean, sbp: number, dbp: number, sbp2: number, dbp2: number
  * }} Beat
  * @typedef {{ type: string, since: number, atrialRate: number } | null} Base
+ * @typedef {{ rate: number } | null} Atrial atrial activity that runs on its own clock (AV dissociation), per minute
  * @typedef {{
  *   rhythm: string, hr: number, flutterRatio: number, pvcPerMin: number, st: number, pulse: boolean,
- *   sbp: number, dbp: number, rr: number
+ *   sbp: number, dbp: number, rr: number, sbp2?: number, dbp2?: number
  * }} BeatParams
  */
 
@@ -64,6 +65,8 @@ export class BeatScheduler {
     this.beats = [];
     /** @type {Base} */
     this.base = null;
+    /** @type {Atrial} */
+    this.atrial = null;
     this.next = 0;
     this.rhythm = '';
     this.counter = 0;
@@ -98,6 +101,7 @@ export class BeatScheduler {
     }
     const base = this.baseFor(p, until);
     this.base = base;
+    this.atrial = p.rhythm === 'chb' || p.rhythm === 'vt' ? { rate: CHB_ATRIAL_RATE } : null;
     const ok = Number.isFinite(p.hr) && p.hr > 0;
     if (info.clock === 'none' || !ok) {
       this.next = Math.max(this.next, until);
@@ -127,7 +131,7 @@ export class BeatScheduler {
       /** @type {Beat} */
       const beat = {
         kind: 'normal', rr: period, pr: info.pr, qrsWidth: info.wide ? WIDE : NARROW, amp: 1, st: p.st,
-        pulse: p.pulse, sbp: p.sbp, dbp: p.dbp, ...b,
+        pulse: p.pulse, sbp: p.sbp, dbp: p.dbp, sbp2: p.sbp2 ?? p.sbp, dbp2: p.dbp2 ?? p.dbp, ...b,
       };
       this.beats.push(beat);
       added.push(beat);
