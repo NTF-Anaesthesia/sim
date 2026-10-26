@@ -1,6 +1,7 @@
 # sim: status
 
 ## Now
+- S4 theme engine (this PR): themes as files; import by file, URL or paste on the monitor and from the phone for every monitor; export; live editor; second built-in theme; `THEMES.md`.
 - S2 monitor screen (this PR): `/m/<code>` draws from the theme: ECG II, pleth, capnogram, art line (module `abp`), HR/SpO2/NIBP/RR/EtCO2/temp, all rhythms, alarms with tones and 2 min silence, NIBP cycle, jitter, full screen, wake lock, sound after a tap.
 - S3 (PR): phone controller at `/c/<code>` (tabs Vitals / Alarms / Presets / More), `presence` message, client `wake()`.
 - S1 (merged): repo, Worker + Durable Object rooms, test shell (monitor and controller exchange a test value), DESIGN.md, CI.
@@ -11,7 +12,7 @@
 ## Next
 1. S2 monitor screen (waves, numerics, rhythms, alarms drawn from a theme) and S3 phone controller (values, glide,
    rhythms, alarms, presets), in parallel after S1 merges. Shared files: `src/shared/schema.js` (state), `DESIGN.md`.
-2. S4 theme engine (import/export by file, URL, paste; a second theme proves the schema).
+2. Later: V2 items from the plan (timed scenarios, trends, more waves).
 
 ### S2 test list (monitor)
 - Wave synthesis per rhythm (sinus, brady, tachy, AF, flutter, SVT, VT, VF, asystole, PEA: normal ECG, flat pleth): beat timing follows the glided HR.

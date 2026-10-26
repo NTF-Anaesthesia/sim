@@ -193,3 +193,17 @@ test('events carry kind and patient id; mark adds a bookmark', async () => {
   assert.equal((await hub.onMessage('c-1', msg({ t: 'mark', p: 'zz' }))).reply.code, 'bad_patch');
   assert.equal((await hub.onMessage('c-1', msg({ t: 'mark', text: 'x'.repeat(201) }))).reply.code, 'bad_patch');
 });
+
+test('theme: a custom theme reaches every monitor; "default" clears it; a bad theme is rejected', async () => {
+  const { hub } = makeHub();
+  const themeJson = { themeSchema: 1, name: 'T', colors: { ecg: '#112233' } };
+  const a = await hub.onMessage('c-1', msg({ t: 'set', patch: { theme: 'custom', themeJson } }));
+  assert.equal(a.broadcast.state.theme, 'custom');
+  assert.equal(a.broadcast.state.themeJson.colors.ecg, '#112233');
+  const bad = await hub.onMessage('c-1', msg({ t: 'set', patch: { theme: 'custom', themeJson: { css: 'x', colors: {} } } }));
+  assert.equal(bad.reply.code, 'bad_patch');
+  assert.equal((await hub.hello()).state.themeJson.colors.ecg, '#112233', 'the old theme is kept');
+  const c = await hub.onMessage('c-1', msg({ t: 'set', patch: { theme: 'default' } }));
+  assert.equal(c.broadcast.state.theme, 'default');
+  assert.equal('themeJson' in c.broadcast.state, false);
+});

@@ -2,6 +2,7 @@
 // Fill a theme from the default: missing keys fall back, invalid values are dropped one by one with a message
 // (DESIGN.md section 8). Pure. S4 builds the editor and import paths on top of this.
 import { DEFAULT_THEME } from './default.js';
+import { FIELDS, fieldProblem, getPath, setPath } from './fields.js';
 
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 const isObj = (/** @type {unknown} */ v) => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -43,6 +44,15 @@ export function resolveTheme(raw) {
   const problems = [];
   const src = isObj(raw) ? /** @type {Record<string, any>} */ (raw) : {};
   const theme = merge(DEFAULT_THEME, src, 'theme', problems);
+  // range, option and text checks from the editor's field table: a bad value falls back to the default one by one
+  for (const f of FIELDS) {
+    const v = getPath(theme, f.path);
+    const why = f.type === 'color' ? '' : fieldProblem(f, v);
+    if (why) {
+      problems.push(`${f.path}: ${why}, using the default`);
+      setPath(theme, f.path, structuredClone(getPath(DEFAULT_THEME, f.path)));
+    }
+  }
   const grid = theme.layout.grid;
   const cellsRaw = src.layout?.cells;
   if (Array.isArray(cellsRaw)) {

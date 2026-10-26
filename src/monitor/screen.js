@@ -9,7 +9,11 @@ import { pulseless, shown } from '../engine/rhythm.js';
 import { SCHEMA_VERSION } from '../shared/schema.js';
 import { createWaveRegistry, registerBuiltinWaves, WaveSource } from '../waves/index.js';
 import { layoutCells } from '../theme/layout.js';
+import { BUILTIN_THEMES } from '../theme/builtin.js';
+import { createThemePanel } from '../theme/panel.js';
 import { resolveTheme, waveSettings } from '../theme/resolve.js';
+import { createThemeStore, pickTheme } from '../theme/store.js';
+import { loadTheme } from '../theme/validate.js';
 import { AudioMixer } from './audio.js';
 import { Lane } from './lane.js';
 import { createModuleRegistry, registerBuiltinModules } from './modules.js';
@@ -64,6 +68,30 @@ export function mountScreen(root, opts) {
     makeContext: opts.makeContext,
   });
 
+  // Theme: a choice made on this device wins, else the room's theme (sent from a phone), else the default.
+  const themeStore = createThemeStore(settings);
+  const panel = createThemePanel({
+    title: 'Theme (this device)',
+    getTheme: () => theme,
+    editor: true,
+    choices: [
+      { id: 'room', label: 'Follow the room' },
+      ...BUILTIN_THEMES.map((b) => ({ id: b.id, label: String(b.theme.name) })),
+      { id: 'custom', label: 'Custom (this device)' },
+    ],
+    current: () => themeStore.get()?.id ?? 'room',
+    onChoose: (id) => {
+      if (id === 'room') themeStore.followRoom();
+      else if (id === 'custom') themeStore.setCustom(theme);
+      else themeStore.setBuiltin(id);
+      applyState();
+    },
+    onApply: (t) => { themeStore.setCustom(t); applyState(); },
+    extras: [],
+    doc: root.ownerDocument,
+  });
+  root.ownerDocument.body.append(panel.el);
+
   const modsOn = () => state?.modules ?? [];
   /** @param {import('../theme/layout.js').Cell} cell */
   function isShown(cell) {
@@ -87,6 +115,7 @@ export function mountScreen(root, opts) {
       onSound: toggleSound,
       onFull: toggleFull,
       onWake: toggleWake,
+      onTheme: () => (panel.isOpen ? panel.close() : panel.open()),
     });
     lanes = [];
     for (const ref of view.refs) {
@@ -112,10 +141,11 @@ export function mountScreen(root, opts) {
 
   function applyState() {
     if (!state) return;
-    const key = JSON.stringify(state.themeJson ?? null);
+    const { raw } = pickTheme(themeStore.get(), state);
+    const key = JSON.stringify(raw ?? null);
     if (key !== themeKey) {
       themeKey = key;
-      theme = resolveTheme(state.themeJson).theme;
+      theme = loadTheme(raw).theme;
       nibp = new NibpMachine(theme.nibp);
       audio.refreshVolumes();
       viewKey = '';
@@ -241,7 +271,7 @@ export function mountScreen(root, opts) {
     if (av.priority <= 0) burstSt.lastPriority = 0;
     else if (av.priority < burstSt.lastPriority) burstSt.lastPriority = av.priority;
     if (audio.enabled && burstDue(av.priority, av.silenced, burstSt, nowMs)) {
-      audio.burst(av.priority);
+      audio.burst(av.priority, theme.alarmStyle);
       burstSt.lastAt = nowMs;
       burstSt.lastPriority = av.priority;
     }
@@ -290,5 +320,5 @@ export function mountScreen(root, opts) {
   });
   document.addEventListener('fullscreenchange', renderChips);
   requestAnimationFrame(frame);
-  return { audio, tick: () => tick(performance.now()) };
+  return { audio, panel, tick: () => tick(performance.now()) };
 }

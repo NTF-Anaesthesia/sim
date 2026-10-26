@@ -2,6 +2,9 @@
 // Entry `controller`: the phone controller (DESIGN.md sections 5-6). No work on import; `mountController` does it all.
 import { RoomClient, newClientId, roomUrl } from '../room/client.js';
 import { RHYTHMS, SENSORS, MODULE_IDS } from '../shared/schema.js';
+import { BUILTIN_THEMES } from '../theme/builtin.js';
+import { createThemePanel } from '../theme/panel.js';
+import { loadTheme } from '../theme/validate.js';
 import { makeActions } from './actions.js';
 import { PresetStore, runPreset, presetFromPatient } from './presets.js';
 import { Settings, browserStorage } from './settings.js';
@@ -38,6 +41,32 @@ export function mountController(root, opts) {
     dragging: false, note: '', io: '',
   };
   const actions = makeActions(client, () => ui.p);
+
+  // Theme for every monitor in the room: a theme sent here replaces what each monitor without its own choice shows.
+  const roomTheme = () => loadTheme(state()?.theme === 'custom' ? state()?.themeJson : undefined).theme;
+  const themePanel = createThemePanel({
+    title: 'Theme (every monitor)',
+    getTheme: roomTheme,
+    choices: [...BUILTIN_THEMES.map((b) => ({ id: b.id, label: String(b.theme.name) })), { id: 'custom', label: 'Imported' }],
+    current: () => {
+      if (state()?.theme !== 'custom') return 'default';
+      const name = roomTheme().name;
+      return BUILTIN_THEMES.find((b) => b.theme.name === name)?.id ?? 'custom';
+    },
+    onChoose: (id) => {
+      const b = BUILTIN_THEMES.find((x) => x.id === id);
+      if (b) sendTheme(b.id === 'default' ? null : b.theme);
+    },
+    onApply: (t) => sendTheme(t),
+    extras: [{ label: 'Reset all to default', testid: 'theme-reset', run: () => sendTheme(null) }],
+    doc: root.ownerDocument,
+  });
+  root.ownerDocument.body.append(themePanel.el);
+  /** @param {Record<string, any> | null} t null = back to the default */
+  function sendTheme(t) {
+    if (client.status !== 'open') { themePanel.say('Not connected: the theme was not sent.'); return false; }
+    return actions.act(t ? { theme: 'custom', themeJson: t } : { theme: 'default' });
+  }
   const { act } = actions;
   /** @type {{ cancel: () => void } | null} */
   let scenario = null;
@@ -180,6 +209,8 @@ export function mountController(root, opts) {
       ${SENSORS.map((k) => `<div class="sw-row"><span>${SENSOR_LABELS[k]}</span>${toggle('off-' + k, !!pt.off[k], SENSOR_LABELS[k] + ' off')}</div>`).join('')}
       <h2>Show on monitor</h2>
       ${MODULE_IDS.map((k) => `<div class="sw-row"><span>${MODULE_LABELS[k]}</span>${toggle('mod-' + k, s.modules.includes(k), MODULE_LABELS[k])}</div>`).join('')}
+      <h2>Monitor theme</h2>
+      <div class="row"><button type="button" data-act="theme" data-testid="theme-open">Theme for all monitors…</button></div>
       <h2>This device</h2>
       <div class="glide" role="group" aria-label="CO2 unit"><span class="label">CO₂</span>
         ${['mmHg', 'kPa'].map((x) => `<button type="button" class="pill" data-unit="co2:${x}" aria-pressed="${u.co2 === x}">${x}</button>`).join('')}</div>
@@ -341,6 +372,7 @@ export function mountController(root, opts) {
       case 'cancel': delete ui.pending[pt.id]; render(); break;
       case 'nibp-now': actions.nibpNow(pt.id); break;
       case 'silence': actions.silence(); break;
+      case 'theme': themePanel.open(); break;
       case 'add': actions.addPatient(); break;
       case 'remove': if (window.confirm(`Remove ${pt.label}?`)) { actions.removePatient(pt.id); ui.p = undefined; } break;
       case 'save-preset': {
@@ -394,7 +426,7 @@ export function mountController(root, opts) {
   // ---- connection -------------------------------------------------------------------------------------------------
   client.on('status', renderStatus);
   client.on('presence', renderStatus);
-  client.on('state', render);
+  client.on('state', () => { render(); if (themePanel.isOpen) themePanel.refresh(); });
   client.on('error', (e) => {
     $('status').title = e?.msg ?? '';
     if (e?.code === 'schema') $('view').innerHTML = '<p class="hint">Update needed: reload this page.</p>';

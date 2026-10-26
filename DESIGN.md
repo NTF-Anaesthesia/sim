@@ -246,8 +246,8 @@ Evaluated **on each monitor** from glided values and `alarms.limits`; the contro
 ## 8. Theme JSON schema v1
 
 A theme is one JSON file; the monitor draws entirely from the active theme. The default is generic. A theme may copy
-the look of any real monitor but carries **no logos or brand names**. `themes/default.json` ships; others are imported by
-file, URL or paste (S4).
+the look of any real monitor but carries **no logos or brand names**. `themes/generic-dark.json` and `themes/generic-light.json` ship (the built-in themes in `src/theme/`); others are imported by
+file, URL or paste (S4). **THEMES.md documents every field.**
 
 ```jsonc
 {
@@ -286,6 +286,16 @@ Rules: a theme file is at most 32 KB; colours are `#rrggbb`; unknown keys are ig
 `themes/default.json`; invalid values (bad colour, cell off-grid) are dropped one by one with a message in the editor,
 not a whole-theme failure. The theme is **per device** (stored in the monitor's localStorage) unless the controller
 sends it into the room (`theme: "custom"`, `themeJson`), in which case every monitor in the room uses it.
+
+**S4 (theme engine, built):** `src/theme/` has `fields.js` (one table of editable fields with ranges, driving both the
+editor and the range checks in `resolve.js`), `migrate.js` (`themeSchema` steps; v0 = unnumbered drafts), `validate.js`
+(`parseThemeText`, `validateTheme` with fatal errors versus per-value warnings, `loadTheme` which never throws),
+`builtin.js` (default and "Generic light", a second theme with another layout and palette), `store.js` (device choice
+`sim.settings.theme`, precedence device, then room, then default) and `panel.js` (shared DOM panel: choose, import by file,
+URL or paste, export, live editor). New alarm style keys: `alarmStyle.toneHz.{high,medium,low}`, `tones` (`iec` triangle or
+`soft` sine), `limitStyle` (`small`/`bold`), `barPosition`, and `numerics.limitsPosition` (`beside`/`below`) now take effect.
+Refused outright: not an object, over 32 KB, newer schema, custom CSS/script/markup (keys and text), no usable cell, over 12 KB
+complete. The Room validates `themeJson` with the same code and stores the complete theme; `theme: 'default'` clears it.
 
 **S2 additions (all optional, defaulted in `src/theme/default.js`, which is the in-code source of the default theme):**
 `colors.grid` and `colors.flashText`; `waves.pxPerMm` (pixels per mm, so speed 25 mm/s is 100 px/s at 4), `waves.grid`

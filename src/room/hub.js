@@ -139,7 +139,10 @@ export class RoomHub {
       if ('enabled' in p.alarms) s.alarms.enabled = p.alarms.enabled;
     }
     if (p.nibp) Object.assign(pt.nibpRead, p.nibp);
-    if (p.theme) s.theme = p.theme;
+    if (p.theme) {
+      s.theme = p.theme;
+      if (p.theme === 'default') delete s.themeJson; // back to the default for every monitor
+    }
     if (p.themeJson) s.themeJson = p.themeJson;
 
     if (p.patient && TARGETS.some((k) => k in p.patient)) {
