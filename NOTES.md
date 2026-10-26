@@ -14,3 +14,11 @@ Lasting rules live in `AGENTS.md`. Points worth remembering go here.
 - Controller (`src/controller/`): every change goes through `act(patch, glideMs, p)` in `actions.js`; presets are `{name, steps:[{atSec, patch, glideMs}]}` (V1: one step at 0). Per-device settings use `sim.settings.*` (units, last glide time); saved presets use `sim.presets`. Units are display only; the wire is mmHg and C.
 - The phone calls `client.wake()` on visibilitychange, pageshow and online: a dead socket is replaced at once, a silent one after a 2.5 s ping check.
 - Local controller test: `CHROMIUM_PATH=<chrome> node test/e2e/controller.mjs` with `npx wrangler dev --port 8787` running.
+- Monitor (S2): beat events drive ECG, pleth, ABP and the QRS beep; breath events drive the capnogram; both are made 0.6 s
+  ahead on the display clock (`performance.now()`), so a rhythm change shows at the next beat. Glide, silence and NIBP use
+  the server clock (`client.serverNow()`). The schedulers run in real time: tests step them like frames (a jump of more than
+  a couple of seconds counts as a pause and restarts them).
+- Monitor code adapted from the `ot` repo (read-only reference): lane sweep, synth tones,
+  alarm tones, rhythm model, numerics jitter. Rewritten as plain modules with the theme and registries; no code is shared.
+- The monitor keeps a hidden `data-testid="value"` element with the S1 test value until S3 drops the controller test input.
+- Monitor e2e: `CHROMIUM_PATH=<chrome> node test/e2e/monitor.mjs` (screenshots go to `test/e2e/out/`, ignored by git).

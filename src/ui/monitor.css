@@ -1,0 +1,40 @@
+/* Structure only: every colour, font and position of the monitor comes from the theme (set as CSS variables and
+   percentages by src/monitor/view.js). The fallbacks here are for the moments before a theme is applied. */
+html, body { margin: 0; height: 100%; background: var(--m-bg, #000); color: var(--c-text, #c0c0c0); overflow: hidden; }
+* { box-sizing: border-box; }
+#app { position: fixed; inset: 0; font-family: var(--m-font, system-ui, sans-serif); }
+.hint { padding: 16px; }
+.mon { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--m-bg); }
+.mon .stage { position: relative; flex: 1; min-height: 0; }
+.cell, .alarmbar { position: absolute; padding: var(--m-gap); }
+.cell { container-type: size; color: var(--c); overflow: hidden; }
+.wave canvas { position: absolute; inset: var(--m-gap); width: calc(100% - 2 * var(--m-gap)); height: calc(100% - 2 * var(--m-gap)); }
+.wlabel { position: absolute; left: calc(var(--m-gap) + 4px); top: calc(var(--m-gap) + 2px); font-size: calc(13px * var(--m-label-scale)); font-weight: var(--m-label-weight); }
+.woff { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: calc(18px * var(--m-label-scale)); color: var(--c-text); }
+.woff[hidden] { display: none; }
+.num { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto 1fr auto; align-items: center; column-gap: 8px; }
+.nlabel { grid-column: 1; grid-row: 1; font-size: calc(min(14cqh, 7cqw) * var(--m-label-scale)); font-weight: var(--m-label-weight); }
+.nunit { grid-column: 1; grid-row: 1; justify-self: end; opacity: .7; font-size: calc(min(11cqh, 5cqw) * var(--m-label-scale)); }
+.nval { grid-column: 1; grid-row: 2; font-size: calc(min(62cqh, 22cqw) * var(--m-num-scale)); font-weight: var(--m-num-weight); line-height: 1; white-space: nowrap; }
+.nsub { grid-column: 1; grid-row: 3; font-size: calc(min(24cqh, 9cqw) * var(--m-num-scale)); }
+.nsmall { grid-column: 1; grid-row: 3; justify-self: end; font-size: calc(min(16cqh, 6cqw) * var(--m-label-scale)); opacity: .8; }
+.nlim { grid-column: 2; grid-row: 1 / 4; display: flex; flex-direction: column; justify-content: space-between; font-size: calc(min(14cqh, 6cqw) * var(--m-label-scale)); opacity: .8; }
+.nlim[hidden] { display: none; }
+.num[data-off="1"] .nval { opacity: .6; }
+.num.flash[data-alarm="high"] { animation: flash-high var(--m-flash) steps(1) infinite; }
+.num.flash[data-alarm="medium"] { animation: flash-med var(--m-flash) steps(1) infinite; }
+.alarmbar { border: 0; background: transparent; color: var(--c-text); font: inherit; font-weight: var(--m-num-weight); font-size: 20px; text-align: right; cursor: pointer; }
+.alarmbar[data-alarm="high"] { background: var(--c-alarmHigh); color: var(--c-flashText); }
+.alarmbar[data-alarm="medium"] { background: var(--c-alarmMed); color: var(--c-flashText); }
+.alarmbar[data-alarm="low"] { background: var(--c-alarmLow); color: var(--c-flashText); }
+.alarmbar[data-alarm="silenced"] { background: transparent; color: var(--c-alarmMed); }
+.alarmbar.flash { animation: flash-bar var(--m-flash) steps(1) infinite; }
+@keyframes flash-high { 50% { background: var(--c-alarmHigh); color: var(--c-flashText); } }
+@keyframes flash-med { 50% { background: var(--c-alarmMed); color: var(--c-flashText); } }
+@keyframes flash-bar { 50% { opacity: .35; } }
+.tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 2px 8px; font-size: 13px; color: var(--c-text); opacity: .7; }
+.tools button { font: inherit; min-height: 28px; padding: 2px 10px; border-radius: 6px; border: 1px solid #444; background: #151515; color: inherit; cursor: pointer; }
+.tools .code b { letter-spacing: .15em; }
+.tools .chip[data-status="reconnecting"] { color: var(--c-alarmMed); }
+.hidden-test { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (prefers-reduced-motion: reduce) { .num.flash, .alarmbar.flash { animation-duration: 2s; } }
