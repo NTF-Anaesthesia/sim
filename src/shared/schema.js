@@ -24,9 +24,11 @@ export const CVP_VS = ['normal', 'giant'];
 /** Volatile agent in use (gas module): none | sevo | des | iso. */
 export const AGENTS = ['none', 'sevo', 'des', 'iso'];
 /** Sensors that can be switched off per patient. */
-export const SENSORS = ['ecg', 'spo2', 'nibp', 'abp', 'etco2', 'cvp', 'abp2', 'gas'];
+export const SENSORS = ['ecg', 'spo2', 'nibp', 'abp', 'etco2', 'cvp', 'abp2', 'gas', 'bis'];
+/** Below this signal quality the BIS number is not trusted: shown as dashes and not judged against limits. */
+export const BIS_MIN_SQI = 15;
 export const MAX_PATIENTS = 8;
-export const MODULE_IDS = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp', 'abp', 'cvp', 'abp2', 'gas', 'o2', 'tof'];
+export const MODULE_IDS = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp', 'abp', 'cvp', 'abp2', 'gas', 'o2', 'tof', 'bis'];
 export const DEFAULT_MODULES = ['ecg', 'spo2', 'etco2', 'nibp', 'rr', 'temp'];
 /** Named screens (S1 of V2): ids are server-made `s1`, `s2`, ...; `defib` is reserved for the defib screen. */
 export const MAX_SCREENS = 12;
@@ -38,7 +40,7 @@ export const DEVICE_CHOICES = ['theme', 'p'];
 /**
  * @typedef {{ sys: number, dia: number }} Pressure
  * @typedef {{ hr: number, spo2: number, etco2: number, rr: number, temp: number, nibp: Pressure, abp: Pressure, cvp: number, abp2: Pressure,
- *   fio2: number, eto2: number, fiag: number, etag: number, fin2o: number, etn2o: number }} Numerics
+ *   fio2: number, eto2: number, fiag: number, etag: number, fin2o: number, etn2o: number, bis: number }} Numerics
  * @typedef {Record<string, boolean>} SensorOff
  * @typedef {{ startedAt: number, durationMs: number, from: Numerics }} Glide
  * @typedef {{ sys: number, dia: number, at: number, mode: 'manual' | 'cycle', cycleSec: number }} NibpReading
@@ -46,8 +48,8 @@ export const DEVICE_CHOICES = ['theme', 'p'];
  * @typedef {Numerics & {
  *   id: string, label: string, rhythm: string, glideMs: number, pulse: boolean, flutterRatio: number, st: number,
  *   pvcPerMin: number, ie: number, off: SensorOff, etco2Shape: string, spo2Quality: string, abpDamping: string,
- *   cvpV: string, ppv: number, abp2Label: string, age: number, agent: string, tofCount: number, tofRatio: number,
- *   glide: Glide, nibpRead: NibpReading, tofRead: TofReading
+  *   cvpV: string, ppv: number, abp2Label: string, age: number, agent: string, tofCount: number, tofRatio: number,
+  *   bisSqi: number, bisEmg: number, bisSr: number, glide: Glide, nibpRead: NibpReading, tofRead: TofReading
  * }} Patient
  * @typedef {Record<string, [number, number]>} Limits
  * @typedef {{ limits: Limits, enabled: boolean, silencedUntil: number, latched: string[] }} Alarms
@@ -65,12 +67,12 @@ export const DEVICE_CHOICES = ['theme', 'p'];
 /** @returns {Numerics} */
 export function defaultNumerics() {
   return { hr: 80, spo2: 98, etco2: 38, rr: 14, temp: 36.8, nibp: { sys: 120, dia: 75 }, abp: { sys: 120, dia: 75 }, cvp: 8, abp2: { sys: 120, dia: 75 },
-    fio2: 40, eto2: 35, fiag: 0, etag: 0, fin2o: 0, etn2o: 0 };
+    fio2: 40, eto2: 35, fiag: 0, etag: 0, fin2o: 0, etn2o: 0, bis: 95 };
 }
 
 /** @returns {SensorOff} */
 function defaultOff() {
-  return { ecg: false, spo2: false, nibp: false, abp: false, etco2: false, cvp: false, abp2: false, gas: false };
+  return { ecg: false, spo2: false, nibp: false, abp: false, etco2: false, cvp: false, abp2: false, gas: false, bis: false };
 }
 
 /**
@@ -84,7 +86,8 @@ export function defaultPatient(id, label, now) {
     id, label, rhythm: 'sinus', ...defaultNumerics(), glideMs: 0, pulse: true, flutterRatio: 2, st: 0,
     pvcPerMin: 0, ie: 2, off: defaultOff(),
     etco2Shape: 'normal', spo2Quality: 'good', abpDamping: 'normal', cvpV: 'normal', ppv: 0, abp2Label: '',
-    age: 40, agent: 'none', tofCount: 4, tofRatio: 100,
+    age: 40, agent: 'none', tofCount: 4, tofRatio: 100, bisSqi: 98, bisEmg: 5, bisSr: 0,
+
     glide: { startedAt: now, durationMs: 0, from: defaultNumerics() },
     nibpRead: { sys: 120, dia: 75, at: now, mode: 'manual', cycleSec: 0 },
     tofRead: { count: 4, ratio: 100, at: now, mode: 'manual', cycleSec: 0 },
@@ -104,7 +107,7 @@ export function defaultState(now) {
     alarms: {
       limits: {
         hr: [50, 120], spo2: [90, 100], etco2: [30, 50], rr: [8, 30],
-        nibpSys: [90, 180], temp: [35.5, 38.5], abpSys: [90, 180], cvp: [2, 14], abp2Sys: [90, 180], fio2: [30, 100], etagent: [0.7, 1.5],
+        nibpSys: [90, 180], temp: [35.5, 38.5], abpSys: [90, 180], cvp: [2, 14], abp2Sys: [90, 180], fio2: [30, 100], etagent: [0.7, 1.5], bis: [20, 100],
       },
       enabled: true,
       silencedUntil: 0,
@@ -137,17 +140,17 @@ export function newCode(rand) {
 export const RANGES = {
   hr: [0, 300], spo2: [0, 100], etco2: [0, 100], rr: [0, 60], temp: [25, 43],
   sys: [0, 350], dia: [0, 300], glideMs: [0, 600000], cycleSec: [0, 3600],
-  pvcPerMin: [0, 30], ie: [0.5, 5], st: [-3, 3], cvp: [-5, 40], ppv: [0, 40],
+  pvcPerMin: [0, 30], ie: [0.5, 5], st: [-3, 3], cvp: [-5, 40], ppv: [0, 40], bis: [0, 100], bisSqi: [0, 100], bisEmg: [0, 100], bisSr: [0, 100],
   fio2: [0, 100], eto2: [0, 100], fiag: [0, 18], etag: [0, 18], fin2o: [0, 100], etn2o: [0, 100],
   age: [0, 110], tofCount: [0, 4], tofRatio: [0, 100],
 };
 const ENUMS = { etco2Shape: ETCO2_SHAPES, spo2Quality: SPO2_QUALITIES, abpDamping: ABP_DAMPINGS, cvpV: CVP_VS, agent: AGENTS };
-const TARGET_KEYS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'nibp', 'abp', 'cvp', 'abp2', 'fio2', 'eto2', 'fiag', 'etag', 'fin2o', 'etn2o'];
+const TARGET_KEYS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'nibp', 'abp', 'cvp', 'abp2', 'fio2', 'eto2', 'fiag', 'etag', 'fin2o', 'etn2o', 'bis'];
 /** Patient fields that are plain numbers with a range (everything but the objects and enums). */
 const NUMBER_KEYS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'glideMs', 'pvcPerMin', 'ie', 'st', 'cvp', 'ppv',
-  'fio2', 'eto2', 'fiag', 'etag', 'fin2o', 'etn2o', 'age', 'tofCount', 'tofRatio'];
+  'fio2', 'eto2', 'fiag', 'etag', 'fin2o', 'etn2o', 'age', 'tofCount', 'tofRatio', 'bis', 'bisSqi', 'bisEmg', 'bisSr'];
 /** Whole-number patient fields, and those kept to one decimal. */
-const INT_KEYS = ['pvcPerMin', 'fio2', 'eto2', 'fin2o', 'etn2o', 'age', 'tofCount', 'tofRatio'];
+const INT_KEYS = ['pvcPerMin', 'fio2', 'eto2', 'fin2o', 'etn2o', 'age', 'tofCount', 'tofRatio', 'bis', 'bisSqi', 'bisEmg', 'bisSr'];
 const TENTH_KEYS = ['fiag', 'etag'];
 /** Second art line name shown on the monitor: up to 8 letters, digits, spaces and . - / (empty = the theme's label). */
 export const ABP2_LABEL = /^[A-Za-z0-9 ./-]{0,8}$/;
@@ -372,7 +375,7 @@ export function numericsOf(/** @type {Numerics} */ o) {
     hr: o.hr, spo2: o.spo2, etco2: o.etco2, rr: o.rr, temp: o.temp,
     nibp: { sys: o.nibp.sys, dia: o.nibp.dia }, abp: { sys: o.abp.sys, dia: o.abp.dia },
     cvp: o.cvp, abp2: { sys: o.abp2.sys, dia: o.abp2.dia },
-    fio2: o.fio2, eto2: o.eto2, fiag: o.fiag, etag: o.etag, fin2o: o.fin2o, etn2o: o.etn2o,
+    fio2: o.fio2, eto2: o.eto2, fiag: o.fiag, etag: o.etag, fin2o: o.fin2o, etn2o: o.etn2o, bis: o.bis,
   };
 }
 
@@ -390,7 +393,7 @@ export function fillDefaults(s) {
       if (p[key] === undefined && k !== 'glide' && k !== 'nibpRead') /** @type {any} */ (p)[k] = d[key];
     }
     p.off = { ...defaultOff(), ...p.off };
-    for (const k of /** @type {const} */ (['cvp', 'abp2', 'fio2', 'eto2', 'fiag', 'etag', 'fin2o', 'etn2o'])) {
+    for (const k of /** @type {const} */ (['cvp', 'abp2', 'fio2', 'eto2', 'fiag', 'etag', 'fin2o', 'etn2o', 'bis'])) {
       if (p.glide.from[k] === undefined) /** @type {any} */ (p.glide.from)[k] = p[k];
     }
   }

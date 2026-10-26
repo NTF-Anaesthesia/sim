@@ -3,6 +3,8 @@
 // `AlarmTracker`, which only remembers the silence it saw. Priorities follow the IEC 60601-1-8 idea: high (red),
 // medium (yellow), low (cyan, technical notice).
 
+import { BIS_MIN_SQI } from '../shared/schema.js';
+
 export const PRIORITY = { none: 0, low: 1, medium: 2, high: 3 };
 /** @type {Record<number, string>} */
 export const PRIORITY_NAME = { 0: 'none', 1: 'low', 2: 'medium', 3: 'high' };
@@ -17,7 +19,7 @@ export const TONE_PULSES = { 3: 10, 2: 3, 1: 2 };
  * @typedef {{ id: string, param: string, priority: number, text: string }} Alarm
  * @typedef {{
  *   hr: number | null, spo2: number | null, etco2: number | null, rr: number | null, temp: number | null,
- *   nibpSys: number | null, abpSys: number | null, cvp?: number | null, abp2Sys?: number | null, fio2?: number | null, etagMac?: number | null
+ *   nibpSys: number | null, abpSys: number | null, cvp?: number | null, abp2Sys?: number | null, fio2?: number | null, etagMac?: number | null, bis?: number | null
  * }} AlarmValues the values the monitor shows (after jitter), null when blank
  */
 
@@ -102,6 +104,11 @@ export function evaluateAlarms(p, state, v, now) {
       // the agent limit is in age-adjusted MAC, so one pair serves every agent
       if (mods.includes('gas') && p.agent && p.agent !== 'none') limit('etagent', 'etagent', 'ET AGENT', v.etagMac ?? null, 'etagent');
     }
+  }
+  if (mods.includes('bis')) {
+    if (off.bis) add('bis-off', 'bis', PRIORITY.low, 'BIS SENSOR OFF');
+    else if (p.bisSqi < BIS_MIN_SQI) add('bis-sqi', 'bis', PRIORITY.low, 'BIS POOR SIGNAL');
+    else limit('bis', 'bis', 'BIS', v.bis ?? null, 'bis');
   }
   return out;
 }

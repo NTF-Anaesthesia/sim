@@ -11,7 +11,7 @@ export const DEFAULT_THEME = {
   background: '#000000',
   font: { family: 'system-ui, sans-serif', numericWeight: 700, labelWeight: 500, numericScale: 1, labelScale: 1, waveLabelScale: 1 },
   colors: {
-    ecg: '#00e000', spo2: '#00d8ff', etco2: '#ffe000', abp: '#ff3030', abp2: '#ff8030', cvp: '#4080ff',
+    ecg: '#00e000', spo2: '#00d8ff', etco2: '#ffe000', abp: '#ff3030', abp2: '#ff8030', cvp: '#4080ff', bis: '#c080ff', eeg: '#c080ff',
     o2: '#ffffff', gas: '#c080ff', n2o: '#4060ff', tof: '#ffa0ff',
     nibp: '#ffffff', rr: '#ffe000', temp: '#ffffff', hr: '#00e000',
     alarmHigh: '#ff2020', alarmMed: '#ffd000', alarmLow: '#00d8ff', text: '#c0c0c0',
@@ -27,6 +27,7 @@ export const DEFAULT_THEME = {
       { module: 'abp', part: 'wave', x: 0, y: 5, w: 8, h: 2, stack: 'left' },
       { module: 'abp2', part: 'wave', x: 0, y: 5, w: 8, h: 2, stack: 'left' },
       { module: 'cvp', part: 'wave', x: 0, y: 5, w: 8, h: 2, stack: 'left' },
+      { module: 'bis', part: 'wave', x: 0, y: 5, w: 8, h: 2, stack: 'left' },
       { module: 'etco2', part: 'wave', x: 0, y: 7, w: 8, h: 3, stack: 'left' },
       { module: 'gas', part: 'wave', x: 0, y: 7, w: 8, h: 2, stack: 'left' },
       { module: 'o2', part: 'wave', x: 0, y: 7, w: 8, h: 2, stack: 'left' },
@@ -36,6 +37,7 @@ export const DEFAULT_THEME = {
       { module: 'abp', part: 'numeric', x: 8, y: 5, w: 4, h: 2, stack: 'right' },
       { module: 'abp2', part: 'numeric', x: 8, y: 5, w: 4, h: 2, stack: 'right' },
       { module: 'cvp', part: 'numeric', x: 8, y: 5, w: 4, h: 2, stack: 'right' },
+      { module: 'bis', part: 'numeric', x: 8, y: 5, w: 4, h: 2, stack: 'right' },
       { module: 'etco2', part: 'numeric', x: 8, y: 7, w: 4, h: 2, stack: 'right' },
       { module: 'etco2', part: 'numeric2', x: 8, y: 9, w: 4, h: 1.5, stack: 'right' },
       { module: 'rr', part: 'numeric', x: 8, y: 9, w: 4, h: 1.5, stack: 'right' },
@@ -52,6 +54,7 @@ export const DEFAULT_THEME = {
     ecg: { speed: 25, gain: 1, scaleLines: [] }, spo2: { speed: 25, gain: 1 }, etco2: { speed: 12.5, gain: 1, scaleLines: [] },
     abp: { speed: 25, gain: 1, scaleLines: [] }, abp2: { speed: 25, gain: 1, scaleLines: [] }, cvp: { speed: 25, gain: 1, scaleLines: [] },
     gas: { speed: 12.5, gain: 1, scaleLines: [] }, o2: { speed: 12.5, gain: 1, scaleLines: [] },
+    eeg: { speed: 25, gain: 1 },
   },
   // screen.mode 'fill' stretches the layout to the window (today); 'fixed' draws it at width x height and scales it evenly
   screen: { mode: 'fill', width: 1280, height: 800 },
@@ -62,10 +65,10 @@ export const DEFAULT_THEME = {
   nibp: { inflateMs: 0, measureMs: 0 },
   labels: {
     colorMode: 'parameter',
-    ecg: 'HR', spo2: 'SpO2', etco2: 'EtCO2', rr: 'RR', nibp: 'NIBP', temp: 'Temp', abp: 'ABP', abp2: 'ABP2', cvp: 'CVP', o2: 'FiO2', gas: 'Agent', n2o: 'N2O', tof: 'TOF',
-    units: { hr: '/min', spo2: '%', etco2: 'mmHg', rr: '/min', temp: '°C', nibp: 'mmHg', abp: 'mmHg', abp2: 'mmHg', cvp: 'mmHg', o2: '%', gas: '%', n2o: '%', tof: '/4' },
-    wave: { ecg: 'II', spo2: 'Pleth', etco2: 'CO2', abp: 'ABP', abp2: 'ABP2', cvp: 'CVP', gas: 'Agent', o2: 'O2' },
-    off: { ecg: 'LEADS OFF', spo2: 'PROBE OFF', etco2: 'CO2 LINE OFF', abp: 'ART LINE OFF', abp2: 'ART2 LINE OFF', cvp: 'CVP LINE OFF', gas: 'GAS LINE OFF' },
+    ecg: 'HR', spo2: 'SpO2', etco2: 'EtCO2', rr: 'RR', nibp: 'NIBP', temp: 'Temp', abp: 'ABP', abp2: 'ABP2', cvp: 'CVP', o2: 'FiO2', gas: 'Agent', n2o: 'N2O', tof: 'TOF', bis: 'BIS',
+    units: { hr: '/min', spo2: '%', etco2: 'mmHg', rr: '/min', temp: '°C', nibp: 'mmHg', abp: 'mmHg', abp2: 'mmHg', cvp: 'mmHg', o2: '%', gas: '%', n2o: '%', tof: '/4', bis: '' },
+    wave: { ecg: 'II', spo2: 'Pleth', etco2: 'CO2', abp: 'ABP', abp2: 'ABP2', cvp: 'CVP', gas: 'Agent', o2: 'O2', bis: 'EEG' },
+    off: { ecg: 'LEADS OFF', spo2: 'PROBE OFF', etco2: 'CO2 LINE OFF', abp: 'ART LINE OFF', abp2: 'ART2 LINE OFF', cvp: 'CVP LINE OFF', gas: 'GAS LINE OFF', bis: 'BIS SENSOR OFF' },
   },
   alarmStyle: { barPosition: 'top-right', flashHz: 1, limitStyle: 'small', tones: 'iec', toneHz: { high: 960, medium: 800, low: 640 } },
 };

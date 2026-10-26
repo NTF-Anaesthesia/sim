@@ -2,6 +2,7 @@
 
 ## Now
 - sim-v2 S5 gas + TOF (PR): FiO2, agent Fi/Et with age-adjusted MAC (Nickalls and Mapleson 2003, cited in DESIGN.md), N2O, agent and O2 traces, TOF on demand and on an interval; alarms for FiO2 (hypoxic mixture high) and Et agent in MAC; phone rows, agent select, trends; all off by default, per device.
+- sim-v2 S6 BIS + EEG strip (PR): module `bis` (BIS, SQI, EMG, SR) with a raw EEG strip that changes with depth (fast awake, slow when deep, burst suppression with SR); off by default; theme cells in both built-in themes; alarms and limit; trends group.
 - sim-v2 S3 scenarios and drugs (PR): timed scenarios run by the room on the storage alarm (phone can be closed), pause, skip, tap steps; import/export library files with refusal reasons; drug buttons with a glide, off by default.
 - sim-v2 S4 trends + debrief (PR): every event and glide start kept as SQLite rows (state still shows the last 20); Mark button and Trends tab on the phone; trend graph and table (30 min / 1 h / 4 h) on phone and monitor (Trends button, overlay closed by default); one-file offline debrief (HTML) plus JSON; 24 h expiry shown on the phone.
 - V2 S1 named screens (this PR): each monitor names itself once and gets its own bed, modules and theme from the phone's Screens tab; Identify, Forget, online dots; device choices win and can be cleared from the phone.

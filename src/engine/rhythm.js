@@ -35,6 +35,7 @@ export function shown(p, now) {
     nibp: off.nibp ? null : d.nibp,
     abp: off.abp || flat ? null : d.abp,
     cvp: off.cvp ? null : d.cvp,
+    bis: off.bis ? null : d.bis,
     abp2: off.abp2 || flat ? null : d.abp2,
     // gas line: the agent reads blank while no agent is in use
     fio2: off.gas ? null : d.fio2,

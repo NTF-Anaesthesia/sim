@@ -25,6 +25,7 @@ export const TREND_GROUPS = [
   { id: 'cvp', label: 'CVP', unit: 'mmHg', color: '#1d78c1', module: 'cvp', series: [{ key: 'cvp', get: (d) => d.cvp }] },
   { id: 'fio2', label: 'FiO₂', unit: '%', color: '#4a4a4a', module: 'gas|o2', series: [{ key: 'fio2', get: (d) => d.fio2 }, { key: 'eto2', get: (d) => d.eto2 }] },
   { id: 'agent', label: 'Agent', unit: '%', color: '#7b3fb5', module: 'gas', series: [{ key: 'fiag', get: (d) => d.fiag }, { key: 'etag', get: (d) => d.etag }] },
+  { id: 'bis', label: 'BIS', unit: '', color: '#7a4bc0', module: 'bis', series: [{ key: 'bis', get: (d) => d.bis }] },
 ];
 
 /**

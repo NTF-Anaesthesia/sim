@@ -17,6 +17,8 @@
     "abp": "#ff3030",
     "abp2": "#ff8030",
     "cvp": "#4080ff",
+    "bis": "#c080ff",
+    "eeg": "#c080ff",
     "o2": "#ffffff",
     "gas": "#c080ff",
     "n2o": "#4060ff",
@@ -77,6 +79,15 @@
       },
       {
         "module": "cvp",
+        "part": "wave",
+        "x": 0,
+        "y": 5,
+        "w": 8,
+        "h": 2,
+        "stack": "left"
+      },
+      {
+        "module": "bis",
         "part": "wave",
         "x": 0,
         "y": 5,
@@ -157,6 +168,15 @@
       },
       {
         "module": "cvp",
+        "part": "numeric",
+        "x": 8,
+        "y": 5,
+        "w": 4,
+        "h": 2,
+        "stack": "right"
+      },
+      {
+        "module": "bis",
         "part": "numeric",
         "x": 8,
         "y": 5,
@@ -289,6 +309,10 @@
       "speed": 12.5,
       "gain": 1,
       "scaleLines": []
+    },
+    "eeg": {
+      "speed": 25,
+      "gain": 1
     }
   },
   "screen": {
@@ -342,6 +366,7 @@
     "gas": "Agent",
     "n2o": "N2O",
     "tof": "TOF",
+    "bis": "BIS",
     "units": {
       "hr": "/min",
       "spo2": "%",
@@ -355,7 +380,8 @@
       "o2": "%",
       "gas": "%",
       "n2o": "%",
-      "tof": "/4"
+      "tof": "/4",
+      "bis": ""
     },
     "wave": {
       "ecg": "II",
@@ -365,7 +391,8 @@
       "abp2": "ABP2",
       "cvp": "CVP",
       "gas": "Agent",
-      "o2": "O2"
+      "o2": "O2",
+      "bis": "EEG"
     },
     "off": {
       "ecg": "LEADS OFF",
@@ -374,7 +401,8 @@
       "abp": "ART LINE OFF",
       "abp2": "ART2 LINE OFF",
       "cvp": "CVP LINE OFF",
-      "gas": "GAS LINE OFF"
+      "gas": "GAS LINE OFF",
+      "bis": "BIS SENSOR OFF"
     }
   },
   "alarmStyle": {

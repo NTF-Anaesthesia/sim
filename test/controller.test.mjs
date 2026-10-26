@@ -42,7 +42,7 @@ test('every step range stays inside the schema ranges', () => {
   for (const s of paramList(DEFAULT_UNITS).filter((x) => !x.limitOnly)) {
     for (const wire of [s.from(s.min), s.from(s.max)]) {
       const gas = { fio2: -1, eto2: -1, fiag: -1, etag: -1, fin2o: -1, etn2o: -1, age: -1, tofCount: -1, tofRatio: -1 };
-      const patch = buildPatch({ [s.id]: wire }, { ...pt(), ...gas, hr: -1, spo2: -1, etco2: -1, rr: -1, temp: -1, nibp: { sys: -1, dia: -1 }, abp: { sys: -1, dia: -1 }, abp2: { sys: -1, dia: -1 }, cvp: -99, ppv: -1 }, DEFAULT_UNITS);
+      const patch = buildPatch({ [s.id]: wire }, { ...pt(), ...gas, hr: -1, spo2: -1, etco2: -1, rr: -1, temp: -1, nibp: { sys: -1, dia: -1 }, abp: { sys: -1, dia: -1 }, abp2: { sys: -1, dia: -1 }, cvp: -99, ppv: -1, bis: -1, bisSqi: -1, bisEmg: -1, bisSr: -1 }, DEFAULT_UNITS);
       assert.ok(validatePatch(patch).ok, `${s.id} ${wire}`);
     }
   }

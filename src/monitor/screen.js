@@ -278,6 +278,7 @@ export function mountScreen(root, opts) {
     const abp2 = s.abp2 ? { sys: /** @type {number} */ (J(s.abp2.sys, 'sys')), dia: /** @type {number} */ (J(s.abp2.dia, 'dia')) } : null;
     const v = {
       cvp: s.cvp === null ? null : /** @type {number} */ (jit ? J(s.cvp, 'cvp') : s.cvp), abp2,
+      bis: s.bis === null ? null : Math.round(s.bis),
       hr: J(s.hr, 'hr'), spo2: J(s.spo2, 'spo2', 100), etco2: J(s.etco2, 'etco2'), rr: J(s.rr, 'rr'),
       temp: jit ? /** @type {number} */ (J(s.temp, 'temp')) : s.temp, abp,
     };
@@ -303,6 +304,7 @@ export function mountScreen(root, opts) {
       fio2: s.fio2,
       // no agent delivered yet (Fi and Et both 0): nothing to judge, so choosing an agent does not alarm before wash-in
       etagMac: (s.fiag ?? 0) > 0 || (s.etag ?? 0) > 0 ? mac : null,
+      bis: s.bis === null ? null : Math.round(s.bis),
     }, nowMs);
     const av = tracker.update(alarms, { enabled: state.alarms.enabled, silencedUntil: state.alarms.silencedUntil }, nowMs);
 

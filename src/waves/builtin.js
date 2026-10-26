@@ -1,5 +1,6 @@
 // @ts-check
-// The built-in waves: ECG II, SpO2 pleth, arterial line, capnogram, CVP, second arterial line, agent and oxygen traces. `registerBuiltinWaves(registry)` adds them.
+// The built-in waves: ECG II, SpO2 pleth, arterial line, capnogram, CVP, second arterial line, agent and oxygen traces, EEG strip. `registerBuiltinWaves(registry)` adds them.
+import { eegSample } from './eeg.js';
 import { artLineSample, cvpSample, gasSample } from './lines.js';
 import { capnoSample, ecgSample, plethSample } from './shapes.js';
 
@@ -52,5 +53,11 @@ export function registerBuiltinWaves(registry) {
     sample: (src, t) => gasSample(src, t, 'o2'),
     range: (gain) => [0, 110 / gain],
     blank: ({ patient }) => !!patient.off?.gas,
+  });
+  registry.register({
+    id: 'eeg',
+    sample: (_src, t, ctx) => eegSample(t, { bis: ctx.d?.bis ?? ctx.patient.bis, sr: ctx.patient.bisSr, emg: ctx.patient.bisEmg, sqi: ctx.patient.bisSqi }),
+    range: (gain) => [-1.5 / gain, 1.5 / gain],
+    blank: ({ patient }) => !!patient.off?.bis,
   });
 }
