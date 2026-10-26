@@ -1,18 +1,9 @@
-# ntf-public-template
+# sim
 
-Starting point for a new public NTF repo (one app or app group). Use **Use this template**, then follow the checklist.
+A phone-controlled simulated patient monitor for teaching simulation (no real patients, no clinical use, no sign-in).
+Open https://sim.anantf.com/, press **New room**, scan the QR code on the phone (controller) and open the monitor on a
+laptop or tablet. Rooms are throwaway and expire after 24 h idle.
 
-## Checklist after creating the repo
-
-1. Replace `<app>` and the one-line description in `AGENTS.md`, `README.md`, `STATUS.md` and `NOTES.md`.
-2. Create the private pair `<app>-private` from `ntf-private-template` (when the app has notes or data).
-3. Add `wrangler.jsonc` (Worker name, custom domain `<app>.anantf.com`); the organisation secrets are used by `deploy.yml`.
-4. Add the repo to the shared hub's `hub/repo-map.md`.
-5. Delete this checklist from `README.md`.
-
-## What is here
-
-- `AGENTS.md`: rules for every assistant; `CLAUDE.md` points to it.
-- `.claude/settings.json` and `.claude/hooks/attach-notes.sh`: cloud sessions are told to attach the shared private notes repo first.
-- `.github/workflows/`: `checks.yml` (pull requests and main) and `deploy.yml` (Worker, organisation secrets, no Workers Builds).
-- `STATUS.md` and `NOTES.md`: current state and lasting decisions.
+- `DESIGN.md`: state, message protocol, glide, alarms, theme format, room lifetime.
+- `STATUS.md`: what is built and what is next. `NOTES.md`: lasting decisions and how to test.
+- Run locally: `npm ci && npx wrangler dev`, then open http://127.0.0.1:8787/.

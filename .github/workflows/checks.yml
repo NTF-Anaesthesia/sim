@@ -1,4 +1,5 @@
-# Runs on pull requests and on main. Add the repo's own checks below; a repo with no checks yet still gets a green run.
+# Runs on pull requests and on main. Two parallel jobs: code checks (types, unit tests, Vite build) and the browser test.
+# Recipe: projects/hub/ci-speed.md (pinned runner, no --with-deps, cache, concurrency, timeouts).
 name: Checks
 on:
   pull_request:
@@ -6,14 +7,47 @@ on:
     branches: [main]
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  checks:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  code:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Repo checks
-        run: if [ -f tools/check.mjs ]; then node tools/check.mjs; else echo "No tools/check.mjs yet"; fi
+          cache: npm
+      - run: npm ci
+      - name: Repo checks and types
+        run: npm run check
+      - name: Unit tests (room, glide, client)
+        run: npm test
+      - name: Vite build (the kit must build inside a Vite app)
+        run: npm run build
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('package-lock.json') }}
+      - run: npx playwright install chromium
+      - name: Start the Worker locally (Durable Object included)
+        run: |
+          npx wrangler dev --port 8787 --ip 127.0.0.1 > wrangler.log 2>&1 &
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:8787/ > /dev/null && break; sleep 1; done
+      - name: Two-device test (monitor and phone)
+        run: npm run e2e
+      - name: Worker log on failure
+        if: failure()
+        run: tail -n 60 wrangler.log || true

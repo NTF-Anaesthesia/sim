@@ -1,0 +1,28 @@
+{
+  "name": "sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Phone-controlled simulated patient monitor (simulation only)",
+  "exports": {
+    "./room": "./src/room/index.js",
+    "./engine": "./src/engine/index.js",
+    "./waves": "./src/waves/index.js",
+    "./theme": "./src/theme/index.js",
+    "./monitor": "./src/monitor/index.js",
+    "./controller": "./src/controller/index.js"
+  },
+  "scripts": {
+    "check": "node tools/check.mjs && tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
+    "test": "node --test test/*.test.mjs",
+    "build": "vite build",
+    "e2e": "node test/e2e/two-devices.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261026.1",
+    "playwright": "^1.64.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "wrangler": "^4.152.0"
+  }
+}

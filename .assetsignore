@@ -1,0 +1,14 @@
+node_modules
+worker
+tools
+test
+dist
+.git
+.github
+.claude
+*.md
+package.json
+package-lock.json
+tsconfig.json
+wrangler.jsonc
+vite.config.js

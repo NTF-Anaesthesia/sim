@@ -1,7 +1,9 @@
-# <app>
+# sim
 
 Instructions for every AI assistant working here (Claude Code reads this through `CLAUDE.md`).
-<One or two lines: what the app is, who it is for, where it is live, how it is deployed.>
+A phone controls a simulated patient monitor shown on a laptop or tablet, live, through a throwaway room code. For
+teaching simulation only. Live at https://sim.anantf.com/; one Cloudflare Worker (static files + a Durable Object per room),
+deployed by `.github/workflows/deploy.yml` on every push to `main`. Design: `DESIGN.md` (read it first).
 
 ## Public here, private elsewhere
 
@@ -21,7 +23,9 @@ a PR or an issue (neutral pointers like "ask the owner" are fine).
 
 ## Checks before merging
 
-List the repo's check commands here (for example `node tools/check.mjs`) and keep `.github/workflows/checks.yml` in step.
+`npm ci`, then `npm run check` (repo checks + types), `npm test` (unit), `npm run build` (Vite build), and
+`npm run e2e` against a running `npx wrangler dev --port 8787` (two browser contexts). Keep `.github/workflows/checks.yml` in step.
+No Philips (or other brand) names or logos anywhere; new options are off by default and per device.
 
 ## Working with the maintainers
 

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor</title>
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="../icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../src/ui/page.css">
+<script>addEventListener('beforeinstallprompt', e => e.preventDefault());</script>
+</head>
+<body>
+<main id="app"><p class="hint">Loading…</p></main>
+<script type="module">
+import { mountMonitor } from '../src/monitor/index.js';
+import { isCode, normalizeCode } from '../src/shared/schema.js';
+const code = normalizeCode(location.pathname.split('/')[2] ?? '');
+const app = document.getElementById('app');
+if (isCode(code)) mountMonitor(app, { code });
+else app.innerHTML = '<h1>Monitor</h1><p>No room code in the address. <a href="../">Start or join a room</a></p>';
+</script>
+<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('../sw.js').catch(() => {});</script>
+</body>
+</html>

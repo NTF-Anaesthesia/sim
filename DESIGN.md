@@ -1,0 +1,307 @@
+# sim: design
+
+A phone (controller) drives a simulated patient monitor shown on a laptop or tablet (monitor), live, through a
+throwaway room. For teaching simulation only: no patient data, no login, no real clinical use. Look: generic (common
+monitor conventions, colours on black); no brand names or logos.
+
+## Contents
+
+1. Pieces and files
+2. Rooms: lifetime, codes, URLs
+3. State schema (v1)
+4. Modules
+5. Message protocol
+6. Glide model
+7. Alarm model
+8. Theme JSON schema v1
+9. Build rules
+10. Tests
+11. Settled details
+
+## 1. Pieces and files
+
+One Cloudflare Worker serves static files and a SQLite-backed Durable Object class `Room` (WebSocket Hibernation API).
+Plain ES modules, no build step to run; a Vite build in CI proves the code ports into a Vite app.
+
+```
+worker/index.js        Worker entry: routes, static assets, forwards /ws/<code> to the Room object
+worker/room.js         Room class (Durable Object)
+src/room/client.js     browser client: connect, reconnect, send, subscribe (entry `room`)
+src/engine/            glide, rhythm, alarms: pure functions on state (entry `engine`)
+src/waves/             wave synthesis (entry `waves`; S2)
+src/theme/             theme load/validate/apply (entry `theme`; S4)
+src/monitor/           monitor screen (entry `monitor`; S2)
+src/controller/        phone controller (entry `controller`; S3)
+src/shared/schema.js   state and theme types (JSDoc), defaults, validators, `SCHEMA_VERSION`
+public/                index.html (new room), m/index.html, c/index.html, manifest, service worker, themes/*.json
+tools/                 check, test runners
+```
+
+Each entry file only re-exports; importing it has no side effects (no DOM access, no timers, no network at import).
+One job per file. Strict JSDoc types (`// @ts-check`, `tsc --noEmit` in CI). `package.json` has `exports` for the
+six entries.
+
+## 2. Rooms: lifetime, codes, URLs
+
+- A room is a Durable Object named by its **code**: 6 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (no 0 O 1 I L),
+  uppercase. Codes are typed case-insensitively and normalised to uppercase.
+- `/` shows "New room": the page asks `POST /api/room`, the Worker picks a random code, creates nothing yet (the
+  object is created on first connection), and the page shows the code, a QR code of `https://<host>/c/<code>`, and a
+  link to open the monitor (`/m/<code>`) on this device. A "Join with code" box opens `/c/<code>` or `/m/<code>`.
+- `/m/<code>` monitor, `/c/<code>` controller. Any number of monitors and controllers may join one room.
+- State lives only in the Room's SQLite-backed storage (key `state`, plus `last` = time of the last message). No accounts, no personal data. Nothing is stored
+  in the browser except per-device options (localStorage; section 9).
+- **Expiry:** each message from any client sets an alarm `lastActive + 24 h` (`storage.setAlarm`). When the alarm fires and the
+  room has been idle that long, the Room calls `storage.deleteAll()` and closes sockets with code 4001
+  "room expired". A new connection to an expired code simply makes a fresh room with default state.
+- Limits: 20 sockets per room (extra ones get close code 4002 "room full"); one message at most 16 KB; at most
+  30 messages per second per socket (excess dropped, `error` sent).
+
+## 3. State schema (v1)
+
+The whole room state is one JSON object, `schema: 1`. All numbers are plain numbers; times are ms since epoch from
+the **server** clock.
+
+```jsonc
+{
+  "schema": 1,
+  "rev": 42,                       // integer, +1 on every accepted change
+  "patient": {                     // targets the controller sets (what values glide TO)
+    "rhythm": "sinus",             // see rhythm list below
+    "hr": 80,                      // 0-300; ignored for VF, asystole
+    "spo2": 98,                    // 0-100
+    "etco2": 38,                   // 0-100 mmHg
+    "rr": 14,                      // 0-60 /min
+    "temp": 36.8,                  // 25.0-43.0 C, one decimal
+    "nibp": { "sys": 120, "dia": 75 },        // targets for the next NIBP reading
+    "abp": { "sys": 120, "dia": 75 },         // only shown when module "abp" is on
+    "glideMs": 0                   // default glide time applied when a change carries none
+  },
+  "glide": {                       // when the latest change started and how long it takes
+    "startedAt": 1761000000000,    // server ms
+    "durationMs": 10000,
+    "from": { /* same shape as patient numerics: hr, spo2, etco2, rr, temp, nibp, abp */ }
+  },
+  "nibp": {                        // last measured reading (monitor shows it with its time)
+    "sys": 118, "dia": 74, "at": 1760999900000, "mode": "manual",   // mode: "manual" | "cycle"
+    "cycleSec": 300                // used when mode = "cycle"; 0 otherwise
+  },
+  "modules": ["ecg", "spo2", "etco2", "nibp", "rr", "temp"],  // enabled modules, order = display order (section 4)
+  "alarms": {
+    "limits": { "hr": [50, 120], "spo2": [90, 100], "etco2": [30, 50], "rr": [8, 30],
+                "nibpSys": [90, 180], "temp": [35.5, 38.5], "abpSys": [90, 180] },
+    "enabled": true,               // master switch
+    "silencedUntil": 0,            // server ms; 0 = not silenced; set to now + 120000 by "silence"
+    "latched": []                  // ids of alarms the controller has acknowledged (reserved, v1 unused)
+  },
+  "events": [                      // newest last, max 20, for the controller's log; monitor ignores
+    { "t": 1760999950000, "by": "c-ab12", "what": "rhythm sinus -> vt" }
+  ],
+  "theme": "default"               // "default" or "custom"; custom JSON is in "themeJson" (S4)
+}
+```
+
+Rhythms (id): `sinus`, `sinus_brady`, `sinus_tachy`, `af`, `flutter`, `svt`, `vt`, `vf`, `asystole`, `pea` (normal
+ECG, flat pleth). `hr` for sinus is the exact rate; for `sinus_brady`/`sinus_tachy` the controller sets a sensible `hr`
+and the id is a label; for `vf` and `asystole` `hr` is displayed `0`/`--` and ECG is the rhythm's own wave.
+Defaults (new room): sinus, hr 80, spo2 98, etco2 38, rr 14, temp 36.8, nibp 120/75, abp 120/75, glideMs 0, modules
+`["ecg","spo2","etco2","nibp","rr","temp"]`, alarms enabled, silencedUntil 0.
+
+Unknown fields are kept and ignored (forward compatible). A client that gets `schema` greater than it knows shows
+"update needed" and stops drawing.
+
+## 4. Modules
+
+A module is a named block of one screen, switched on or off from the controller.
+
+| id | Shows | Needs |
+|---|---|---|
+| `ecg` | ECG II wave, HR numeric | always on in v1 |
+| `spo2` | pleth wave, SpO2 numeric | |
+| `etco2` | capnogram wave, EtCO2 and RR numerics | |
+| `nibp` | NIBP numeric (sys/dia (mean)) with time | |
+| `rr` | RR numeric (when `etco2` is off) | |
+| `temp` | temperature numeric | |
+| `abp` | arterial line: ABP wave and sys/dia (mean) | **off by default** (the "art line") |
+
+Later (reserved ids, not drawn in v1): `cvp`, `pap`. A client ignores module ids it does not know.
+The list in `state.modules` is the truth for **every** screen in the room. Per-screen module lists (two monitors
+showing different things) are Later; v1 reserves `screens: { "<screenId>": { "modules": [...] } }` in state and ignores
+it.
+
+## 5. Message protocol
+
+Transport: WebSocket at `wss://<host>/ws/<code>?role=monitor|controller&id=<clientId>`. `clientId` is random, chosen
+by the client (`m-` or `c-` plus 4 hex), kept in memory per page load. JSON text frames, one object per frame, field
+`t` is the message type.
+
+Client to server:
+
+| t | fields | effect |
+|---|---|---|
+| `hello` | `schema` | optional; server always sends `state` on connect anyway |
+| `set` | `patch`, `glideMs?`, `baseRev?` | merge `patch` (deep, only known paths: `patient.*`, `modules`, `alarms.limits`, `alarms.enabled`, `nibp.mode`, `nibp.cycleSec`, `theme`, `themeJson`) into state. If `glideMs` is a number it replaces the glide time for the changed numerics; otherwise `patient.glideMs`. Starts a new glide (section 6). `rev` +1. |
+| `nibp` | `after?` | "measure now": server sets `nibp.sys/dia` to current glided `patient.nibp` values and `nibp.at` = now. `rev` +1. |
+| `silence` | none | `alarms.silencedUntil` = now + 120000. |
+| `ping` | `n` | server replies `pong` with same `n`; used to measure delay and keep the connection alive. |
+| `test` | `value` | v1 shell: stores `value` (any JSON up to 1 KB) in `state.test`, broadcast. Removed by S2/S3. |
+
+Server to client:
+
+| t | fields | meaning |
+|---|---|---|
+| `state` | `state`, `now` | full state, sent to a client right after it connects (a late joiner gets the current state) and after any change; `now` is the server clock for offset correction |
+| `error` | `code`, `msg` | `bad_json`, `too_big`, `rate`, `bad_patch` |
+| `pong` | `n`, `now` | |
+
+Rules:
+- Every accepted change is broadcast as a full `state` to **all** sockets (including the sender) in one go; total state
+  is well under 4 KB, so no diffs in v1.
+- Server is the only writer of `rev`, `glide.startedAt`, `nibp.at`, `silencedUntil`, `events`.
+- Last write wins; `baseRev` is optional and only recorded in `events` (no rejection) in v1.
+- Clients reconnect with backoff 0.5, 1, 2, 4, 8 s (max 8 s), then keep trying; on reconnect the server's `state` replaces
+  local state. The monitor keeps drawing from the last state while disconnected and shows a small "reconnecting"
+  chip after 3 s.
+- Target delay: controller change reaches every monitor in under 1 s on normal Wi-Fi.
+- Hibernation: the Room uses `ctx.acceptWebSocket` and the `webSocketMessage`/`webSocketClose` handlers; state is read
+  from SQLite on wake (a memory copy is only a cache); client ids and roles are kept with `serializeAttachment`.
+- Same-device fallback (BroadcastChannel) is Later; not in v1.
+
+## 6. Glide model
+
+Values glide **on the monitor** from a start to a target; the network carries only the change, not each step.
+
+- A `set` that changes numerics records `glide = { startedAt, durationMs, from }` where `from` is the **currently
+  displayed** values at that moment, computed server-side by evaluating the previous glide at `now` (so a second
+  change mid-glide starts from where the numbers actually are).
+- Displayed value at time `t` for numeric `x`: `from.x + (patient.x - from.x) * ease(clamp((t - startedAt) / durationMs, 0, 1))`
+  with `ease(u) = u` (linear) in v1. `durationMs = 0` is an immediate jump.
+- `t` is the monitor's local time plus `offset` (server `now` minus local time at the moment `state` arrived, minimum-
+  round-trip estimate from `ping`/`pong`), so all monitors show the same value at the same moment.
+- Integers shown rounded (HR, SpO2, RR, EtCO2, pressures); temperature one decimal.
+- Rhythm, module and limit changes are instant (no glide). Changing rhythm keeps the glided HR as the start.
+- Wave generators read the glided values every frame (heart rate sets beat interval; SpO2 sets pleth amplitude; RR
+  sets breath interval; EtCO2 sets capnogram plateau; ABP sys/dia set the arterial wave height).
+- Presets (S3) are just a `set` with many fields and a glide time.
+
+## 7. Alarm model
+
+Evaluated **on each monitor** from glided values and `alarms.limits`; the controller only sets limits, enable, silence.
+
+- Parameters with limits: HR, SpO2, EtCO2, RR, NIBP sys, temp, ABP sys (only when `abp` on). Each `[low, high]`; a value
+  outside raises that parameter's alarm.
+- Priority, IEC 60601-1-8 style: **high** (red): asystole, VF, VT, SpO2 or HR beyond a critical band (SpO2 < limit-5 or
+  HR < 40 or HR > 150 when outside limits); **medium** (yellow): any other limit violation; **low** (cyan, technical):
+  "NIBP not measured > 10 min" and similar notices. Highest priority wins in the alarm bar.
+- Display: alarm bar top right with the text ("HR LOW", "ASYSTOLE"), numeric of the violating parameter flashes
+  (1 Hz, inverted colours); high = red, medium = yellow bar background.
+- Sound: tone sequence per priority generated with Web Audio (no audio files): high 10 pulses burst, medium 3 pulses,
+  low 2 pulses; repeated while active. Audio starts only after a tap on the monitor ("enable sound" button) because of
+  browser autoplay rules; sound is off per device until then.
+- Silence: `silence` message sets `silencedUntil = now + 120000`; while silenced, tones are off and the bar shows a
+  silence icon with remaining time; flashing continues. A **new** alarm of higher priority than anything active when
+  silenced ends the silence on the monitor.
+- Master off (`alarms.enabled = false`): no bar, no flashing, no sound.
+- Alarm state is not stored on the server and not shared; each monitor derives it, so all monitors agree because their
+  inputs agree.
+
+## 8. Theme JSON schema v1
+
+A theme is one JSON file; the monitor draws entirely from the active theme. The default is generic. A theme may copy
+the look of any real monitor but carries **no logos or brand names**. `themes/default.json` ships; others are imported by
+file, URL or paste (S4).
+
+```jsonc
+{
+  "themeSchema": 1,
+  "name": "Generic dark",
+  "background": "#000000",
+  "font": { "family": "system-ui, sans-serif", "numericWeight": 700, "labelWeight": 500,
+            "numericScale": 1.0, "labelScale": 1.0 },
+  "colors": {                       // per parameter: wave line, numeric, limits text
+    "ecg":  "#00e000", "spo2": "#00d8ff", "etco2": "#ffe000", "abp": "#ff3030",
+    "nibp": "#ffffff", "rr": "#ffe000", "temp": "#ffffff", "hr": "#00e000",
+    "alarmHigh": "#ff2020", "alarmMed": "#ffd000", "alarmLow": "#00d8ff", "text": "#c0c0c0"
+  },
+  "layout": {
+    "grid": { "columns": 12, "rows": 8, "gap": 4 },
+    "cells": [                      // one entry per module part; unknown or disabled modules are skipped
+      { "module": "ecg",   "part": "wave",    "x": 0, "y": 0, "w": 8, "h": 2 },
+      { "module": "ecg",   "part": "numeric", "x": 8, "y": 0, "w": 4, "h": 2 },
+      { "module": "spo2",  "part": "wave",    "x": 0, "y": 2, "w": 8, "h": 2 },
+      { "module": "spo2",  "part": "numeric", "x": 8, "y": 2, "w": 4, "h": 2 }
+    ],
+    "alarmBar": { "x": 8, "y": 0, "w": 4, "h": 1 }
+  },
+  "waves": { "speedMmPerSec": 25, "lineWidth": 2, "sweepGapPx": 12, "fill": false },
+  "numerics": { "showLimits": true, "limitsPosition": "beside", "decimals": { "temp": 1 } },
+  "labels": { "ecg": "HR", "spo2": "SpO2", "etco2": "EtCO2", "rr": "RR", "nibp": "NIBP", "temp": "Temp", "abp": "ABP",
+              "units": { "hr": "/min", "etco2": "mmHg", "rr": "/min", "temp": "°C", "nibp": "mmHg", "abp": "mmHg" } },
+  "alarmStyle": { "barPosition": "top-right", "flashHz": 1, "limitStyle": "small", "tones": "iec" }
+}
+```
+
+Rules: a theme file is at most 32 KB; colours are `#rrggbb`; unknown keys are ignored; missing keys fall back to
+`themes/default.json`; invalid values (bad colour, cell off-grid) are dropped one by one with a message in the editor,
+not a whole-theme failure. The theme is **per device** (stored in the monitor's localStorage) unless the controller
+sends it into the room (`theme: "custom"`, `themeJson`), in which case every monitor in the room uses it.
+
+## 9. Build rules and options
+
+- Installable but never prompted: the pages have a manifest and a pass-through service worker (offline mode is Later); each page calls
+  `event.preventDefault()` on `beforeinstallprompt` and shows no install UI.
+- New options are **off by default** and **per device** (localStorage keys `sim.opt.*`), e.g. sound, wake lock, show
+  controller log, theme override.
+- Wake lock and full screen: buttons on the monitor (`navigator.wakeLock`, `requestFullscreen`), never automatic.
+- No analytics, no third-party scripts, no external fonts. Neutral wording in all text.
+- CI: lint/type-check (`tsc --noEmit`), unit tests (node --test, workerd via `@cloudflare/vitest-pool-workers` is **not**
+  used in v1; the Room logic is plain JS taking a fake storage, so node can test it), `vite build` of a tiny consumer
+  entry, Playwright. Recipe: no `--with-deps`, `ubuntu-24.04`, caches, concurrency, timeouts.
+
+## 10. Tests
+11. Settled details
+
+- Room (node, fake storage): join gets state; `set` broadcasts to all sockets; a late joiner gets current state; patch
+  allow-list rejects unknown paths; rate and size limits; expiry alarm clears state; `rev` increases by one.
+- Engine: glide midpoints and mid-glide restart; alarm priorities; silence expiry.
+- Playwright: two browser contexts, the controller sets a value, the monitor shows it within 1 s.
+
+## 11. Settled details
+
+Answers to questions a fresh reader asked; they override anything looser above.
+
+- **Atomic patches.** One bad path or value rejects the whole `set` (`bad_patch`); nothing changes, no `rev` bump.
+  `modules` replaces the list (not a merge); `ecg` is always drawn even if missing from the list; unknown ids are kept
+  and ignored. Limits merge per parameter name; `low <= high`. `temp` is rounded to 0.1 on the server.
+- **Initial glide:** `startedAt` = room creation time, `durationMs` 0, `from` = default numerics (so the displayed
+  values equal the targets).
+- **One glide at a time.** `glide` has a single `durationMs` for all numerics. A `set` restarts the glide only if its
+  patch changes at least one numeric target (`hr spo2 etco2 rr temp nibp abp`; sending the same value still restarts it).
+  Rhythm, modules, limits and `patient.glideMs` alone never restart it. Duration = message `glideMs` if given, else
+  `patient.glideMs` (after the patch). `glideMs` is 0 to 600000; message `glideMs` is not stored. `from` is stored raw
+  (unrounded); only display and the `nibp` reading round, with `Math.round`.
+- **Rhythm change** does not touch the glide; the HR keeps gliding. `hr` is validated 0-300 whatever the rhythm; for
+  `vf` and `asystole` the monitor shows `--`.
+- **NIBP cycle.** The server has no timer. When `nibp.mode` is `cycle`, each monitor, when `nibp.at + cycleSec*1000`
+  passes, sends `{t:"nibp", after:<the nibp.at it saw>}`. The server ignores a `nibp` whose `after` is not the current
+  `nibp.at`, so with several monitors only the first counts. A `nibp` without `after` (controller "measure now") always
+  counts.
+- **Roles** are labels only in v1: any client may send any message. `id` is for the event log; duplicates are harmless.
+  `hello` is optional and answered with `state`.
+- **Expiry** is extended only by accepted changes (`set`, `nibp`, `silence`, `test`), not by `ping`, `hello` or a
+  connection. On close code 4001 the client does not reconnect: it shows "room ended" with a link to start a new one.
+  Code 4002 is sent after accepting the socket when 20 others are already connected.
+- **Errors:** `bad_json` (not JSON, no `t`, or unknown `t`), `too_big`, `rate`, `bad_patch`. At the rate limit, excess
+  frames get one `rate` error per second and are otherwise dropped. Counters are in memory and reset when the object wakes.
+- **Codes.** Characters outside the alphabet make a code invalid (no look-alike mapping); the Worker answers 404 for a
+  page and 400 for a socket with a bad code, and the pages show "No room code". `POST /api/room` returns `{"code":"ABC234"}`;
+  a collision just joins the existing room (31^6 codes; rooms are throwaway).
+- **Size.** A custom `themeJson` inside a room is at most 12 KB (the 16 KB frame limit); the 32 KB limit is for a theme file
+  elsewhere. "Under 4 KB" state size excludes a custom theme.
+- **Alarm criticals.** High priority applies when the parameter is outside its limits AND: SpO2 < low limit - 5, HR < 40,
+  or HR > 150; plus asystole, VF, VT regardless of limits. Silencing is per monitor (its own `silencedUntil` is shared, but
+  a "higher priority ends the silence" is evaluated locally), so monitors may differ for a moment. "Similar notices" for
+  low priority: "NIBP not measured > 10 min" only in v1 (never raised if no reading has been taken yet).
+- **Event text** is `set <top-level keys>`, `nibp`, `silence`, `test`. `baseRev` is accepted and ignored in v1.
+- **Clock offset:** ping on open and every 10 s; keep the sample with the smallest round trip.
+- **Defaults (new room)** are exactly `defaultState()` in `src/shared/schema.js`.
