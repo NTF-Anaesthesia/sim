@@ -5,7 +5,7 @@
 
 /**
  * @typedef {{
- *   patient: import('../shared/schema.js').Patient, perfusing: boolean, tSec: number
+ *   patient: import('../shared/schema.js').Patient, perfusing: boolean, tSec: number, d?: import('../shared/schema.js').Numerics
  * }} WaveCtx per-frame facts a generator may read
  * @typedef {{
  *   id: string,

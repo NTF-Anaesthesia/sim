@@ -25,6 +25,8 @@ export function makeActions(client, currentPatient) {
     act,
     /** Measure now. @param {string} [p] */
     nibpNow: (p) => client.send({ t: 'nibp', p: p ?? currentPatient() }),
+    /** Flush test of an art line. @param {'abp' | 'abp2'} line @param {string} [p] */
+    flush: (line, p) => client.send({ t: 'flush', line, p: p ?? currentPatient() }),
     silence: () => client.send({ t: 'silence' }),
     /** @param {string} [label] */
     addPatient: (label) => client.send(label ? { t: 'addPatient', label } : { t: 'addPatient' }),

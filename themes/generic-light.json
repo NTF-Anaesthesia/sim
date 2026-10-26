@@ -14,6 +14,8 @@
     "spo2": "#0b5cad",
     "etco2": "#8a6100",
     "abp": "#b3261e",
+    "abp2": "#b25a1e",
+    "cvp": "#1e4fb3",
     "nibp": "#222222",
     "rr": "#8a6100",
     "temp": "#222222",
@@ -60,6 +62,24 @@
         "stack": "waves"
       },
       {
+        "module": "abp2",
+        "part": "wave",
+        "x": 4,
+        "y": 6,
+        "w": 8,
+        "h": 2,
+        "stack": "waves"
+      },
+      {
+        "module": "cvp",
+        "part": "wave",
+        "x": 4,
+        "y": 6,
+        "w": 8,
+        "h": 2,
+        "stack": "waves"
+      },
+      {
         "module": "etco2",
         "part": "wave",
         "x": 4,
@@ -96,6 +116,24 @@
       },
       {
         "module": "abp",
+        "part": "numeric",
+        "x": 0,
+        "y": 6,
+        "w": 4,
+        "h": 2.5,
+        "stack": "numbers"
+      },
+      {
+        "module": "abp2",
+        "part": "numeric",
+        "x": 0,
+        "y": 6,
+        "w": 4,
+        "h": 2.5,
+        "stack": "numbers"
+      },
+      {
+        "module": "cvp",
         "part": "numeric",
         "x": 0,
         "y": 6,
@@ -169,6 +207,14 @@
     "abp": {
       "speed": 25,
       "gain": 1
+    },
+    "abp2": {
+      "speed": 25,
+      "gain": 1
+    },
+    "cvp": {
+      "speed": 25,
+      "gain": 1
     }
   },
   "audio": {
@@ -202,6 +248,8 @@
     "nibp": "Cuff",
     "temp": "Temp",
     "abp": "Art",
+    "abp2": "Art 2",
+    "cvp": "CVP",
     "units": {
       "hr": "/min",
       "spo2": "%",
@@ -209,19 +257,25 @@
       "rr": "/min",
       "temp": "°C",
       "nibp": "mmHg",
-      "abp": "mmHg"
+      "abp": "mmHg",
+      "abp2": "mmHg",
+      "cvp": "mmHg"
     },
     "wave": {
       "ecg": "ECG",
       "spo2": "SpO2",
       "etco2": "CO2",
-      "abp": "ART"
+      "abp": "ART",
+      "abp2": "ART2",
+      "cvp": "CVP"
     },
     "off": {
       "ecg": "LEADS OFF",
       "spo2": "PROBE OFF",
       "etco2": "CO2 LINE OFF",
-      "abp": "ART LINE OFF"
+      "abp": "ART LINE OFF",
+      "abp2": "ART2 LINE OFF",
+      "cvp": "CVP LINE OFF"
     }
   },
   "alarmStyle": {

@@ -1,6 +1,7 @@
 // @ts-check
-// The built-in waves: ECG II, SpO2 pleth, arterial line, capnogram. `registerBuiltinWaves(registry)` adds them.
-import { abpSample, capnoSample, ecgSample, plethSample } from './shapes.js';
+// The built-in waves: ECG II, SpO2 pleth, arterial line, capnogram, CVP, second arterial line. `registerBuiltinWaves(registry)` adds them.
+import { artLineSample, cvpSample } from './lines.js';
+import { capnoSample, ecgSample, plethSample } from './shapes.js';
 
 /** @param {import('./registry.js').WaveRegistry} registry */
 export function registerBuiltinWaves(registry) {
@@ -24,8 +25,20 @@ export function registerBuiltinWaves(registry) {
   });
   registry.register({
     id: 'abp',
-    sample: (src, t, ctx) => abpSample(src, t, ctx.patient.abpDamping),
+    sample: (src, t, ctx) => artLineSample(src, t, 'abp', ctx.patient.abpDamping, ctx.patient.ppv ?? 0),
     range: (gain) => [0, 200 / gain],
     blank: ({ patient }) => !!patient.off?.abp,
+  });
+  registry.register({
+    id: 'abp2',
+    sample: (src, t, ctx) => artLineSample(src, t, 'abp2', ctx.patient.abpDamping, ctx.patient.ppv ?? 0),
+    range: (gain) => [0, 200 / gain],
+    blank: ({ patient }) => !!patient.off?.abp2,
+  });
+  registry.register({
+    id: 'cvp',
+    sample: (src, t, ctx) => cvpSample(src, t, ctx.d?.cvp ?? ctx.patient.cvp, ctx.patient.cvpV),
+    range: (gain) => [-2 / gain, 24 / gain],
+    blank: ({ patient }) => !!patient.off?.cvp,
   });
 }

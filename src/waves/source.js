@@ -13,6 +13,8 @@ export class WaveSource {
   constructor(seed = 1) {
     this.beatSched = new BeatScheduler(seed);
     this.breathSched = new BreathScheduler(seed + 6);
+    /** @type {Record<string, number>} display time each flush test began, by line (abp, abp2) */
+    this.flush = {};
   }
 
   get beats() { return this.beatSched.beats; }

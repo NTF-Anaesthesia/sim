@@ -136,4 +136,30 @@ export function registerBuiltinModules(registry) {
       },
     },
   });
+  registry.register({
+    id: 'abp2', wave: 'abp2',
+    parts: {
+      numeric: (c) => {
+        const a = c.v.abp2;
+        const l = lim(c, 'abp2Sys');
+        return {
+          label: c.patient.abp2Label || label(c, 'abp2'), color: 'abp2', param: 'abp2', unit: unit(c, 'abp2'), limits: l, small: '',
+          main: a ? `${Math.round(a.sys)}/${Math.round(a.dia)}` : '---', sub: a ? `(${mapOf(a.sys, a.dia)})` : '',
+          off: !a,
+        };
+      },
+    },
+  });
+  registry.register({
+    id: 'cvp', wave: 'cvp',
+    parts: {
+      numeric: (c) => {
+        const v = c.v.cvp;
+        return {
+          label: label(c, 'cvp'), color: 'cvp', param: 'cvp', unit: unit(c, 'cvp'), limits: lim(c, 'cvp'), small: '', sub: '',
+          main: v === null || v === undefined ? '---' : v.toFixed(0), off: v === null || v === undefined,
+        };
+      },
+    },
+  });
 }

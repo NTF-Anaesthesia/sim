@@ -16,7 +16,7 @@ const KPA = 0.133322;
 
 /**
  * @typedef {{
- *   id: string, label: string, unit: string, min: number, max: number, step: number, dec: number, color: string,
+ *   id: string, label: string, unit: string, min: number, max: number, step: number, dec: number, color: string, needs?: string,
  *   get: (p: Patient) => number, set: (v: number) => any, to: (v: number) => number, from: (d: number) => number
  * }} ParamSpec all numbers in the spec (min, max, step) are in display units; `get` and `set` use wire units
  */
@@ -45,6 +45,14 @@ export function paramList(units) {
       get: (p) => p.abp.sys, set: (v) => ({ abp: { sys: v } }), to: (v) => v, from: (d) => d },
     { id: 'abpDia', label: 'ABP dia', unit: 'mmHg', min: 0, max: 250, step: 1, dec: 0, color: 'var(--abp)',
       get: (p) => p.abp.dia, set: (v) => ({ abp: { dia: v } }), to: (v) => v, from: (d) => d },
+    { id: 'abp2Sys', label: 'ABP2 sys', unit: 'mmHg', min: 0, max: 300, step: 1, dec: 0, color: 'var(--abp2)', needs: 'abp2',
+      get: (p) => p.abp2.sys, set: (v) => ({ abp2: { sys: v } }), to: (v) => v, from: (d) => d },
+    { id: 'abp2Dia', label: 'ABP2 dia', unit: 'mmHg', min: 0, max: 250, step: 1, dec: 0, color: 'var(--abp2)', needs: 'abp2',
+      get: (p) => p.abp2.dia, set: (v) => ({ abp2: { dia: v } }), to: (v) => v, from: (d) => d },
+    { id: 'ppv', label: 'PPV', unit: '%', min: 0, max: 40, step: 1, dec: 0, color: 'var(--abp)', needs: 'abp',
+      get: (p) => p.ppv ?? 0, set: (v) => ({ ppv: v }), to: (v) => v, from: (d) => d },
+    { id: 'cvp', label: 'CVP', unit: 'mmHg', min: -5, max: 40, step: 1, dec: 0, color: 'var(--cvp)', needs: 'cvp',
+      get: (p) => p.cvp, set: (v) => ({ cvp: v }), to: (v) => v, from: (d) => d },
     { id: 'rr', label: 'RR', unit: '/min', min: 0, max: 60, step: 1, dec: 0, color: 'var(--etco2)',
       get: (p) => p.rr, set: (v) => ({ rr: v }), to: (v) => v, from: (d) => d },
     kpa
@@ -67,6 +75,8 @@ export const LIMIT_PARAMS = [
   { name: 'spo2', label: 'SpO₂', spec: 'spo2' },
   { name: 'nibpSys', label: 'NIBP sys', spec: 'nibpSys' },
   { name: 'abpSys', label: 'ABP sys', spec: 'abpSys', needs: 'abp' },
+  { name: 'abp2Sys', label: 'ABP2 sys', spec: 'abp2Sys', needs: 'abp2' },
+  { name: 'cvp', label: 'CVP', spec: 'cvp', needs: 'cvp' },
   { name: 'rr', label: 'RR', spec: 'rr' },
   { name: 'etco2', label: 'EtCO₂', spec: 'etco2' },
   { name: 'temp', label: 'Temp', spec: 'temp' },

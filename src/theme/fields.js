@@ -9,10 +9,10 @@
  * }} Field
  */
 
-const PARAMS = /** @type {const} */ (['ecg', 'spo2', 'etco2', 'abp', 'nibp', 'rr', 'temp', 'hr']);
-const PARAM_NAMES = { ecg: 'ECG', spo2: 'SpO2', etco2: 'EtCO2', abp: 'Art line', nibp: 'NIBP', rr: 'RR', temp: 'Temp', hr: 'HR' };
-const WAVES = /** @type {const} */ (['ecg', 'spo2', 'etco2', 'abp']);
-const WAVE_NAMES = { ecg: 'ECG', spo2: 'Pleth', etco2: 'CO2', abp: 'Art line' };
+const PARAMS = /** @type {const} */ (['ecg', 'spo2', 'etco2', 'abp', 'abp2', 'cvp', 'nibp', 'rr', 'temp', 'hr']);
+const PARAM_NAMES = { ecg: 'ECG', spo2: 'SpO2', etco2: 'EtCO2', abp: 'Art line', abp2: 'Art line 2', cvp: 'CVP', nibp: 'NIBP', rr: 'RR', temp: 'Temp', hr: 'HR' };
+const WAVES = /** @type {const} */ (['ecg', 'spo2', 'etco2', 'abp', 'abp2', 'cvp']);
+const WAVE_NAMES = { ecg: 'ECG', spo2: 'Pleth', etco2: 'CO2', abp: 'Art line', abp2: 'Art line 2', cvp: 'CVP' };
 
 /** Safe font stacks offered in the editor; a file may use any value that passes FONT_PATTERN. */
 export const FONT_CHOICES = ['system-ui, sans-serif', 'Georgia, serif', 'ui-monospace, Menlo, Consolas, monospace', 'Arial, Helvetica, sans-serif'];

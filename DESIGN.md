@@ -157,8 +157,12 @@ A module is a named block of one screen, switched on or off from the controller.
 | `rr` | RR numeric (when `etco2` is off) | |
 | `temp` | temperature numeric | |
 | `abp` | arterial line: ABP wave and sys/dia (mean) | **off by default** (the "art line") |
+| `abp2` | second arterial line (femoral, say): own sys/dia, label `abp2Label`, wave `abp2` | **off by default** |
+| `cvp` | central venous pressure: a, c, v waves and x, y descents, mean numeric | **off by default** |
 
-Later (reserved ids, not drawn in v1): `cvp`, `pap`. A client ignores module ids it does not know.
+**Lines (S2).** `cvp` (mean, -5 to 40), `cvpV` (`normal` or `giant`), `ppv` (0 to 40 %: pulse pressure swings with the breath on `abp` and `abp2`), `abp2` and `abp2Label` (up to 8 characters) are patient fields; `off.cvp` and `off.abp2` are sensor flags. CVP has no a wave without atrial contraction (AF, VF) and shows cannon a waves when the atria beat against a closed valve (complete heart block, VT). The **flush test** is the message `{t:'flush', line:'abp'|'abp2', p}`: the room only records an event (`kind: 'flush'`); each monitor draws a square wave then ringing that matches `abpDamping` (normal 2-3 oscillations, over none, under many) from the event time, for 3 s. Limits `cvp` and `abp2Sys`; alarms `CVP HIGH/LOW`, `ABP2 SYS`.
+
+Later (reserved ids, not drawn yet): `pap`. A client ignores module ids it does not know.
 **Every** module can be hidden, ECG included (a screen may show only the EtCO2 wave). The list in `state.modules` is the truth for **every** screen in the room. Per-screen module lists (two monitors
 showing different things) are Later; v1 reserves `screens: { "<screenId>": { "modules": [...] } }` in state and ignores
 it.
