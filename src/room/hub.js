@@ -6,6 +6,7 @@ import {
   defaultState, fillDefaults, screenName, validateIam, validatePatch,
 } from '../shared/schema.js';
 import { displayed, restartGlide } from '../engine/glide.js';
+import { MAX_LOG_ROWS, makeLog } from './log.js';
 import { drugPatch, validateDrug, validateScenario } from '../shared/scenario.js';
 
 /** @typedef {import('../shared/schema.js').RoomState} RoomState */
@@ -15,6 +16,8 @@ export const MAX_MESSAGE_CHARS = 16 * 1024;
 export const MAX_PER_SECOND = 30;
 export const SILENCE_MS = 120000;
 export const MAX_EVENTS = 20;
+export const MAX_HISTORY_MS = IDLE_MS;
+export const DEFAULT_HISTORY_MS = 4 * 60 * 60 * 1000;
 export const MAX_TEST_CHARS = 1024;
 export const IDENTIFY_MS = 3000;
 
@@ -24,7 +27,8 @@ export const IDENTIFY_MS = 3000;
  *   get(key: string): Promise<any>,
  *   put(key: string, value: any): Promise<void>,
  *   setAlarm(ms: number): Promise<void>,
- *   deleteAll(): Promise<void>
+ *   deleteAll(): Promise<void>,
+ *   sql?: import('./log.js').SqlStorage
  * }} HubStorage
  * @typedef {{ reply?: object, broadcast?: object, iam?: { s: string | null, dev: string[] } }} HubResult
  *   `iam`: the socket's screen and device choices changed; the Durable Object keeps them with the socket and sends `presence`
@@ -38,6 +42,7 @@ export class RoomHub {
   constructor(storage, clock = Date.now) {
     this.storage = storage;
     this.clock = clock;
+    this.log = makeLog(storage);
     /** @type {RoomState | null} */
     this.cache = null;
     /** @type {Map<string, number[]>} message times per client, for the rate limit */
@@ -84,6 +89,7 @@ export class RoomHub {
       case 'addPatient': return this.apply(clientId, now, msg, (s) => this.doAdd(s, msg, now));
       case 'removePatient': return this.apply(clientId, now, msg, (s) => this.doRemove(s, msg));
       case 'silence': return this.apply(clientId, now, msg, (s) => { s.alarms.silencedUntil = now + SILENCE_MS; return { kind: 'silence', what: 'silence' }; });
+      case 'history': return { reply: await this.history(msg, now) };
       case 'mark': return this.apply(clientId, now, msg, (s) => this.doMark(s, msg));
       case 'addScreen': {
         let id = '';
@@ -163,11 +169,43 @@ export class RoomHub {
     next.rev = before.rev + 1;
     next.events.push({ t: now, by: clientId, kind: info.kind, ...(info.p ? { p: info.p } : {}), what: info.what });
     if (next.events.length > MAX_EVENTS) next.events.splice(0, next.events.length - MAX_EVENTS);
+    this.record(before, next, now, clientId, info);
     await this.storage.put('state', next);
     await this.storage.put('last', now);
     await this.storage.setAlarm(alarmAt(next, now));
     this.cache = next;
     return { broadcast: { t: 'state', state: next, now } };
+  }
+
+  /**
+   * Append to the full log (SQLite rows): the event, and a glide record for every patient whose glide just started
+   * (a new bed counts), so trends can be rebuilt later from glide records plus events (DESIGN.md section 5a).
+   * @param {RoomState} before
+   * @param {RoomState} next
+   * @param {number} now
+   * @param {string} clientId
+   * @param {EventInfo} info
+   */
+  record(before, next, now, clientId, info) {
+    this.log.addEvent({ t: now, by: clientId, kind: info.kind, ...(info.p ? { p: info.p } : {}), what: info.what });
+    for (const pt of next.patients) {
+      const old = before.patients.find((x) => x.id === pt.id);
+      if (old && JSON.stringify(old.glide) === JSON.stringify(pt.glide) && JSON.stringify(numericsOf(old)) === JSON.stringify(numericsOf(pt))) continue;
+      this.log.addGlide({ t: pt.glide.startedAt, p: pt.id, dur: pt.glide.durationMs, from: pt.glide.from, to: numericsOf(pt) });
+    }
+  }
+
+  /**
+   * Reply to `history`: the full log for the last `range` ms (default 4 h, at most 24 h) or all of it with `all`.
+   * @param {any} msg
+   * @param {number} now
+   */
+  async history(msg, now) {
+    const range = msg.all === true ? MAX_HISTORY_MS
+      : typeof msg.range === 'number' && msg.range > 0 ? Math.min(msg.range, MAX_HISTORY_MS) : DEFAULT_HISTORY_MS;
+    const since = Math.max(0, now - range);
+    const last = (await this.storage.get('last')) ?? now;
+    return { t: 'history', rid: Number.isSafeInteger(msg.rid) ? msg.rid : undefined, now, since, expiresAt: last + IDLE_MS, events: this.log.events(since, MAX_LOG_ROWS), glides: this.log.glides(since) };
   }
 
   /**
@@ -439,6 +477,7 @@ export class RoomHub {
     const last = (await this.storage.get('last')) ?? 0;
     if (now - last >= IDLE_MS) {
       await this.storage.deleteAll();
+      this.log.clear();
       this.cache = null;
       this.recent.clear();
       return { expired: true };

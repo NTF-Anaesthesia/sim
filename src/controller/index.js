@@ -6,6 +6,7 @@ import { BUILTIN_THEMES } from '../theme/builtin.js';
 import { createThemePanel } from '../theme/panel.js';
 import { pickTheme } from '../theme/store.js';
 import { loadTheme } from '../theme/validate.js';
+import { mountTrends } from '../trends/panel.js';
 import { makeActions } from './actions.js';
 import { LibraryStore } from './library.js';
 import { PresetStore, runPreset, presetFromPatient } from './presets.js';
@@ -22,7 +23,7 @@ const RHYTHM_LABELS = /** @type {Record<string, string>} */ ({
 });
 const SENSOR_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG leads', spo2: 'SpO₂ probe', nibp: 'NIBP cuff', abp: 'Art line', etco2: 'CO₂ line', cvp: 'CVP line', abp2: 'Second art line' });
 const MODULE_LABELS = /** @type {Record<string, string>} */ ({ ecg: 'ECG', spo2: 'Pleth', etco2: 'EtCO₂ and RR', nibp: 'NIBP', rr: 'RR', temp: 'Temp', abp: 'Arterial line', cvp: 'CVP', abp2: 'Second arterial line' });
-const TABS = [['vitals', 'Vitals'], ['alarms', 'Alarms'], ['presets', 'Presets'], ['scenarios', 'Scenarios'], ['screens', 'Screens'], ['more', 'More']];
+const TABS = [['vitals', 'Vitals'], ['alarms', 'Alarms'], ['presets', 'Presets'], ['scenarios', 'Scenarios'], ['screens', 'Screens'], ['trends', 'Trends'], ['more', 'More']];
 const esc = (/** @type {unknown} */ s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
 
 /**
@@ -41,7 +42,7 @@ export function mountController(root, opts) {
     tab: 'vitals', p: /** @type {string | undefined} */ (undefined), glideMs: Number(settings.get('glideMs', 10000)),
     /** pending edits per patient id, wire units */
     pending: /** @type {Record<string, Record<string, number | string>>} */ ({}),
-    dragging: false, note: '', io: '', lib: '', libNote: '',
+    dragging: false, note: '', io: '', lib: '', libNote: '', markNote: '', forceView: false,
     scr: '', // screen the per-screen theme panel is open for
   };
   const actions = makeActions(client, () => ui.p);
@@ -121,6 +122,7 @@ export function mountController(root, opts) {
     <header class="top">
       <span class="chip" id="status" data-status="connecting" data-testid="status">connecting</span>
       <span class="code">Room <b id="code"></b></span>
+      <button type="button" class="small mark" data-act="mark" data-testid="mark" aria-label="Bookmark this moment in the log">Mark</button>
     </header>
     <nav id="beds" class="beds" aria-label="Patients"></nav>
     <section id="view" class="view" aria-live="off"></section>
@@ -361,11 +363,28 @@ export function mountController(root, opts) {
       <p class="hint">Simulation only. Made-up patients; never real data.</p>`;
   }
 
+  /** Trends tab: the panel draws itself from the room log, so it is built once per visit and left alone by state updates. */
+  let trends = /** @type {ReturnType<typeof mountTrends> | null} */ (null);
+  function viewTrends() {
+    return `<h2>Bookmark</h2>
+      <div class="row"><input id="marktext" maxlength="200" placeholder="Note for the debrief (optional)" aria-label="Bookmark note" data-testid="marktext">
+        <button type="button" data-act="mark-text" data-testid="mark-text">Mark</button></div>
+      <p class="hint" data-testid="mark-note">${esc(ui.markNote)}</p>
+      <h2>Trends</h2><div id="trendsHost"></div>`;
+  }
+
   function renderView() {
     const view = $('view');
     if (!state()) { view.innerHTML = '<p class="hint">Joining the room…</p>'; return; }
+    if (ui.tab === 'trends' && trends && view.querySelector('#trendsHost')?.isConnected && !ui.forceView) return;
+    ui.forceView = false;
     const scroll = window.scrollY;
-    view.innerHTML = ({ vitals: viewVitals, alarms: viewAlarms, presets: viewPresets, scenarios: viewScenarios, screens: viewScreens, more: viewMore }[/** @type {'vitals'} */ (ui.tab)] ?? viewVitals)();
+    trends = null;
+    view.innerHTML = ({ vitals: viewVitals, alarms: viewAlarms, presets: viewPresets, scenarios: viewScenarios, screens: viewScreens, trends: viewTrends, more: viewMore }[/** @type {'vitals'} */ (ui.tab)] ?? viewVitals)();
+    if (ui.tab === 'trends') {
+      trends = mountTrends($('trendsHost'), { client, code: opts.code, patientId: () => ui.p });
+      trends.refresh();
+    }
     window.scrollTo(0, scroll);
   }
 
@@ -488,8 +507,18 @@ export function mountController(root, opts) {
     const d = t.dataset;
     const s = state();
     const pt = patient();
-    if (d.tab) { ui.tab = d.tab; render(); return; }
-    if (d.bed) { ui.p = d.bed; render(); return; }
+    if (d.tab) { ui.tab = d.tab; ui.forceView = true; render(); return; }
+    if (d.bed) { ui.p = d.bed; ui.forceView = true; render(); return; }
+    if (d.act === 'mark' || d.act === 'mark-text') {
+      const input = /** @type {HTMLInputElement | null} */ (root.querySelector('#marktext'));
+      const text = d.act === 'mark-text' ? (input?.value ?? '').trim().slice(0, 200) : '';
+      if (!client.send({ t: 'mark', ...(ui.p ? { p: ui.p } : {}), ...(text ? { text } : {}) })) { ui.markNote = 'Not connected: bookmark not saved.'; }
+      else { ui.markNote = `Bookmarked at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`; if (input) input.value = ''; }
+      t.dataset.done = 'true';
+      const note = root.querySelector('[data-testid=mark-note]');
+      if (note) note.textContent = ui.markNote;
+      return;
+    }
     if (!s || !pt) return;
     if (d.scrAct && d.s) { onScreenAct(d.scrAct, d.s); return; }
     if (d.glide !== undefined) { ui.glideMs = Number(d.glide); settings.set('glideMs', ui.glideMs); renderView(); return; }

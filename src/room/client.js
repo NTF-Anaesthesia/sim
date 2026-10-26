@@ -46,7 +46,7 @@ export class RoomClient {
   }
 
   /**
-   * @param {'state' | 'status' | 'error' | 'presence' | 'screen'} name
+   * @param {'state' | 'status' | 'error' | 'presence' | 'screen' | 'history'} name
    * @param {(arg: any) => void} fn
    * @returns {() => void} unsubscribe
    */
@@ -125,11 +125,30 @@ export class RoomClient {
         this.bestRtt = rtt;
         this.offsetMs = msg.now + rtt / 2 - this.now();
       }
+    } else if (msg.t === 'history') {
+      this.emit('history', msg);
     } else if (msg.t === 'error') {
       this.emit('error', msg);
     } else if (msg.t === 'screenAdded' || msg.t === 'identify' || msg.t === 'clearDevice') {
       this.emit('screen', msg); // named screens (DESIGN.md section 4a)
     }
+  }
+
+  /**
+   * Ask the room for its full log (events and glide records) for the last `range` ms, or all of it. Resolves with the
+   * `history` reply, or null when the socket is not open or nothing came back within `timeoutMs`.
+   * @param {{ range?: number, all?: boolean }} [opts]
+   * @param {number} [timeoutMs]
+   * @returns {Promise<any>}
+   */
+  history(opts = {}, timeoutMs = 5000) {
+    return new Promise((resolve) => {
+      let off = () => {};
+      const rid = (this.historySeq = (this.historySeq || 0) + 1); // the room echoes it, so overlapping asks stay apart
+      const timer = setTimeout(() => { off(); resolve(null); }, timeoutMs);
+      off = this.on('history', (m) => { if (m.rid !== rid) return; clearTimeout(timer); off(); resolve(m); });
+      if (!this.send({ t: 'history', ...opts, rid })) { clearTimeout(timer); off(); resolve(null); }
+    });
   }
 
   /**

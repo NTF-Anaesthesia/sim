@@ -12,6 +12,7 @@ monitor conventions, colours on black); no brand names or logos.
 4. Modules
    4a. Named screens
 5. Message protocol
+   5a. Room log, trends, debrief
 6. Glide model
 7. Alarm model
 8. Theme JSON schema v1
@@ -212,7 +213,8 @@ Client to server:
 | `nibp` | `p?`, `after?` | "measure now" for patient `p`: server sets `nibpRead.sys/dia` to the current glided `nibp` values and `nibpRead.at` = now. `rev` +1. |
 | `addPatient` | `label?` | adds a default patient (id `p<n>`, label default `Bed <count>`); max 8. |
 | `removePatient` | `p` | removes that patient; the last one cannot be removed. |
-| `mark` | `p?`, `text?` | bookmark in the event log (`kind: "bookmark"`, text up to 200 chars) for debriefs; V1 has no button for it. `rev` +1. |
+| `mark` | `p?`, `text?` | bookmark in the event log (`kind: "bookmark"`, text up to 200 chars) for debriefs; the phone's Mark button (header) and Trends tab send it. `rev` +1. |
+| `history` | `range?` (ms, default 4 h, max 24 h), `all?` | asks for the full log (section 5a); the sender gets `history`. Not stored, `rev` unchanged. |
 | `silence` | none | `alarms.silencedUntil` = now + 120000. |
 | `ping` | `n` | server replies `pong` with same `n`; used to measure delay and keep the connection alive. |
 | `addScreen` | `name?`, `kind?` | adds a named screen (section 4a; id `s<n>`, name default `Screen <n>`); the sender gets `screenAdded`. `rev` +1. |
@@ -234,6 +236,7 @@ Server to client:
 | `pong` | `n`, `now` | |
 | `presence` | `monitors`, `controllers`, `screens` | counts of connected sockets by role, and `screens: [{s, dev}]` for monitors that sent `iam` with an id (one entry per screen, device choices merged), sent to every socket when one joins, leaves or sends `iam` (S3, V2 S1). Not stored, not in `state`; a client keeps the last one. The controller shows "N monitors". |
 | `screenAdded` | `s` | reply to `addScreen`, to the sender only |
+| `history` | `now`, `since`, `expiresAt`, `events`, `glides` | reply to `history`, to the sender only (section 5a) |
 | `identify` | `s`, `ms` | show screen `s`'s name for `ms` |
 | `clearDevice` | `s`, `what` | screen `s` drops its own `theme` or `p` choice |
 
@@ -249,6 +252,35 @@ Rules:
 - Hibernation: the Room uses `ctx.acceptWebSocket` and the `webSocketMessage`/`webSocketClose` handlers; state is read
   from SQLite on wake (a memory copy is only a cache); client ids and roles are kept with `serializeAttachment`.
 - Same-device fallback (BroadcastChannel) is Later; not in v1.
+
+## 5a. Room log, trends, debrief
+
+`state.events` still carries the last 20 events for the controller. The Room also keeps **every** event and every glide
+start as SQLite rows in its own Durable Object storage (`src/room/log.js`; deleted with the room at the 24 h expiry):
+
+- `events(id, t, by, kind, p, what)`: one row per accepted change, the same entry `state.events` gets.
+- `glides(id, t, p, dur, from_json, to_json)`: one row whenever a bed's glide record or numeric targets change (also a
+  new bed). `from` is what was displayed at `t`, `to` the targets, the same shape as `numericsOf`.
+- Each table keeps its newest 5000 rows. Rows are written in the same step as the state (`RoomHub.record`).
+
+**Trends are rebuilt from these rows (seam 8); there is no trend store.** The value at time `t` for a bed is
+`displayed()` of the last glide record at or before `t` (before the first record: that record's `from`; no records:
+the bed's own glide from `state`). So a trend point equals what a monitor showed then; pulseless and sensor-off blanks
+are display rules and are not applied. Code: `src/trends/series.js` (sampling, groups per module), `chart.js` (SVG graph
+and table as strings), `panel.js` (the panel, shared by phone and monitor).
+
+`history` reply: `events` (newest 5000 with `t >= since`, oldest first), `glides` (all from `since`, plus each bed's last
+one before it), `expiresAt` (server ms the room is deleted if nobody changes anything: last change + 24 h), `now`.
+
+UI (all off or closed by default; installable, never prompted):
+- Phone: **Mark** button in the header (bookmark now, bed = current) and a **Trends** tab: bookmark with a note, range
+  30 min / 1 h / 4 h, graph or table for the current bed, orange lines for bookmarks and grey for other events,
+  Refresh, **Debrief file** and **JSON** buttons, and the expiry time (shown as a warning under 2 h).
+- Monitor: **Trends** button in the toolbar opens an overlay with the same panel for that screen's bed; closed by default.
+- Debrief: built in the browser from `history { all: true }`: one HTML file (inline SVG graph per bed, event list, the data
+  embedded as JSON, no outside links, works offline) and the same data as JSON. Nothing is uploaded.
+
+No schema change: the log is outside `state`, `schema` stays 1.
 
 ## 6. Glide model
 
@@ -378,6 +410,10 @@ Modules register themselves (`src/monitor/modules.js`, waves in `src/waves/regis
   allow-list rejects unknown paths; rate and size limits; expiry alarm clears state; `rev` increases by one.
 - Engine: glide midpoints and mid-glide restart; alarm priorities; silence expiry.
 - Playwright: two browser contexts, the controller sets a value, the monitor shows it within 1 s.
+- Log and trends (`test/trends.test.mjs`, real SQLite via `node:sqlite`): more than 20 events persist and survive a restart,
+  bookmarks, history window and expiry, row cap, trend values equal `displayed()` at sampled times (mid-glide, after a second
+  change), graph and table from one series, debrief HTML is self-contained and escaped. `test/e2e/trends.mjs`: phone marks and
+  bookmarks, graph, table equals the displayed HR, monitor overlay, debrief downloads and opens offline.
 
 ## 11. Settled details
 
