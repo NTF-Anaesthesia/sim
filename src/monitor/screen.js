@@ -3,6 +3,7 @@
 // alarms and the alarm tone. Waves run on the display clock (seconds), glide / silence / NIBP on the server clock (ms).
 import { AlarmTracker, burstDue, evaluateAlarms, PRIORITY_NAME } from '../engine/alarms.js';
 import { displayed } from '../engine/glide.js';
+import { macFraction } from '../engine/gas.js';
 import { jittered } from '../engine/jitter.js';
 import { NibpMachine, nibpCycleDue } from '../engine/nibp.js';
 import { pulseless, shown } from '../engine/rhythm.js';
@@ -52,6 +53,7 @@ export function mountScreen(root, opts) {
   let patient = null;
   let nibp = new NibpMachine();
   let nibpReq = { after: -1, at: 0 };
+  let tofReq = { after: -1, at: 0 };
   /** @type {import('./view.js').View | null} */
   let view = null;
   let viewKey = '';
@@ -171,6 +173,13 @@ export function mountScreen(root, opts) {
       screenMode: screenPick() === 'theme' ? theme.screen.mode : screenPick(),
       onFit: () => { needRefill = true; },
     });
+    // train-of-four: tapping its numeric measures now, on any screen
+    for (const ref of view.refs) {
+      if (ref.cell.module !== 'tof' || ref.cell.part === 'wave') continue;
+      ref.el.style.cursor = 'pointer';
+      ref.el.title = 'Tap to measure train-of-four';
+      ref.el.addEventListener('click', () => { if (patient) client.send({ t: 'tof', p: patient.id }); });
+    }
     lanes = [];
     for (const ref of view.refs) {
       const def = modules.get(ref.cell.module);
@@ -272,6 +281,8 @@ export function mountScreen(root, opts) {
       hr: J(s.hr, 'hr'), spo2: J(s.spo2, 'spo2', 100), etco2: J(s.etco2, 'etco2'), rr: J(s.rr, 'rr'),
       temp: jit ? /** @type {number} */ (J(s.temp, 'temp')) : s.temp, abp,
     };
+    const mac = s.etag === null ? null : macFraction(patient, s.etag, s.etn2o ?? 0);
+    Object.assign(v, { fio2: s.fio2, eto2: s.eto2, fiag: s.fiag, etag: s.etag, fin2o: s.fin2o, etn2o: s.etn2o, mac });
     latestVals = v;
     const nb = nibp.tick(patient.nibpRead, !!patient.off?.nibp, nowMs);
     const due = nibpCycleDue(patient.nibpRead, nowMs);
@@ -279,11 +290,17 @@ export function mountScreen(root, opts) {
       nibpReq = { after: due, at: nowMs };
       client.send({ t: 'nibp', p: patient.id, after: due });
     }
+    const tofDue = patient.tofRead && modsOn().includes('tof') ? nibpCycleDue(patient.tofRead, nowMs) : null;
+    if (tofDue !== null && (tofReq.after !== tofDue || nowMs - tofReq.at > 5000)) {
+      tofReq = { after: tofDue, at: nowMs };
+      client.send({ t: 'tof', p: patient.id, after: tofDue });
+    }
     const alarms = evaluateAlarms(patient, state, {
       // alarms judge the glided value, not the display wobble, so a value near a limit does not flap
       hr: s.hr, spo2: s.spo2, etco2: s.etco2, rr: s.rr, temp: s.temp,
       nibpSys: nb.phase === 'result' ? nb.sys : null, abpSys: s.abp ? s.abp.sys : null,
       cvp: s.cvp, abp2Sys: s.abp2 ? s.abp2.sys : null,
+      fio2: s.fio2, etagMac: mac,
     }, nowMs);
     const av = tracker.update(alarms, { enabled: state.alarms.enabled, silencedUntil: state.alarms.silencedUntil }, nowMs);
 

@@ -4,8 +4,9 @@
 import { mulberry32 } from './rng.js';
 
 /**
- * @typedef {{ t: number, cycle: number, ti: number, etco2: number, shape: string }} Breath
- * @typedef {{ rr: number, ie: number, etco2: number, shape: string }} BreathParams
+ * @typedef {{ fio2: number, eto2: number, fiag: number, etag: number }} BreathGas inspired and expired O2 and agent, % (gas waves)
+ * @typedef {{ t: number, cycle: number, ti: number, etco2: number, shape: string, gas?: BreathGas }} Breath
+ * @typedef {{ rr: number, ie: number, etco2: number, shape: string, gas?: BreathGas }} BreathParams
  */
 
 export class BreathScheduler {
@@ -37,7 +38,7 @@ export class BreathScheduler {
     while (this.next <= until) {
       const cycle = 60 / p.rr * (1 + 0.03 * (this.rand() - 0.5));
       const ti = Math.max(0.3, cycle / (1 + Math.max(0.2, p.ie)));
-      const b = { t: this.next, cycle, ti, etco2: p.etco2, shape: p.shape };
+      const b = { t: this.next, cycle, ti, etco2: p.etco2, shape: p.shape, gas: p.gas ? { ...p.gas } : undefined };
       this.breaths.push(b);
       added.push(b);
       this.next += cycle;

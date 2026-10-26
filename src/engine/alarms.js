@@ -17,7 +17,7 @@ export const TONE_PULSES = { 3: 10, 2: 3, 1: 2 };
  * @typedef {{ id: string, param: string, priority: number, text: string }} Alarm
  * @typedef {{
  *   hr: number | null, spo2: number | null, etco2: number | null, rr: number | null, temp: number | null,
- *   nibpSys: number | null, abpSys: number | null, cvp?: number | null, abp2Sys?: number | null
+ *   nibpSys: number | null, abpSys: number | null, cvp?: number | null, abp2Sys?: number | null, fio2?: number | null, etagMac?: number | null
  * }} AlarmValues the values the monitor shows (after jitter), null when blank
  */
 
@@ -92,6 +92,16 @@ export function evaluateAlarms(p, state, v, now) {
   if (mods.includes('cvp')) {
     if (off.cvp) add('cvp-off', 'cvp', PRIORITY.low, 'CVP LINE OFF');
     else limit('cvp', 'cvp', 'CVP', v.cvp ?? null, 'cvp');
+  }
+  if (mods.includes('gas') || mods.includes('o2')) {
+    if (off.gas) add('gas-off', 'gas', PRIORITY.low, 'GAS LINE OFF');
+    else {
+      const fi = v.fio2 ?? null;
+      if (fi !== null && fi < 21) add('fio2-hypoxic', 'fio2', PRIORITY.high, 'FIO2 LOW');
+      else limit('fio2', 'fio2', 'FIO2', fi, 'fio2');
+      // the agent limit is in age-adjusted MAC, so one pair serves every agent
+      if (mods.includes('gas') && p.agent && p.agent !== 'none') limit('etagent', 'etagent', 'ET AGENT', v.etagMac ?? null, 'etagent');
+    }
   }
   return out;
 }

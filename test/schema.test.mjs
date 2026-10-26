@@ -38,7 +38,7 @@ test('default patient: one Bed 1 with the new fields at their defaults', () => {
   assert.equal(s.patients.length, 1);
   const p = s.patients[0];
   assert.deepEqual([p.id, p.label], ['p1', 'Bed 1']);
-  assert.deepEqual(p.off, { ecg: false, spo2: false, nibp: false, abp: false, etco2: false, cvp: false, abp2: false });
+  assert.deepEqual(p.off, { ecg: false, spo2: false, nibp: false, abp: false, etco2: false, cvp: false, abp2: false, gas: false });
   assert.deepEqual([p.cvp, p.cvpV, p.ppv, p.abp2], [8, 'normal', 0, { sys: 120, dia: 75 }]);
   assert.deepEqual([p.etco2Shape, p.spo2Quality, p.abpDamping], ['normal', 'good', 'normal']);
   assert.deepEqual([p.pvcPerMin, p.ie, p.pulse, p.flutterRatio, p.st], [0, 2, true, 2, 0]);

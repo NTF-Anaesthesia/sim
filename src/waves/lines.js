@@ -1,5 +1,5 @@
 // @ts-check
-// Pressure-line extras: the CVP trace (a, c, v waves and the x and y descents) and the flush test of an arterial line.
+// Pressure-line extras: the CVP trace (a, c, v waves and the x and y descents), the flush test of an arterial line and the gas traces.
 // Pure, like shapes.js: `src` is { beats, breaths, base, atrial, flush } on the display clock (seconds).
 import { abpSample, upper } from './shapes.js';
 
@@ -101,4 +101,33 @@ export function cvpSample(src, t, mean, vType, swing = 1.5) {
   const br = src.breaths[bi];
   if (br && t - br.t < br.cycle + 1) v += swing * Math.sin(Math.PI * Math.min(1, (t - br.t) / br.cycle)) ** 2 * (t - br.t < br.ti ? 1 : 0.6);
   return mean - 1.5 + v;
+}
+
+/**
+ * Anaesthetic gas trace on the breath scheduler: the level sits at the inspired value, falls to the expired value
+ * during expiration and rises back at the next inspiration (the mirror of the capnogram, because gas is taken up).
+ * `kind` picks oxygen (`o2`, FiO2 and EtO2 in %) or the volatile agent (`agent`, Fi and Et in %).
+ * @param {{ breaths: import('../engine/breaths.js').Breath[] }} src
+ * @param {number} t display time
+ * @param {'o2' | 'agent'} kind
+ * @returns {number}
+ */
+export function gasSample(src, t, kind) {
+  const br = src.breaths;
+  const i = upper(br, t) - 1;
+  const b = br[i];
+  const fi = (/** @type {import('../engine/breaths.js').Breath | undefined} */ x) => (kind === 'o2' ? x?.gas?.fio2 : x?.gas?.fiag) ?? 0;
+  const et = (/** @type {import('../engine/breaths.js').Breath | undefined} */ x) => (kind === 'o2' ? x?.gas?.eto2 : x?.gas?.etag) ?? 0;
+  if (!b) return 0;
+  const x = t - b.t;
+  if (x > b.cycle + 1) return fi(b); // no new breath: flat at the last inspired level
+  if (x < b.ti) {
+    const prev = br[i - 1] ?? b;
+    return fi(b) + (et(prev) - fi(b)) * Math.exp(-x / 0.07);
+  }
+  const e = x - b.ti;
+  const exp = Math.max(0.5, b.cycle - b.ti);
+  const f = Math.min(1, e / exp);
+  const down = 1 / (1 + Math.exp(-(e - 0.18) / 0.04));
+  return fi(b) + (et(b) - fi(b)) * down * (0.9 + 0.1 * f);
 }
