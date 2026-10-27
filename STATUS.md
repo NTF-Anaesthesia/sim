@@ -1,6 +1,7 @@
 # sim: status
 
 ## Now
+- sim-train S1 speed per change, queue, live tempo (PR): each pending change can have its own speed (more speeds 5 s to 5 min and a custom time), one Apply sends them all as `glideMs` + `glideMsBy`; "Add to queue" (after X s or on tap) with a queue panel (move, skip, save as scenario); live tempo 0.5x / 1x / 2x / Finish now; fits 360 px.
 - sim-v2 S5 gas + TOF (PR): FiO2, agent Fi/Et with age-adjusted MAC (Nickalls and Mapleson 2003, cited in DESIGN.md), N2O, agent and O2 traces, TOF on demand and on an interval; alarms for FiO2 (hypoxic mixture high) and Et agent in MAC; phone rows, agent select, trends; all off by default, per device.
 - sim-v2 S7 defib screen (PR): a screen of kind defib shows ECG, energy, charge, shock and sync (touch and mouse); pads off blocks the shock; a shock draws artefact on every screen of the bed, applies the bed's postShock rhythm and logs a `shock` event; all off by default.
 - sim-v2 S6 BIS + EEG strip (PR): module `bis` (BIS, SQI, EMG, SR) with a raw EEG strip that changes with depth (fast awake, slow when deep, burst suppression with SR); off by default; theme cells in both built-in themes; alarms and limit; trends group.

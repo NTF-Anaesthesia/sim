@@ -228,7 +228,7 @@ Client to server:
 | t | fields | effect |
 |---|---|---|
 | `hello` | `schema` | optional; server always sends `state` on connect anyway |
-| `set` | `p?`, `patch`, `glideMs?`, `baseRev?` | merge `patch` (deep, only known paths: `patient.*` = every patient field above except `id`, `glide`, `nibpRead`; `modules`, `alarms.limits`, `alarms.enabled`, `nibp.mode`, `nibp.cycleSec` (these two go to `nibpRead`), `theme`, `themeJson`) into patient `p` (default: the first) or the room. If `glideMs` is a number it replaces the glide time for the changed numerics; otherwise the patient's `glideMs`. Starts that patient's glide (section 6). `rev` +1. |
+| `set` | `p?`, `patch`, `glideMs?`, `glideMsBy?`, `baseRev?` | merge `patch` (deep, only known paths: `patient.*` = every patient field above except `id`, `glide`, `nibpRead`; `modules`, `alarms.limits`, `alarms.enabled`, `nibp.mode`, `nibp.cycleSec` (these two go to `nibpRead`), `theme`, `themeJson`) into patient `p` (default: the first) or the room. If `glideMs` is a number it replaces the glide time for the changed numerics; otherwise the patient's `glideMs`. Starts that patient's glide (section 6). `rev` +1. |
 | `nibp` | `p?`, `after?` | "measure now" for patient `p`: server sets `nibpRead.sys/dia` to the current glided `nibp` values and `nibpRead.at` = now. `rev` +1. |
 | `addPatient` | `label?` | adds a default patient (id `p<n>`, label default `Bed <count>`); max 8. |
 | `removePatient` | `p` | removes that patient; the last one cannot be removed. |
@@ -244,6 +244,9 @@ Client to server:
 | `clearDevice` | `s`, `what` (`theme` or `p`) | the server sends `clearDevice`; that monitor drops its own choice. Not stored. |
 | `scenarioStart` | `p?`, `scenario` | starts a timed scenario on bed `p` (validated like a library file entry, section 12); replaces a running one. `rev` +1. |
 | `scenarioPause` / `scenarioResume` / `scenarioNext` / `scenarioStop` | none | pause, resume, run the next step now (skips a countdown or answers a tap), or stop. Error `bad_patch` "no scenario is running" when none runs. |
+| `queueAdd` | `p?`, `step`, `replace?` | add one step (`{ atSec | onTap, patch, glideMs, glideMsBy? }`, validated like a scenario step) to the end of the queue on bed `p`; starts a queue run when none runs there. A running scenario, or a queue on another bed, is refused unless `replace: true` (the phone asks first). Up to 30 steps |
+| `queueMove` / `queueRemove` | `i`, `dir?` | move step `i` (`dir` -1 or 1) or skip it; only steps that have not run yet |
+| `tempo` | `p?`, `x` | live speed `0.5`, `1` or `2` for what runs on the bed (a glide, and the queue or scenario if one runs), or `"finish"` to land everything now |
 | `drug` | `p?`, `drug` | applies a drug button's relative change to bed `p` with a glide (section 12). `rev` +1. |
 | `test` | `value` | v1 shell: stores `value` (any JSON up to 1 KB) in `state.test`, broadcast. Removed by S2/S3. |
 
@@ -318,6 +321,15 @@ Values glide **on the monitor** from a start to a target; the network carries on
 - Wave generators read the glided values every frame (`etco2Shape`, `spo2Quality`, `abpDamping`, `ie`, `st`, `pvcPerMin` shape the waves; heart rate sets beat interval; SpO2 sets pleth amplitude; RR
   sets breath interval; EtCO2 sets capnogram plateau; ABP sys/dia set the arterial wave height).
 - Presets (S3) are just a `set` with many fields and a glide time, sent to a chosen patient (`p`).
+- **Speed per change (sim-train S1).** A `set` may carry `glideMsBy`, a map of glide field to time (0 to 600000 ms);
+  fields left out use `glideMs`. Glide fields are `hr spo2 etco2 rr temp nibp abp abp2 cvp bis fio2 eto2 fiag etag fin2o etn2o`
+  (a pressure's `sys` and `dia` share one). The record keeps `durationMs` = the longest time, so a monitor that
+  predates `glideMsBy` never lands early, and `glideMsBy` only when the times differ; old records and plain sets are
+  unchanged. Fields not in a patch keep the time they had left. Each field's displayed value is
+  `glideValue(from, to, startedAt, fieldMs(glide, field), t)`, so every screen agrees.
+- **Live tempo.** `tempo` 0.5, 2 rescales the time left on the running glide (from the displayed values) and, with a
+  queue or scenario, the next step's due time and later steps; 1 restores it; `finish` lands every value now and runs
+  the remaining steps at once. Tempo is kept on the run until it ends.
 
 ## 7. Alarm model
 
@@ -488,6 +500,11 @@ Answers to questions a fresh reader asked; they override anything looser above.
 Only one scenario runs per room. `nextAt` is the server time the next step is due (0 while `waiting` for a tap or
 while paused). The step list itself is kept in Room storage (`scenarioSteps`), not in the broadcast state.
 Removing the scenario's bed removes the scenario.
+
+**Queue (sim-train S1).** A queue is a scenario built one step at a time from the phone's "Add to queue": run
+`queue: true`, all its steps in `q` (so every phone shows and edits it), the first step relative to the moment it was
+added. Steps can be moved or skipped until they run; "Save as scenario" is local to the phone (library format
+unchanged). A step may carry `glideMsBy`; library files stay version 1 and old files load as before.
 
 **Running.** The Room runs steps on its own clock, so a scenario goes on with every phone closed. It shares the one
 storage alarm with idle expiry: the alarm is set to the earlier of the two (`alarmAt`), and when it fires the Room runs

@@ -84,6 +84,21 @@ export class LibraryStore {
   allScenarios() { return [...BUILTIN_SCENARIOS, ...this.scenarios]; }
   allDrugs() { return [...BUILTIN_DRUGS, ...this.drugs]; }
 
+  /**
+   * Save one scenario to this device (a queue saved as a scenario). Refused, nothing changed, when the name is taken.
+   * @param {unknown} sc
+   * @returns {{ ok: true } | { ok: false, msg: string }}
+   */
+  addScenario(sc) {
+    const v = validateScenario(sc);
+    if (!v.ok) return v;
+    if (this.allScenarios().some((x) => x.name === v.scenario.name)) return { ok: false, msg: `the name "${v.scenario.name}" is taken` };
+    if (this.scenarios.length >= MAX_SCENARIOS) return { ok: false, msg: `this device holds at most ${MAX_SCENARIOS} saved scenarios` };
+    this.scenarios.push(v.scenario);
+    this.persist();
+    return { ok: true };
+  }
+
   /** @param {string} name */
   removeScenario(name) { this.scenarios = this.scenarios.filter((x) => x.name !== name); this.persist(); }
   /** @param {string} name */

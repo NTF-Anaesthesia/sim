@@ -49,7 +49,8 @@ try {
   await until((s) => s.patients[0].hr === 100 && s.patients[0].spo2 === 88);
   const dt = Date.now() - t0;
   check(dt < LIMIT_MS, `applied HR and SpO2 reached the monitor together in ${dt} ms`);
-  check(mon.state.patients[0].glide.durationMs === 30000, 'glide time 30 s recorded');
+  check(mon.state.patients[0].glide.durationMs === 90000, 'longest glide recorded: SpO2 starts at 3x the 30 s speed');
+  check(mon.state.patients[0].glide.glideMsBy?.hr === 30000, 'HR keeps the chosen 30 s in glideMsBy');
   await phone.locator('#progress').waitFor({ state: 'visible', timeout: 3000 });
   check(true, 'glide progress bar visible while gliding');
   await phone.locator('[data-id="hr"] [data-step="1"]').click();

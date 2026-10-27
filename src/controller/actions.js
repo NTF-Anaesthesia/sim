@@ -14,11 +14,13 @@ export function makeActions(client, currentPatient) {
    * @param {object} patch allowed paths only (DESIGN.md section 5)
    * @param {number} [glideMs]
    * @param {string} [p]
+   * @param {Record<string, number>} [glideMsBy] glide time per field, for the fields that differ from `glideMs`
    */
-  function act(patch, glideMs, p) {
+  function act(patch, glideMs, p, glideMsBy) {
     /** @type {Record<string, any>} */
     const msg = { t: 'set', patch, p: p ?? currentPatient() };
     if (glideMs !== undefined) msg.glideMs = glideMs;
+    if (glideMsBy && Object.keys(glideMsBy).length) msg.glideMsBy = glideMsBy;
     return client.send(msg);
   }
   return {
@@ -36,6 +38,14 @@ export function makeActions(client, currentPatient) {
     scenarioControl: (t) => client.send({ t }),
     /** A drug button: its relative change on a patient. @param {object} drug @param {string} [p] */
     drug: (drug, p) => client.send({ t: 'drug', drug, p: p ?? currentPatient() }),
+    /** Add a step to the room's queue. @param {object} step @param {string} [p] @param {boolean} [replace] stop a running scenario */
+    queueAdd: (step, p, replace) => client.send({ t: 'queueAdd', step, p: p ?? currentPatient(), ...(replace ? { replace: true } : {}) }),
+    /** @param {number} i step index @param {-1 | 1} dir */
+    queueMove: (i, dir) => client.send({ t: 'queueMove', i, dir }),
+    /** @param {number} i step index */
+    queueRemove: (i) => client.send({ t: 'queueRemove', i }),
+    /** Live tempo for what is running. @param {0.5 | 1 | 2 | 'finish'} x @param {string} [p] */
+    tempo: (x, p) => client.send({ t: 'tempo', x, p: p ?? currentPatient() }),
     /** @param {string} [label] */
     addPatient: (label) => client.send(label ? { t: 'addPatient', label } : { t: 'addPatient' }),
     /** @param {string} p */
