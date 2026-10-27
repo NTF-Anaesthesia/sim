@@ -5,6 +5,7 @@
 import {
   LIBRARY_KIND, LIBRARY_VERSION, MAX_DRUGS, MAX_SCENARIOS, validateDrug, validateLibraryFile, validateScenario,
 } from '../shared/scenario.js';
+import { CURATED_SCENARIOS } from './builtin-scenarios.js';
 
 export const SCENARIO_KEY = 'sim.scenarios';
 export const DRUG_KEY = 'sim.drugs';
@@ -39,6 +40,7 @@ export const BUILTIN_SCENARIOS = [
       { onTap: true, glideMs: 0, patch: { patient: { rhythm: 'vf', hr: 0, spo2: 60, etco2: 10, nibp: { sys: 0, dia: 0 }, abp: { sys: 0, dia: 0 } } } },
     ],
   },
+  ...CURATED_SCENARIOS,
 ];
 
 /** @type {LibDrug[]} */

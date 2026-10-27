@@ -525,6 +525,14 @@ every step that is due, in order (a late alarm catches up), then broadcasts. A s
 previous step; `onTap: true` waits for `scenarioNext`. A step patch may only hold `patient` and `alarms` keys and uses
 the normal `set` rules and the step's `glideMs`. Each step appends a `scenario` event; a drug appends a `drug` event.
 
+**Curated set (sim-train S4).** Ten more built-ins live in `src/controller/builtin-scenarios.js` after the original three
+(`Slow bleed`, `Apnoea on tap`, `Rhythm to arrest`, unchanged): induction desaturation, anaphylaxis, insufflation
+bradycardia, LA toxicity, malignant hyperthermia, PACU hypotension, high spinal, bronchospasm, witnessed VF arrest, and a
+false alarm from a poor SpO2 trace. Each starts from a baseline step, has `objectives` and a `note` on every step (cue
+and expected actions), uses `glideMsBy` so SpO2 and temperature move slower than the rest, and has no dose, only teaching
+values. The audience (`anaesthetist`, `nurse-OT`, or both) is in `SCENARIO_AUDIENCE` and also written at the start of the
+objectives; there is no new scenario field. They are for clinical review before release.
+
 **Files.** One library file holds scenarios and drugs: `{ "sim": "library", "version": 1, "scenarios": [...], "drugs": [...] }`
 (max 32 KB, 20 scenarios, 20 drugs, 30 steps of up to 3600 s each). A drug is `{ name, note?, glideMs?, effects }`
 where `effects` maps `hr spo2 etco2 rr temp cvp` to `{ mul?, add? }` (mul 0 to 5, add -300 to 300) and `nibp abp abp2`
