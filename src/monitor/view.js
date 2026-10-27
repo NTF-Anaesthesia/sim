@@ -32,13 +32,22 @@ function applyTheme(theme, /** @type {HTMLElement} */ root) {
   root.dataset.labelColor = theme.labels?.colorMode ?? 'parameter';
   root.dataset.limitStyle = theme.alarmStyle.limitStyle;
   for (const [k, v] of Object.entries(theme.colors)) s.setProperty(`--c-${k}`, String(v));
+  const k = theme.keys ?? {};
+  s.setProperty('--k-fg', String(k.color ?? '#ffffff'));
+  s.setProperty('--k-bg', String(k.background ?? '#1a1a1a'));
+  s.setProperty('--k-bd', String(k.border ?? '#606060'));
+  s.setProperty('--k-r', `${k.radius ?? 8}px`);
+  s.setProperty('--k-size', String(k.size ?? 1));
 }
+
+/** Monitor keys in the order they appear; each is shown when its theme flag is on. */
+const KEYS = [['nibp', 'Start NIBP'], ['cycle', 'Cycle'], ['silence', 'Silence'], ['tof', 'TOF']];
 
 /**
  * @param {HTMLElement} root the element that becomes the monitor
  * @param {Record<string, any>} theme
  * @param {import('../theme/layout.js').Cell[]} cells
- * @param {{ onSilence: () => void, onSound: () => void, onFull: () => void, onWake: () => void, onTheme: () => void, onTrends?: () => void, code: string, screenMode?: string, onFit?: () => void }} act
+ * @param {{ onSilence: () => void, onSound: () => void, onFull: () => void, onWake: () => void, onTheme: () => void, onTrends?: () => void, code: string, screenMode?: string, onFit?: () => void, keys?: boolean, onKeys?: () => void, onKey?: (k: string) => void }} act
  */
 export function buildView(root, theme, cells, act) {
   applyTheme(theme, root);
@@ -125,14 +134,28 @@ export function buildView(root, theme, cells, act) {
   bar.dataset.h = horiz;
   host.append(bar);
 
+  // monitor keys (theme `keys`): a row under or over the screen
+  const keys = document.createElement('div');
+  keys.className = 'keys';
+  keys.dataset.testid = 'mon-keys';
+  keys.hidden = !act.keys;
+  keys.innerHTML = KEYS.filter(([id]) => theme.keys?.[id] !== false && (id !== 'tof' || theme.keys?.tof))
+    .map(([id, label]) => `<button type="button" data-k="${id}" data-testid="key-${id}">${label}</button>`).join('');
+  keys.addEventListener('click', (e) => {
+    const k = /** @type {HTMLElement} */ (e.target).closest('button')?.dataset.k;
+    if (k) act.onKey?.(k);
+  });
+  if (theme.keys?.position === 'top') stage.before(keys);
+  else root.append(keys);
+
   const tools = document.createElement('div');
   tools.className = 'tools';
   tools.innerHTML = '<button type="button" data-t="sound">Sound</button><button type="button" data-t="full">Full screen</button>'
-    + '<button type="button" data-t="wake">Keep awake</button><button type="button" data-t="theme" data-testid="theme-open">Theme</button><button type="button" data-t="trends" data-testid="trends-open">Trends</button><span class="chip" id="status" data-status="connecting">connecting</span>'
+    + '<button type="button" data-t="wake">Keep awake</button><button type="button" data-t="theme" data-testid="theme-open">Theme</button><button type="button" data-t="trends" data-testid="trends-open">Trends</button><button type="button" data-t="keys" data-testid="keys-toggle">Keys</button><span class="chip" id="status" data-status="connecting">connecting</span>'
     + '<span class="code">Room <b></b></span><span class="hidden-test" data-testid="value"></span>';
   /** @type {HTMLElement} */ (tools.querySelector('.code b')).textContent = act.code;
   /** @type {Record<string, () => void>} */
-  const handlers = { sound: act.onSound, full: act.onFull, wake: act.onWake, theme: act.onTheme, trends: act.onTrends ?? (() => {}) };
+  const handlers = { sound: act.onSound, full: act.onFull, wake: act.onWake, theme: act.onTheme, trends: act.onTrends ?? (() => {}), keys: act.onKeys ?? (() => {}) };
   tools.addEventListener('click', (e) => {
     const t = /** @type {HTMLElement} */ (e.target).closest('button')?.dataset.t;
     if (t) handlers[t]?.();
@@ -140,9 +163,10 @@ export function buildView(root, theme, cells, act) {
   root.append(tools);
   const q = (/** @type {string} */ s) => /** @type {HTMLElement} */ (tools.querySelector(s));
   return {
-    refs, bar, tools, fit,
+    refs, bar, tools, keys, fit,
     chip: q('.chip'), soundBtn: q('[data-t=sound]'), fullBtn: q('[data-t=full]'), wakeBtn: q('[data-t=wake]'),
-    testValue: q('.hidden-test'),
+    testValue: q('.hidden-test'), keysBtn: q('[data-t=keys]'),
+    keyCycle: /** @type {HTMLElement | null} */ (keys.querySelector('[data-k=cycle]')),
   };
 }
 

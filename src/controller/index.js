@@ -18,7 +18,7 @@ import { Recorder } from './recorder.js';
 import { Settings, browserStorage } from './settings.js';
 import {
   paramList, LIMIT_PARAMS, NIBP_INTERVALS, TOF_INTERVALS, hasModule, buildPatch, pendingCount, stepPercent, clampDisplay,
-  glideProgress, formatValue, intervalLabel, moveDisplay, GLIDE_CHOICES,
+  glideProgress, formatValue, intervalLabel, moveDisplay, GLIDE_CHOICES, BP_PAIRS, linkedValue,
 } from './params.js';
 import { SPEEDS, customMs, customParts, isGlideField, speedLabel, speedFor, timingFor, stepSummary } from './speed.js';
 
@@ -179,32 +179,64 @@ export function mountController(root, opts) {
       + '<button type="button" class="bed add" data-act="add" aria-label="Add patient">+</button>' : '';
   }
 
-  /** Speed of one pending change: a select styled as a chip; "Auto" = the shared speed (SpO2 slower). A pressure's sys and dia share one. @param {import('./params.js').ParamSpec} spec @param {import('../shared/schema.js').Patient} pt */
+  /** "Auto" speed of a field for the pending change on it (SpO2: slower falling, base speed rising). @param {string} field @param {import('../shared/schema.js').Patient} pt */
+  function autoSpeed(field, pt) {
+    const sp = pend().spo2;
+    return speedFor(field, ui.glideMs, {}, field === 'spo2' && typeof sp === 'number' && sp > pt.spo2);
+  }
+
+  /** Speed of one pending change: a select styled as a chip; "Auto" = the shared speed (SpO2 slower when falling). A pressure's sys and dia share one. @param {import('./params.js').ParamSpec} spec @param {import('../shared/schema.js').Patient} pt */
   function speedChip(spec, pt) {
     const field = Object.keys(spec.set(0))[0];
     if (!isGlideField(field)) return '';
     const own = ui.own[pt.id]?.[field];
     const opts = [...new Set([...SPEEDS, ...(own !== undefined ? [own] : [])])].sort((a, b) => a - b);
     return `<label class="spd">Speed <select class="chip" data-own="${field}" data-testid="own-${spec.id}" aria-label="${spec.label} speed">
-      <option value=""${own === undefined ? ' selected' : ''}>Auto (${speedLabel(speedFor(field, ui.glideMs))})</option>
+      <option value=""${own === undefined ? ' selected' : ''}>Auto (${speedLabel(autoSpeed(field, pt))})</option>
       ${opts.map((ms) => `<option value="${ms}"${ms === own ? ' selected' : ''}>${speedLabel(ms)}</option>`).join('')}</select></label>`;
   }
 
-  /** @param {import('./params.js').ParamSpec} spec @param {import('../shared/schema.js').Patient} pt */
+  /** Sys and dia move together (this device; on unless switched off). */
+  const bpLinked = () => settings.get('bpLink', true) !== false;
+
+  /**
+   * One parameter, compact for small phones: name, value (tap to type it), unit and -/+ on one line, the slider under
+   * it, then the optional percent buttons. A pressure's sys row carries the link switch for its sys and dia.
+   * @param {import('./params.js').ParamSpec} spec @param {import('../shared/schema.js').Patient} pt
+   */
   function paramRow(spec, pt) {
     const pv = pend()[spec.id];
     const wire = typeof pv === 'number' ? pv : spec.get(pt);
+    const link = spec.id.endsWith('Sys') && BP_PAIRS[spec.id]
+      ? `<button type="button" class="link" data-act="bp-link" aria-pressed="${bpLinked()}" data-testid="link-${spec.id}" title="Move sys and dia together">${bpLinked() ? 'Linked' : 'Unlinked'}</button>` : '';
     return `<div class="prm" data-id="${spec.id}" data-pending="${typeof pv === 'number'}">
-      <div class="prm-head"><span class="prm-name" style="color:${spec.color}">${spec.label}</span>
-        <span class="prm-val" data-testid="val-${spec.id}">${formatValue(spec, wire)}</span><span class="prm-unit">${spec.unit}</span></div>
-      <div class="prm-ctl">
-        <button type="button" data-step="-1" aria-label="${spec.label} down">−</button>
-        <input type="range" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${spec.to(wire)}" aria-label="${spec.label}" data-testid="rng-${spec.id}">
-        <button type="button" data-step="1" aria-label="${spec.label} up">+</button>
+      <div class="prm-head"><span class="prm-name" style="color:${spec.color}">${spec.label}</span>${link}
+        <button type="button" class="prm-val" data-edit="1" data-testid="val-${spec.id}" aria-label="Type ${spec.label}">${formatValue(spec, wire)}</button><span class="prm-unit">${spec.unit}</span>
+        <button type="button" class="stp" data-step="-1" aria-label="${spec.label} down">−</button>
+        <button type="button" class="stp" data-step="1" aria-label="${spec.label} up">+</button>
       </div>
-      <div class="prm-pct"><button type="button" data-pct="-10">−10%</button><button type="button" data-pct="-5">−5%</button><button type="button" data-pct="5">+5%</button><button type="button" data-pct="10">+10%</button></div>
+      <input type="range" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${spec.to(wire)}" aria-label="${spec.label}" data-testid="rng-${spec.id}">
+      ${settings.get('pct', true) !== false ? '<div class="prm-pct"><button type="button" data-pct="-10">−10%</button><button type="button" data-pct="-5">−5%</button><button type="button" data-pct="5">+5%</button><button type="button" data-pct="10">+10%</button></div>' : ''}
       ${typeof pv === 'number' ? speedChip(spec, pt) : ''}
     </div>`;
+  }
+
+  /** Swap a row's value for a number box (tap to type an exact value); Enter or leaving it sets it. @param {HTMLElement} btn */
+  function editValue(btn) {
+    const row = /** @type {HTMLElement} */ (btn.closest('.prm'));
+    const cur = rowDisplay(row);
+    if (!cur) return;
+    const box = document.createElement('input');
+    box.type = 'number';
+    box.inputMode = cur.sp.dec ? 'decimal' : 'numeric';
+    box.className = 'prm-edit';
+    box.min = String(cur.sp.min); box.max = String(cur.sp.max); box.step = String(cur.sp.step);
+    box.value = cur.d.toFixed(cur.sp.dec);
+    box.setAttribute('aria-label', `${cur.sp.label} value`);
+    box.dataset.testid = `edit-${cur.sp.id}`;
+    btn.replaceWith(box);
+    box.focus();
+    box.select();
   }
 
   /** Custom speed: a number and s or min, 0 to 10 min. */
@@ -225,8 +257,8 @@ export function mountController(root, opts) {
       <label class="field">Rhythm
         <select id="rhythm" data-testid="rhythm">${RHYTHMS.map((r) => `<option value="${r}"${r === rhythm ? ' selected' : ''}>${esc(RHYTHM_LABELS[r] ?? r)}</option>`).join('')}</select>
       </label>
-      <div class="glide" role="group" aria-label="Glide over">
-        <span class="label">Glide over</span>
+      <div class="glide strip" role="group" aria-label="Glide over">
+        <span class="label">Glide</span>
         ${GLIDE_CHOICES.map((g) => `<button type="button" class="pill" data-glide="${g.ms}" aria-pressed="${g.ms === ui.glideMs}" data-testid="glide-${g.ms}">${g.label}</button>`).join('')}
         ${customBox()}
       </div>
@@ -610,6 +642,8 @@ export function mountController(root, opts) {
       <div class="row"><button type="button" data-act="theme" data-testid="theme-open">Theme for all monitors…</button></div>
       <h2>This device</h2>
       <div class="sw-row"><span>Drug buttons (Scenarios tab)</span>${toggle('drugs-on', settings.get('drugs', false) === true, 'Drug buttons')}</div>
+      <div class="sw-row"><span>Percent buttons (Vitals)</span>${toggle('pct-on', settings.get('pct', true) !== false, 'Percent buttons')}</div>
+      <div class="sw-row"><span>Link sys and dia</span>${toggle('bp-link', bpLinked(), 'Link sys and dia')}</div>
       <div class="glide" role="group" aria-label="CO2 unit"><span class="label">CO₂</span>
         ${['mmHg', 'kPa'].map((x) => `<button type="button" class="pill" data-unit="co2:${x}" aria-pressed="${u.co2 === x}">${x}</button>`).join('')}</div>
       <div class="glide" role="group" aria-label="Temperature unit"><span class="label">Temp</span>
@@ -710,7 +744,7 @@ export function mountController(root, opts) {
   function render() {
     renderStatus(); renderBeds(); renderDock(); renderRec(); renderProgress(); renderTempo();
     // do not rebuild the page under a finger that is dragging a slider, or while a screen name is being typed
-    if (!ui.dragging && !root.ownerDocument.activeElement?.matches(ui.tab === 'screens' ? '#view input' : ui.tab === 'scenarios' ? '#view textarea, #view #qname, #view #rec-name, #view .editor input' : ui.tab === 'vitals' ? '#cust-n' : '#never')) renderView();
+    if (!ui.dragging && !root.ownerDocument.activeElement?.matches(ui.tab === 'screens' ? '#view input' : ui.tab === 'scenarios' ? '#view textarea, #view #qname, #view #rec-name, #view .editor input' : ui.tab === 'vitals' ? '#cust-n, .prm-edit' : '#never')) renderView();
   }
 
   // ---- edits ------------------------------------------------------------------------------------------------------
@@ -730,19 +764,36 @@ export function mountController(root, opts) {
 
   /** @param {HTMLElement} row @param {number} display */
   function setFromDisplay(row, display) {
-    const sp = paramList(units()).find((x) => x.id === row.dataset.id);
-    if (!sp) return;
-    const d = clampDisplay(sp, display);
-    setPending(sp.id, sp.from(d));
-    const pt = /** @type {NonNullable<ReturnType<typeof patient>>} */ (patient());
+    const list = paramList(units());
+    const sp = list.find((x) => x.id === row.dataset.id);
+    const pt = patient();
+    if (!sp || !pt) return;
+    setPending(sp.id, sp.from(clampDisplay(sp, display)));
+    syncRow(row, sp, pt);
+    // linked pressure: the partner keeps the ratio of the current sys and dia
+    const ps = bpLinked() ? list.find((x) => x.id === BP_PAIRS[sp.id]) : undefined;
+    if (ps) {
+      const wire = typeof pend()[sp.id] === 'number' ? /** @type {number} */ (pend()[sp.id]) : sp.get(pt);
+      setPending(ps.id, linkedValue(sp.id, wire, sp.get(pt), ps.get(pt)));
+      const prow = /** @type {HTMLElement | null} */ (root.querySelector(`.prm[data-id="${ps.id}"]`));
+      if (prow) syncRow(prow, ps, pt);
+    }
+    renderDock();
+  }
+
+  /** Show a row's pending (or current) value, slider, pending mark and speed chip. @param {HTMLElement} row @param {import('./params.js').ParamSpec} sp @param {import('../shared/schema.js').Patient} pt */
+  function syncRow(row, sp, pt) {
     const wire = typeof pend()[sp.id] === 'number' ? /** @type {number} */ (pend()[sp.id]) : sp.get(pt);
     row.dataset.pending = String(typeof pend()[sp.id] === 'number');
-    /** @type {HTMLElement} */ (row.querySelector('.prm-val')).textContent = formatValue(sp, wire);
+    const val = /** @type {HTMLElement | null} */ (row.querySelector('.prm-val'));
+    if (val) val.textContent = formatValue(sp, wire);
     const chip = row.querySelector('.spd');
     if (typeof pend()[sp.id] === 'number' && !chip) row.insertAdjacentHTML('beforeend', speedChip(sp, pt));
     else if (typeof pend()[sp.id] !== 'number') { chip?.remove(); const f = Object.keys(sp.set(0))[0]; if (!otherPending(f, sp.id)) delete ui.own[pt.id]?.[f]; }
-    /** @type {HTMLInputElement} */ (row.querySelector('input[type=range]')).value = String(d);
-    renderDock();
+    // SpO2's Auto speed depends on the direction, so its label follows the value
+    const auto = /** @type {HTMLOptionElement | null} */ (row.querySelector('.spd option[value=""]'));
+    if (auto) auto.textContent = `Auto (${speedLabel(autoSpeed(Object.keys(sp.set(0))[0], pt))})`;
+    /** @type {HTMLInputElement} */ (row.querySelector('input[type=range]')).value = String(sp.to(wire));
   }
 
   /** Display value now in a row (pending or current). @param {HTMLElement} row */
@@ -758,7 +809,7 @@ export function mountController(root, opts) {
     const pt = patient();
     if (!pt) return;
     const patch = buildPatch(pend(), pt, units());
-    const tm = timingFor(patch, ui.glideMs, ui.own[pt.id]);
+    const tm = timingFor(patch, ui.glideMs, ui.own[pt.id], pt);
     if (patch && !act(patch, tm.glideMs, pt.id, tm.glideMsBy)) { ui.note = 'Not connected: your changes are kept. Apply again when connected.'; $('status').title = ui.note; return; }
     clearPending(pt.id);
     render();
@@ -777,7 +828,7 @@ export function mountController(root, opts) {
     const live = run && !run.done ? run : null;
     const replace = !!live && (!live.queue || live.p !== pt.id);
     if (replace && !window.confirm(`"${live.name}" is running. Stop it and start a queue?`)) return;
-    const tm = timingFor(patch, ui.glideMs, ui.own[pt.id]);
+    const tm = timingFor(patch, ui.glideMs, ui.own[pt.id], pt);
     const qs = /** @type {HTMLInputElement | null} */ (root.querySelector('#q-sec'));
     if (qs) ui.qSec = Number(qs.value) || 0;
     const step = { ...(ui.qMode === 'tap' ? { onTap: true } : { atSec: Math.max(0, Math.min(3600, Math.round(ui.qSec))) }), patch, ...tm };
@@ -853,6 +904,7 @@ export function mountController(root, opts) {
     if (!s || !pt) return;
     if (d.scrAct && d.s) { onScreenAct(d.scrAct, d.s); return; }
     if (d.glide !== undefined) { ui.glideMs = Number(d.glide); settings.set('glideMs', ui.glideMs); renderView(); return; }
+    if (d.edit) { editValue(t); return; }
     if (d.step || d.pct) {
       const row = /** @type {HTMLElement} */ (t.closest('.prm'));
       const cur = rowDisplay(row);
@@ -928,6 +980,7 @@ export function mountController(root, opts) {
         break;
       }
       case 'nibp-now': actions.nibpNow(pt.id); break;
+      case 'bp-link': settings.set('bpLink', !bpLinked()); renderView(); break;
       case 'tof-now': actions.tofNow(pt.id); break;
       case 'flush-abp': actions.flush('abp', pt.id); break;
       case 'flush-abp2': actions.flush('abp2', pt.id); break;
@@ -1011,6 +1064,8 @@ export function mountController(root, opts) {
     else if (id === 'pace-nosense') act({ patient: { paceNoSense: on } }, undefined, pt.id);
     else if (id === 'alarms-on') act({ alarms: { enabled: on } });
     else if (id === 'drugs-on') { settings.set('drugs', on); renderView(); }
+    else if (id === 'pct-on') { settings.set('pct', on); renderView(); }
+    else if (id === 'bp-link') { settings.set('bpLink', on); renderView(); }
   }
 
   root.addEventListener('change', (ev) => {
@@ -1018,6 +1073,11 @@ export function mountController(root, opts) {
     const pt = patient();
     const sd = t.dataset;
     if (sd.ed === 'onTap') { editField(/** @type {HTMLInputElement} */ (t)); return; }
+    if (t.classList.contains('prm-edit')) {
+      const n = Number(/** @type {HTMLInputElement} */ (t).value);
+      if (/** @type {HTMLInputElement} */ (t).value !== '' && Number.isFinite(n)) setFromDisplay(/** @type {HTMLElement} */ (t.closest('.prm')), n);
+      return;
+    }
     if (sd.scrSel && sd.s) {
       const v = /** @type {HTMLSelectElement} */ (t).value;
       if (sd.scrSel === 'p') setScreen(sd.s, { p: v || null });
@@ -1064,6 +1124,14 @@ export function mountController(root, opts) {
     if (t.id === 'rec-name') ui.recName = t.value;
     if (t.dataset.ed && t.dataset.ed !== 'onTap') editField(t);
     if (t.id === 'q-sec') ui.qSec = Number(t.value) || 0;
+  });
+  // a typed value: Enter sets it, leaving the box puts the value back in place
+  root.addEventListener('keydown', (ev) => {
+    const t = /** @type {HTMLElement} */ (ev.target);
+    if (ev.key === 'Enter' && t.classList.contains('prm-edit')) t.blur();
+  });
+  root.addEventListener('focusout', (ev) => {
+    if (/** @type {HTMLElement} */ (ev.target).classList.contains('prm-edit')) setTimeout(() => render(), 0);
   });
   // do not rebuild the page under a finger that is dragging a slider
   root.addEventListener('pointerdown', (ev) => { if (/** @type {HTMLElement} */ (ev.target).matches('input[type=range]')) ui.dragging = true; });

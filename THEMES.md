@@ -83,6 +83,11 @@ Every example value is the default unless stated. Ranges are enforced; a value o
 | `labels.units.<id>` | `"etco2": "mmHg"` | Unit text next to a numeric. |
 | `labels.wave.<id>` | `"ecg": "II"` | Caption on each wave (`ecg2`, the second lead, defaults to `"V1"`). |
 | `labels.off.<id>` | `"ecg": "LEADS OFF"` | Text shown when a sensor is switched off. |
+| `keys.show` | `false` | Show the monitor keys row (Start NIBP, NIBP cycle, Silence, TOF). A monitor's Keys button overrides this on that device. |
+| `keys.position` | `"bottom"` | `bottom` (above the tool bar) or `top` (above the screen). |
+| `keys.size`, `keys.radius` | `1`, `8` | Key size, 0.5 to 3, and corner radius in px, 0 to 24. |
+| `keys.color`, `keys.background`, `keys.border` | `#ffffff`, `#1a1a1a`, `#606060` | Key text, fill and border colours. |
+| `keys.nibp`, `keys.cycle`, `keys.silence`, `keys.tof` | `true`, `true`, `true`, `false` | Which keys show. The cycle key steps the NIBP interval Manual, 1, 2, 3, 5, 10, 15, 30 min and round again; Start NIBP measures now. |
 | `alarmStyle.barPosition` | `"top-right"` | Where the message sits in the bar: `top`/`bottom` plus `left`/`center`/`right`. |
 | `alarmStyle.flashHz` | `1` | Flash rate of a flashing numeric or bar, 0.2 to 4. |
 | `alarmStyle.limitStyle` | `"small"` | `small` or `bold` limit text. |

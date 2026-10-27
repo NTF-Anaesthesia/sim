@@ -2,7 +2,7 @@
 // The default theme (DESIGN.md section 8): generic colours on black. Everything the monitor draws comes from a theme
 // object like this one; there are no colours, fonts or positions anywhere else. Additions to the schema (all optional,
 // all with these defaults): colors.grid, waves.pxPerMm, waves.grid, numerics.fontScale, nibp.inflateMs/measureMs,
-// layout.cells[].stack, labels.wave, labels.off, waveLabelScale, numerics.meanPosition, labels.colorMode, waves.<id>.scaleLines, cells.border/background; labels.rhythms is not a theme key (rhythm names live in the engine).
+// layout.cells[].stack, labels.wave, labels.off, waveLabelScale, numerics.meanPosition, labels.colorMode, waves.<id>.scaleLines, cells.border/background, keys; labels.rhythms is not a theme key (rhythm names live in the engine).
 
 /** @type {Record<string, any>} */
 export const DEFAULT_THEME = {
@@ -70,6 +70,12 @@ export const DEFAULT_THEME = {
     units: { hr: '/min', spo2: '%', etco2: 'mmHg', rr: '/min', temp: '°C', nibp: 'mmHg', abp: 'mmHg', abp2: 'mmHg', cvp: 'mmHg', o2: '%', gas: '%', n2o: '%', tof: '/4', bis: '' },
     wave: { ecg: 'II', ecg2: 'V1', spo2: 'Pleth', etco2: 'CO2', abp: 'ABP', abp2: 'ABP2', cvp: 'CVP', gas: 'Agent', o2: 'O2', bis: 'EEG' },
     off: { ecg: 'LEADS OFF', ecg2: 'LEADS OFF', spo2: 'PROBE OFF', etco2: 'CO2 LINE OFF', abp: 'ART LINE OFF', abp2: 'ART2 LINE OFF', cvp: 'CVP LINE OFF', gas: 'GAS LINE OFF', bis: 'BIS SENSOR OFF' },
+  },
+  // monitor keys: a row of buttons that drive the monitor (start NIBP, step the NIBP cycle, silence, TOF); hidden unless
+  // the theme shows them or a device turns them on with its Keys button
+  keys: {
+    show: false, position: 'bottom', size: 1, radius: 8, color: '#ffffff', background: '#1a1a1a', border: '#606060',
+    nibp: true, cycle: true, silence: true, tof: false,
   },
   alarmStyle: { barPosition: 'top-right', flashHz: 1, limitStyle: 'small', tones: 'iec', toneHz: { high: 960, medium: 800, low: 640 } },
 };

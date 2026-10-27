@@ -23,6 +23,7 @@ import { createIdentity } from './identity.js';
 import { createModuleRegistry, registerBuiltinModules } from './modules.js';
 import { createSettings } from './settings.js';
 import { buildView } from './view.js';
+import { NIBP_INTERVALS, intervalLabel } from '../controller/params.js';
 
 const TICK_MS = 250;
 /** @param {unknown} x @param {number} fallback a device setting is only used when it is a positive number */
@@ -171,6 +172,24 @@ export function mountScreen(root, opts) {
     }
   }
 
+  /** Monitor keys: per device once its Keys button is used, else as the theme says (off by default). */
+  const keysShown = () => /** @type {boolean} */ (settings.get('keys', theme.keys?.show === true));
+
+  /** @param {string} k */
+  function onKey(k) {
+    if (k === 'silence') { client.send({ t: 'silence' }); return; }
+    if (!patient) return;
+    if (k === 'nibp') client.send({ t: 'nibp', p: patient.id });
+    else if (k === 'tof') client.send({ t: 'tof', p: patient.id });
+    else if (k === 'cycle') {
+      const r = patient.nibpRead;
+      const cur = r.mode === 'cycle' ? r.cycleSec : 0;
+      const i = NIBP_INTERVALS.indexOf(cur);
+      const sec = NIBP_INTERVALS[(i + 1) % NIBP_INTERVALS.length];
+      client.send({ t: 'set', patch: { nibp: sec ? { mode: 'cycle', cycleSec: sec } : { mode: 'manual' } }, p: patient.id });
+    }
+  }
+
   function pickPatient() {
     const ps = state?.patients ?? [];
     return ps.find((p) => p.id === pick) ?? ps.find((p) => p.id === screen?.p) ?? ps[0] ?? null;
@@ -187,6 +206,9 @@ export function mountScreen(root, opts) {
       onWake: toggleWake,
       onTheme: () => (panel.isOpen ? panel.close() : panel.open()),
       onTrends: toggleTrends,
+      keys: keysShown(),
+      onKeys: () => { settings.set('keys', !keysShown()); viewKey = ''; applyState(); },
+      onKey,
       screenMode: screenPick() === 'theme' ? theme.screen.mode : screenPick(),
       onFit: () => { needRefill = true; },
     });
@@ -254,6 +276,8 @@ export function mountScreen(root, opts) {
     if (view && identity.nameEl.parentElement !== view.chip.parentElement) view.chip.before(identity.nameEl);
     if (view) view.testValue.textContent = state.test === undefined ? '--' : String(state.test);
     if (view) view.testValue.dataset.patient = patient?.id ?? '';
+    if (view?.keyCycle && patient) view.keyCycle.textContent = `Cycle ${intervalLabel(patient.nibpRead.mode === 'cycle' ? patient.nibpRead.cycleSec : 0)}`;
+    if (view) view.keysBtn.setAttribute('aria-pressed', String(keysShown()));
   }
 
   function renderChips() {

@@ -163,6 +163,30 @@ export function stepPercent(spec, d, pct) {
   return moveDisplay(spec, d, Math.abs(raw - d) < spec.step ? minMove : raw - d);
 }
 
+/** Sys and dia rows of one pressure: each id to its partner (linked by default on the phone). */
+export const BP_PAIRS = /** @type {Record<string, string>} */ ({
+  nibpSys: 'nibpDia', nibpDia: 'nibpSys', abpSys: 'abpDia', abpDia: 'abpSys', abp2Sys: 'abp2Dia', abp2Dia: 'abp2Sys',
+});
+/** Dia as a share of sys when there is no current ratio to keep (from 0/0). */
+const DIA_SHARE = 0.6;
+
+/**
+ * Linked pressure: the partner's value when sys or dia moves to `v`, keeping the ratio of the current targets
+ * (120/80 to 90 gives 90/60). Dia stays at least 5 below sys (0/0 stays possible) and both stay in range. Wire units.
+ * @param {string} id the row that moved (`...Sys` or `...Dia`)
+ * @param {number} v its new value
+ * @param {number} base its current target
+ * @param {number} partnerBase the partner's current target
+ */
+export function linkedValue(id, v, base, partnerBase) {
+  const sys = id.endsWith('Sys');
+  if (v <= 0) return 0;
+  let p = base > 0 && partnerBase > 0 ? (partnerBase * v) / base : sys ? v * DIA_SHARE : v / DIA_SHARE;
+  p = Math.round(p);
+  p = sys ? Math.min(p, v - 5) : Math.max(p, v + 5);
+  return Math.min(sys ? 250 : 300, Math.max(0, p));
+}
+
 /**
  * @typedef {Record<string, number | string>} Pending edited values in wire units (`rhythm` is a string)
  */

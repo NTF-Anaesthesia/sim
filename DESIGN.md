@@ -331,6 +331,11 @@ Values glide **on the monitor** from a start to a target; the network carries on
   predates `glideMsBy` never lands early, and `glideMsBy` only when the times differ; old records and plain sets are
   unchanged. Fields not in a patch keep the time they had left. Each field's displayed value is
   `glideValue(from, to, startedAt, fieldMs(glide, field), t)`, so every screen agrees.
+- **SpO2 falls slowly, recovers fast.** On the phone, the Auto speed for SpO2 is 3x the shared speed (at least 30 s) only
+  when it falls; a rising SpO2 uses the shared speed. Built-in scenario recovery steps carry no SpO2 override.
+- **Linked BP (phone).** Moving NIBP, ABP or ABP2 sys moves dia by the ratio of the current targets (and the other way);
+  dia stays at least 5 below sys; with no ratio, dia is 0.6 of sys. Per device, on by default (`bpLink`), toggled on the
+  sys row or in More.
 - **Live tempo.** `tempo` 0.5, 2 rescales the time left on the running glide (from the displayed values) and, with a
   queue or scenario, the next step's due time and later steps; 1 restores it; `finish` lands every value now and runs
   the remaining steps at once. Tempo is kept on the run until it ends.

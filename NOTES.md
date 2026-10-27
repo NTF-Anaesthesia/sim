@@ -38,3 +38,4 @@ Lasting rules live in `AGENTS.md`. Points worth remembering go here.
 
 - S3: a 10-step scenario with notes is about 1130 link characters, over the 850-character QR limit, so the card shows the link and suggests the room offer; plain 10 steps (582) fit.
 - S3: a real library offer is larger than the 16 KB message cap, hence the separate pre-parse limit for `libraryOffer` only.
+- Phone and monitor ease: `speedFor(field, base, own, rising)` and `spo2Rising` in `src/controller/speed.js`; `BP_PAIRS` / `linkedValue` in `params.js`, used by `setFromDisplay`; the value is a `.prm-val` button that `editValue` swaps for an `input.prm-edit`. Monitor keys: theme `keys` (default + light), `KEYS` in `src/monitor/view.js`, `onKey` in `screen.js` sends `nibp`, `tof`, `silence` or a `set` with `nibp` mode; the monitor setting `keys` overrides `keys.show`. The monitor imports `NIBP_INTERVALS` from `src/controller/params.js` (pure).

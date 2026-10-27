@@ -1,7 +1,8 @@
 // @ts-check
 // Curated teaching scenarios (sim-train S4): generic, synthetic and teaching values only, never doses. Each starts from a
 // normal baseline so it can be run on its own. `objectives` and the step `note` (cue and expected actions) show on the
-// phone only. SpO2 moves slower than the rest through `glideMsBy`, as a finger probe does.
+// phone only. SpO2 falls slower than the rest through `glideMsBy`, as a finger probe does,
+// and recovers at the step's own speed (faster than it fell).
 // Every scenario is for clinical review before release; the audience tag of each is in SCENARIO_AUDIENCE.
 
 /** @typedef {import('../shared/scenario.js').Scenario & { builtin?: boolean }} LibScenario */
@@ -34,7 +35,7 @@ export const CURATED_SCENARIOS = [
       { atSec: 0, glideMs: 5000, note: 'Pre-oxygenated, awake. Baseline.', patch: { patient: BASE } },
       { atSec: 15, glideMs: 8000, glideMsBy: { spo2: 150000 }, note: 'Induced. No breath, EtCO2 flat. Cue: ask for the airway plan; expect mask ventilation and jaw thrust.', patch: { patient: { rr: 0, etco2: 0, etco2Shape: 'none', spo2: 80, hr: 88 } } },
       { atSec: 90, glideMs: 30000, glideMsBy: { spo2: 90000 }, note: 'Still desaturating. Expect: call for help, 100% oxygen, airway adjuncts, second operator, consider the difficult airway plan.', patch: { patient: { spo2: 66, hr: 62, rhythm: 'sinus_brady' } } },
-      { onTap: true, glideMs: 20000, glideMsBy: { spo2: 60000 }, note: 'Tap when the airway is secured and ventilation confirmed by EtCO2.', patch: { patient: { rr: 12, etco2: 38, etco2Shape: 'normal', spo2: 98, hr: 80, rhythm: 'sinus' } } },
+      { onTap: true, glideMs: 20000, note: 'Tap when the airway is secured and ventilation confirmed by EtCO2.', patch: { patient: { rr: 12, etco2: 38, etco2Shape: 'normal', spo2: 98, hr: 80, rhythm: 'sinus' } } },
     ],
   },
   {
@@ -44,7 +45,7 @@ export const CURATED_SCENARIOS = [
       { atSec: 0, glideMs: 5000, note: 'Stable, just after a new drug or latex exposure.', patch: { patient: BASE } },
       { atSec: 20, glideMs: 40000, glideMsBy: { spo2: 120000 }, note: 'Pressure falling, heart rate up, EtCO2 shape changes. Cue: what is new in the last few minutes? Stop the suspect agent.', patch: { patient: { hr: 128, rhythm: 'sinus_tachy', nibp: { sys: 70, dia: 35 }, abp: { sys: 70, dia: 35 }, spo2: 91, etco2: 32, etco2Shape: 'obstructive' } } },
       { atSec: 90, glideMs: 40000, glideMsBy: { spo2: 120000 }, note: 'Worsening. Expect: call for help, 100% oxygen, lie flat, rapid fluids, adrenaline per local protocol, note times.', patch: { patient: { hr: 142, nibp: { sys: 55, dia: 25 }, abp: { sys: 55, dia: 25 }, spo2: 86, etco2: 26 } } },
-      { onTap: true, glideMs: 90000, glideMsBy: { spo2: 240000 }, note: 'Tap when treatment is under way: improving over minutes. Discuss tryptase sample and referral.', patch: { patient: { hr: 105, nibp: { sys: 105, dia: 62 }, abp: { sys: 105, dia: 62 }, spo2: 96, etco2: 36, etco2Shape: 'normal' } } },
+      { onTap: true, glideMs: 90000, note: 'Tap when treatment is under way: improving over minutes. Discuss tryptase sample and referral.', patch: { patient: { hr: 105, nibp: { sys: 105, dia: 62 }, abp: { sys: 105, dia: 62 }, spo2: 96, etco2: 36, etco2Shape: 'normal' } } },
     ],
   },
   {
@@ -94,7 +95,7 @@ export const CURATED_SCENARIOS = [
       { atSec: 0, glideMs: 5000, note: 'Awake patient, spinal just placed for a caesarean-style case. Baseline.', patch: { patient: { ...BASE, hr: 88 } } },
       { atSec: 30, glideMs: 60000, note: 'Pressure falling fast with a slow pulse. Patient says their arms feel heavy and breathing is hard to do. Cue: how high is the block?', patch: { patient: { rhythm: 'sinus_brady', hr: 48, nibp: { sys: 72, dia: 40 }, abp: { sys: 72, dia: 40 }, rr: 8 } } },
       { atSec: 60, glideMs: 40000, glideMsBy: { spo2: 120000 }, note: 'Breathing failing, patient drowsy. Expect: call for help, 100% oxygen, vasopressor and anticholinergic per protocol, tilt, prepare to secure the airway.', patch: { patient: { rr: 2, spo2: 90, etco2: 58, hr: 42, nibp: { sys: 62, dia: 32 }, abp: { sys: 62, dia: 32 } } } },
-      { onTap: true, glideMs: 60000, glideMsBy: { spo2: 90000 }, note: 'Tap when airway and circulation are supported: block settles over time.', patch: { patient: { rhythm: 'sinus', hr: 82, rr: 12, spo2: 98, etco2: 38, nibp: { sys: 108, dia: 64 }, abp: { sys: 108, dia: 64 } } } },
+      { onTap: true, glideMs: 60000, note: 'Tap when airway and circulation are supported: block settles over time.', patch: { patient: { rhythm: 'sinus', hr: 82, rr: 12, spo2: 98, etco2: 38, nibp: { sys: 108, dia: 64 }, abp: { sys: 108, dia: 64 } } } },
     ],
   },
   {
@@ -104,7 +105,7 @@ export const CURATED_SCENARIOS = [
       { atSec: 0, glideMs: 5000, note: 'Light anaesthetic, airway stimulated by the surgery. Baseline.', patch: { patient: BASE } },
       { atSec: 20, glideMs: 25000, glideMsBy: { spo2: 90000 }, note: 'EtCO2 trace takes a shark-fin shape, saturation drifts down, airway pressure rises. Cue: check the tube, circuit and chest; is the patient too light?', patch: { patient: { etco2Shape: 'obstructive', etco2: 52, spo2: 92, hr: 108, rhythm: 'sinus_tachy', nibp: { sys: 148, dia: 88 }, abp: { sys: 148, dia: 88 } } } },
       { atSec: 70, glideMs: 40000, glideMsBy: { spo2: 120000 }, note: 'Worsening. Expect: 100% oxygen, hand ventilate, deepen the anaesthetic, bronchodilator per protocol, think anaphylaxis if shocked.', patch: { patient: { etco2: 66, spo2: 84, hr: 124 } } },
-      { onTap: true, glideMs: 90000, glideMsBy: { spo2: 150000 }, note: 'Tap when the airway improves: trace and saturation recover.', patch: { patient: { etco2Shape: 'normal', etco2: 40, spo2: 97, hr: 88, rhythm: 'sinus', nibp: { sys: 125, dia: 75 }, abp: { sys: 125, dia: 75 } } } },
+      { onTap: true, glideMs: 90000, note: 'Tap when the airway improves: trace and saturation recover.', patch: { patient: { etco2Shape: 'normal', etco2: 40, spo2: 97, hr: 88, rhythm: 'sinus', nibp: { sys: 125, dia: 75 }, abp: { sys: 125, dia: 75 } } } },
     ],
   },
   {
@@ -114,7 +115,7 @@ export const CURATED_SCENARIOS = [
       { atSec: 0, glideMs: 5000, note: 'Stable patient under care. Baseline.', patch: { patient: BASE } },
       { atSec: 20, glideMs: 0, note: 'Sudden collapse: chaotic trace, no pulse, no blood pressure. Cue: check the patient, call the arrest team, start compressions.', patch: { patient: { rhythm: 'vf', pulse: false, hr: 0, spo2: 70, etco2: 18, nibp: { sys: 0, dia: 0 }, abp: { sys: 0, dia: 0 } } } },
       { onTap: true, glideMs: 0, note: 'Tap after the shock is delivered and compressions resume: still pulseless, EtCO2 low.', patch: { patient: { rhythm: 'vf', etco2: 14 } } },
-      { onTap: true, glideMs: 20000, glideMsBy: { spo2: 60000 }, note: 'Tap for return of circulation: post-arrest care, oxygen targets, 12-lead, cause search.', patch: { patient: { rhythm: 'sinus_tachy', pulse: true, hr: 110, spo2: 92, etco2: 40, nibp: { sys: 96, dia: 56 }, abp: { sys: 96, dia: 56 } } } },
+      { onTap: true, glideMs: 20000, note: 'Tap for return of circulation: post-arrest care, oxygen targets, 12-lead, cause search.', patch: { patient: { rhythm: 'sinus_tachy', pulse: true, hr: 110, spo2: 92, etco2: 40, nibp: { sys: 96, dia: 56 }, abp: { sys: 96, dia: 56 } } } },
     ],
   },
   {
@@ -123,7 +124,7 @@ export const CURATED_SCENARIOS = [
     steps: [
       { atSec: 0, glideMs: 5000, note: 'Stable, awake in recovery. Baseline.', patch: { patient: BASE } },
       { atSec: 20, glideMs: 5000, glideMsBy: { spo2: 15000 }, note: 'SpO2 alarm sounds: reading falls but the pulse and EtCO2 are unchanged. Cue: look at the patient, then the probe and the trace quality.', patch: { patient: { spo2Quality: 'poor', spo2: 72 } } },
-      { onTap: true, glideMs: 5000, glideMsBy: { spo2: 30000 }, note: 'Tap when the probe is repositioned or warmed: the true reading returns. Discuss what to check first.', patch: { patient: { spo2Quality: 'good', spo2: 98 } } },
+      { onTap: true, glideMs: 5000, note: 'Tap when the probe is repositioned or warmed: the true reading returns. Discuss what to check first.', patch: { patient: { spo2Quality: 'good', spo2: 98 } } },
     ],
   },
 ];
