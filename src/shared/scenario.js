@@ -140,7 +140,7 @@ export function validateScenario(raw) {
  * @returns {M}
  */
 export function forMonitor(msg) {
-  if (msg?.t === 'library') return { t: 'error', code: 'bad_patch', msg: 'monitors cannot read the offered library' };
+  if (msg?.t === 'library') return /** @type {any} */ ({ t: 'error', code: 'bad_patch', msg: 'monitors cannot read the offered library' });
   if (msg?.t === 'history' && Array.isArray(/** @type {any} */ (msg).events)) {
     const m = /** @type {any} */ (msg);
     return m.events.some((/** @type {any} */ e) => e.kind === 'note') ? { ...m, events: m.events.filter((/** @type {any} */ e) => e.kind !== 'note') } : msg;
