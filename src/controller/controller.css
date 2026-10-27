@@ -68,3 +68,21 @@
 .ctl .trend-table th:first-child, .ctl .trend-table td:first-child { text-align: left; }
 .ctl .trend-expiry[data-warn="true"] { color: var(--warn); }
 .ctl .trends .row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+
+/* speed per change, queue, tempo (sim-train S1): fits 360 px */
+.ctl .spd { display: inline-flex; align-items: center; gap: 4px; font-size: .85rem; margin-top: 4px; }
+.ctl .spd select, .ctl .spd input { min-height: 36px; max-width: 150px; }
+.ctl .spd input[type=number] { width: 64px; }
+.ctl .custom { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.ctl .custom input { width: 72px; min-height: 44px; }
+.ctl .custom select { min-height: 44px; }
+.ctl .applybar { flex-wrap: wrap; }
+.ctl .qrow { flex-basis: 100%; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ctl .queue { min-height: 44px; flex: 1; }
+.ctl .tempo { padding: 4px 12px; margin: 0; }
+.ctl .queue-panel ol { list-style: none; padding: 0; margin: 0 0 8px; }
+.ctl .queue-panel li { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--line, #333); overflow-wrap: anywhere; }
+.ctl .queue-panel li[data-state=done] { opacity: .5; }
+.ctl .queue-panel li[data-state=next] { font-weight: 600; }
+.ctl .q-btns { display: inline-flex; gap: 4px; flex-shrink: 0; }
+.ctl .q-btns button { min-width: 44px; min-height: 44px; }

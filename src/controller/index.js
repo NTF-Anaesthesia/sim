@@ -14,8 +14,9 @@ import { PresetStore, runPreset, presetFromPatient } from './presets.js';
 import { Settings, browserStorage } from './settings.js';
 import {
   paramList, LIMIT_PARAMS, NIBP_INTERVALS, TOF_INTERVALS, hasModule, buildPatch, pendingCount, stepPercent, clampDisplay,
-  glideProgress, formatValue, intervalLabel, moveDisplay,
+  glideProgress, formatValue, intervalLabel, moveDisplay, GLIDE_CHOICES,
 } from './params.js';
+import { SPEEDS, customMs, customParts, changedFields, speedLabel, speedFor, timingFor, stepSummary } from './speed.js';
 
 const RHYTHM_LABELS = /** @type {Record<string, string>} */ ({
   sinus: 'Sinus', sinus_brady: 'Sinus brady', sinus_tachy: 'Sinus tachy', af: 'AF', flutter: 'Flutter', svt: 'SVT',
@@ -46,6 +47,9 @@ export function mountController(root, opts) {
     pending: /** @type {Record<string, Record<string, number | string>>} */ ({}),
     dragging: false, note: '', io: '', lib: '', libNote: '', markNote: '', forceView: false,
     scr: '', // screen the per-screen theme panel is open for
+    /** speed set on single pending changes, per patient id then field */
+    own: /** @type {Record<string, Record<string, number>>} */ ({}),
+    qMode: /** @type {'after' | 'tap'} */ ('after'), qSec: 10, qNote: '', qName: '',
   };
   const actions = makeActions(client, () => ui.p);
 
@@ -129,6 +133,7 @@ export function mountController(root, opts) {
     <nav id="beds" class="beds" aria-label="Patients"></nav>
     <section id="view" class="view" aria-live="off"></section>
     <footer class="dock">
+      <div id="tempo" class="glide tempo" hidden></div>
       <div id="progress" class="progress" hidden><div id="bar"></div><span id="left"></span></div>
       <div id="apply" class="applybar" hidden></div>
       <nav class="tabs" id="tabs">${TABS.map(([id, l]) => `<button type="button" data-tab="${id}" data-testid="tab-${id}">${l}</button>`).join('')}</nav>
@@ -157,6 +162,18 @@ export function mountController(root, opts) {
       + '<button type="button" class="bed add" data-act="add" aria-label="Add patient">+</button>' : '';
   }
 
+  /** Speed of one pending change: a select styled as a chip; "Auto" = the shared speed (SpO2 slower). A pressure's sys and dia share one. @param {import('./params.js').ParamSpec} spec @param {import('../shared/schema.js').Patient} pt */
+  function speedChip(spec, pt) {
+    const field = Object.keys(spec.set(0))[0];
+    if (!changedFieldsKnown(field)) return '';
+    const own = ui.own[pt.id]?.[field];
+    const opts = [...new Set([...SPEEDS, ...(own !== undefined ? [own] : [])])].sort((a, b) => a - b);
+    return `<label class="spd">Speed <select class="chip" data-own="${field}" data-testid="own-${spec.id}" aria-label="${spec.label} speed">
+      <option value=""${own === undefined ? ' selected' : ''}>Auto (${speedLabel(speedFor(field, ui.glideMs))})</option>
+      ${opts.map((ms) => `<option value="${ms}"${ms === own ? ' selected' : ''}>${speedLabel(ms)}</option>`).join('')}</select></label>`;
+  }
+  const changedFieldsKnown = (/** @type {string} */ f) => changedFields({ patient: { [f]: 1 } }).length > 0;
+
   /** @param {import('./params.js').ParamSpec} spec @param {import('../shared/schema.js').Patient} pt */
   function paramRow(spec, pt) {
     const pv = pend()[spec.id];
@@ -170,7 +187,17 @@ export function mountController(root, opts) {
         <button type="button" data-step="1" aria-label="${spec.label} up">+</button>
       </div>
       <div class="prm-pct"><button type="button" data-pct="-10">−10%</button><button type="button" data-pct="-5">−5%</button><button type="button" data-pct="5">+5%</button><button type="button" data-pct="10">+10%</button></div>
+      ${typeof pv === 'number' ? speedChip(spec, pt) : ''}
     </div>`;
+  }
+
+  /** Custom speed: a number and s or min, 0 to 10 min. */
+  function customBox() {
+    const custom = !SPEEDS.includes(ui.glideMs);
+    const c = customParts(ui.glideMs);
+    return `<span class="custom"><input type="number" inputmode="decimal" min="0" max="600" step="any" id="cust-n" value="${custom ? c.n : ''}" placeholder="Custom" aria-label="Custom speed" data-testid="cust-n">
+      <select id="cust-u" aria-label="Custom unit" data-testid="cust-u"><option value="s"${c.unit === 's' ? ' selected' : ''}>s</option><option value="min"${c.unit === 'min' ? ' selected' : ''}>min</option></select>
+      <button type="button" class="pill" data-act="cust-set" aria-pressed="${custom}" data-testid="cust-set">Set</button></span>`;
   }
 
   function viewVitals() {
@@ -185,6 +212,7 @@ export function mountController(root, opts) {
       <div class="glide" role="group" aria-label="Glide over">
         <span class="label">Glide over</span>
         ${GLIDE_CHOICES.map((g) => `<button type="button" class="pill" data-glide="${g.ms}" aria-pressed="${g.ms === ui.glideMs}" data-testid="glide-${g.ms}">${g.label}</button>`).join('')}
+        ${customBox()}
       </div>
       ${list.map((sp) => paramRow(sp, pt)).join('')}
       <div class="sw-row"><span>Arterial line</span>${toggle('abp-module', s.modules.includes('abp'), 'Arterial line')}</div>
@@ -292,6 +320,7 @@ export function mountController(root, opts) {
     const drugsOn = settings.get('drugs', false) === true;
     return `
       ${card}
+      ${queuePanel(run)}
       <p class="label">Starts on <b>${esc(pt.label)}</b>. The room runs it, so it keeps going with this phone closed.</p>
       <ul class="presets">${library.allScenarios().map((sc, i) => `<li><button type="button" class="preset" data-scn="${i}" data-testid="scn-start-${esc(sc.name)}">${esc(sc.name)} <small>${sc.steps.length} steps</small></button>
         ${sc.builtin ? '' : `<button type="button" class="small" data-scn-del="${esc(sc.name)}" aria-label="Delete ${esc(sc.name)}">✕</button>`}</li>`).join('')}</ul>
@@ -433,7 +462,52 @@ export function mountController(root, opts) {
     const bar = $('apply');
     bar.hidden = n === 0;
     bar.innerHTML = n ? `<button type="button" class="apply" data-act="apply" data-testid="apply">Apply ${n} change${n === 1 ? '' : 's'}</button>
-      <button type="button" class="cancel" data-act="cancel" data-testid="cancel">Cancel</button>` : '';
+      <button type="button" class="cancel" data-act="cancel" data-testid="cancel">Cancel</button>
+      <div class="qrow"><button type="button" class="queue" data-act="queue-add" data-testid="queue-add">Add to queue</button>
+        <label class="spd"><select id="q-mode" data-testid="q-mode" aria-label="Queue timing"><option value="after"${ui.qMode === 'after' ? ' selected' : ''}>after</option><option value="tap"${ui.qMode === 'tap' ? ' selected' : ''}>on tap</option></select></label>
+        ${ui.qMode === 'after' ? `<label class="spd"><input type="number" id="q-sec" min="0" max="3600" value="${ui.qSec}" aria-label="Seconds after the previous step" data-testid="q-sec"> s</label>` : ''}</div>
+      ${ui.qNote ? `<p class="hint">${esc(ui.qNote)}</p>` : ''}` : '';
+  }
+
+  /** Queue panel, tempo row (shown while a glide, queue or scenario runs). */
+  function renderTempo() {
+    const pt = patient();
+    const run = state()?.scenario;
+    const g = pt ? glideProgress(pt, client.serverNow()) : { active: false };
+    const live = !!run && !run.done;
+    const el = $('tempo');
+    el.hidden = !(live || g.active);
+    if (el.hidden) { el.innerHTML = ''; return; }
+    const cur = live ? run.tempo ?? 1 : 0;
+    const key = `${cur}|${live}`;
+    if (el.dataset.key === key) return;
+    el.dataset.key = key;
+    el.innerHTML = `<span class="label">Tempo</span>${[0.5, 1, 2].map((x) => `<button type="button" class="pill" data-act="tempo" data-x="${x}" aria-pressed="${cur === x}" data-testid="tempo-${x}">${x}×</button>`).join('')}
+      <button type="button" class="pill" data-act="tempo" data-x="finish" data-testid="tempo-finish">Finish now</button>`;
+  }
+
+  /** @param {NonNullable<ReturnType<typeof state>>['scenario']} run */
+  function queuePanel(run) {
+    if (!run?.queue || !run.q) return '';
+    return `<div class="queue-panel" data-testid="queue-panel"><h2>Queue</h2>
+      <ol>${run.q.map((st, i) => `<li data-testid="q-${i}" data-state="${i < run.step ? 'done' : i === run.step ? 'next' : 'wait'}">
+        <span class="q-text">${esc(stepSummary(st))} <small>${st.onTap ? 'on tap' : `after ${st.atSec} s`}, ${esc(speedLabel(st.glideMs))}${st.glideMsBy ? ' +' : ''}</small></span>
+        ${i < run.step ? '<small>done</small>' : `<span class="q-btns"><button type="button" class="small" data-act="q-up" data-i="${i}" aria-label="Move up">↑</button>
+        <button type="button" class="small" data-act="q-down" data-i="${i}" aria-label="Move down">↓</button>
+        <button type="button" class="small" data-act="q-del" data-i="${i}" aria-label="Skip" data-testid="q-del-${i}">✕</button></span>`}</li>`).join('')}</ol>
+      <div class="row"><input id="qname" maxlength="24" placeholder="Scenario name" value="${esc(ui.qName)}" aria-label="Scenario name" data-testid="qname">
+        <button type="button" data-act="q-save" data-testid="q-save">Save as scenario</button></div></div>`;
+  }
+
+  function saveQueue() {
+    const run = state()?.scenario;
+    if (!run?.queue || !run.q) return;
+    const name = /** @type {HTMLInputElement} */ ($('qname')).value.trim();
+    ui.qName = name;
+    const r = library.addScenario({ name, steps: run.q });
+    ui.libNote = r.ok ? `Saved "${name}" to this phone.` : `Not saved: ${r.msg}`;
+    if (r.ok) ui.qName = '';
+    renderView();
   }
 
   function renderProgress() {
@@ -447,9 +521,9 @@ export function mountController(root, opts) {
   }
 
   function render() {
-    renderStatus(); renderBeds(); renderDock(); renderProgress();
+    renderStatus(); renderBeds(); renderDock(); renderProgress(); renderTempo();
     // do not rebuild the page under a finger that is dragging a slider, or while a screen name is being typed
-    if (!ui.dragging && !root.ownerDocument.activeElement?.matches(ui.tab === 'screens' ? '#view input' : ui.tab === 'scenarios' ? '#view textarea' : '#never')) renderView();
+    if (!ui.dragging && !root.ownerDocument.activeElement?.matches(ui.tab === 'screens' ? '#view input' : ui.tab === 'scenarios' ? '#view textarea, #view #qname' : '#never')) renderView();
   }
 
   // ---- edits ------------------------------------------------------------------------------------------------------
@@ -472,6 +546,9 @@ export function mountController(root, opts) {
     const wire = typeof pend()[sp.id] === 'number' ? /** @type {number} */ (pend()[sp.id]) : sp.get(pt);
     row.dataset.pending = String(typeof pend()[sp.id] === 'number');
     /** @type {HTMLElement} */ (row.querySelector('.prm-val')).textContent = formatValue(sp, wire);
+    const chip = row.querySelector('.spd');
+    if (typeof pend()[sp.id] === 'number' && !chip) row.insertAdjacentHTML('beforeend', speedChip(sp, pt));
+    else if (typeof pend()[sp.id] !== 'number') chip?.remove();
     /** @type {HTMLInputElement} */ (row.querySelector('input[type=range]')).value = String(d);
     renderDock();
   }
@@ -489,8 +566,30 @@ export function mountController(root, opts) {
     const pt = patient();
     if (!pt) return;
     const patch = buildPatch(pend(), pt, units());
-    if (patch && !act(patch, ui.glideMs, pt.id)) { ui.note = 'Not connected: your changes are kept. Apply again when connected.'; $('status').title = ui.note; return; }
-    delete ui.pending[pt.id];
+    const tm = timingFor(patch, ui.glideMs, ui.own[pt.id]);
+    if (patch && !act(patch, tm.glideMs, pt.id, tm.glideMsBy)) { ui.note = 'Not connected: your changes are kept. Apply again when connected.'; $('status').title = ui.note; return; }
+    clearPending(pt.id);
+    render();
+  }
+
+  /** @param {string} id */
+  function clearPending(id) { delete ui.pending[id]; delete ui.own[id]; }
+
+  /** Turn the pending batch into a queue step (after `qSec` s, or on tap); asks first when it would replace a scenario. */
+  function addToQueue() {
+    const pt = patient();
+    const run = state()?.scenario;
+    if (!pt) return;
+    const patch = buildPatch(pend(), pt, units());
+    if (!patch) return;
+    const live = run && !run.done ? run : null;
+    const replace = !!live && (!live.queue || live.p !== pt.id);
+    if (replace && !window.confirm(`"${live.name}" is running. Stop it and start a queue?`)) return;
+    const tm = timingFor(patch, ui.glideMs, ui.own[pt.id]);
+    const step = { ...(ui.qMode === 'tap' ? { onTap: true } : { atSec: Math.max(0, Math.min(3600, Math.round(ui.qSec))) }), patch, ...tm };
+    if (!actions.queueAdd(step, pt.id, replace)) { ui.qNote = 'Not connected: your changes are kept.'; renderDock(); return; }
+    ui.qNote = '';
+    clearPending(pt.id);
     render();
   }
 
@@ -596,7 +695,18 @@ export function mountController(root, opts) {
     if (d.switch) { onSwitch(d.switch, t.getAttribute('aria-checked') !== 'true', s, pt); return; }
     switch (d.act) {
       case 'apply': apply(); break;
-      case 'cancel': delete ui.pending[pt.id]; render(); break;
+      case 'cancel': clearPending(pt.id); render(); break;
+      case 'queue-add': addToQueue(); break;
+      case 'cust-set': {
+        const n = Number(/** @type {HTMLInputElement} */ ($('cust-n')).value);
+        if (/** @type {HTMLInputElement} */ ($('cust-n')).value === '' || !Number.isFinite(n)) break;
+        ui.glideMs = customMs(n, /** @type {HTMLSelectElement} */ ($('cust-u')).value === 'min' ? 'min' : 's');
+        settings.set('glideMs', ui.glideMs); renderView(); break;
+      }
+      case 'tempo': actions.tempo(d.x === 'finish' ? 'finish' : d.x === '0.5' ? 0.5 : d.x === '2' ? 2 : 1, pt.id); break;
+      case 'q-up': case 'q-down': actions.queueMove(Number(d.i), d.act === 'q-up' ? -1 : 1); break;
+      case 'q-del': actions.queueRemove(Number(d.i)); break;
+      case 'q-save': saveQueue(); break;
       case 'nibp-now': actions.nibpNow(pt.id); break;
       case 'tof-now': actions.tofNow(pt.id); break;
       case 'flush-abp': actions.flush('abp', pt.id); break;
@@ -684,6 +794,15 @@ export function mountController(root, opts) {
       } else setScreen(sd.s, { theme: v || null });
       return;
     }
+    if (sd.own && pt) {
+      const v = /** @type {HTMLSelectElement} */ (t).value;
+      const o = (ui.own[pt.id] ??= {});
+      if (v === '') delete o[sd.own]; else o[sd.own] = Number(v);
+      renderView();
+      return;
+    }
+    if (t.id === 'q-mode') { ui.qMode = /** @type {HTMLSelectElement} */ (t).value === 'tap' ? 'tap' : 'after'; renderDock(); return; }
+    if (t.id === 'q-sec') { ui.qSec = Number(/** @type {HTMLInputElement} */ (t).value) || 0; return; }
     if (t.id === 'rhythm' && pt) {
       const v = /** @type {HTMLSelectElement} */ (t).value;
       if (v === pt.rhythm) delete pend().rhythm; else pend().rhythm = v;
@@ -708,6 +827,7 @@ export function mountController(root, opts) {
   root.addEventListener('input', (ev) => {
     const t = /** @type {HTMLInputElement} */ (ev.target);
     if (t.type === 'range') setFromDisplay(/** @type {HTMLElement} */ (t.closest('.prm')), Number(t.value));
+    if (t.id === 'qname') ui.qName = t.value;
   });
   // do not rebuild the page under a finger that is dragging a slider
   root.addEventListener('pointerdown', (ev) => { if (/** @type {HTMLElement} */ (ev.target).matches('input[type=range]')) ui.dragging = true; });
