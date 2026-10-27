@@ -7,6 +7,7 @@ import {
 } from '../shared/schema.js';
 import { displayed, restartGlide, startGlide, remainingMs, GLIDE_FIELDS } from '../engine/glide.js';
 import { MAX_LOG_ROWS, makeLog } from './log.js';
+import { nibpJitter } from '../engine/nibp.js';
 import {
   LIBRARY_KIND, LIBRARY_VERSION, MAX_FILE_CHARS, MAX_STEPS, drugPatch, validateDrug, validateGlideMsBy, validateLibraryFile, validateScenario, validateStep,
 } from '../shared/scenario.js';
@@ -42,10 +43,12 @@ export class RoomHub {
   /**
    * @param {HubStorage} storage
    * @param {() => number} [clock]
+   * @param {() => number} [rand] 0-1, for the NIBP reading error
    */
-  constructor(storage, clock = Date.now) {
+  constructor(storage, clock = Date.now, rand = Math.random) {
     this.storage = storage;
     this.clock = clock;
+    this.rand = rand;
     this.log = makeLog(storage);
     /** @type {RoomState | null} */
     this.cache = null;
@@ -345,8 +348,9 @@ export class RoomHub {
     const pt = pick(s, id);
     if (!pt) throw new BadPatch('unknown patient');
     const d = displayed(pt, now).nibp;
-    pt.nibpRead.sys = Math.round(d.sys);
-    pt.nibpRead.dia = Math.round(d.dia);
+    const j = nibpJitter(d.sys, d.dia, this.rand);
+    pt.nibpRead.sys = j.sys;
+    pt.nibpRead.dia = j.dia;
     pt.nibpRead.at = now;
     return { kind: 'nibp', what: 'nibp', p: pt.id };
   }

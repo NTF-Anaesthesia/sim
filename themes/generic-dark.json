@@ -362,8 +362,8 @@
     "fontScale": 1
   },
   "nibp": {
-    "inflateMs": 0,
-    "measureMs": 0
+    "inflateMs": 6000,
+    "measureMs": 18000
   },
   "labels": {
     "colorMode": "parameter",

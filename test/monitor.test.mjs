@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { BeatScheduler, MOBITZ2_CONDUCTED } from '../src/engine/beats.js';
 import { BreathScheduler } from '../src/engine/breaths.js';
 import { AlarmTracker, burstDue, evaluateAlarms, SILENCE_MS } from '../src/engine/alarms.js';
-import { NibpMachine, ageText, mapOf, nibpCycleDue } from '../src/engine/nibp.js';
+import { NibpMachine, ageText, cuffPressure, mapOf, nibpCycleDue, nibpJitter, DEFLATE_STEP } from '../src/engine/nibp.js';
 import { JITTER_AMP, jittered } from '../src/engine/jitter.js';
 import { burstPattern, spo2PitchHz } from '../src/monitor/audio.js';
 import { resolveTheme, waveSettings } from '../src/theme/resolve.js';
@@ -152,6 +152,42 @@ test('NIBP machine: existing reading is a result, a new one plays inflate, measu
   assert.equal(done.sys, 130);
   assert.equal(m.tick({ ...r2, at: 12000 }, true, 12000).phase, 'failed');
   assert.equal(new NibpMachine().tick({ sys: 1, dia: 1, at: 5 }, false, 5).phase, 'result');
+});
+
+test('NIBP cuff pressure: pumps above systolic, bleeds down in steps to below diastolic, shown while cuffing', () => {
+  const r = { sys: 150, dia: 90 };
+  assert.equal(cuffPressure(r, 'inflating', 0), 0);
+  assert.equal(cuffPressure(r, 'inflating', 1), 180);
+  assert.equal(cuffPressure({ sys: 100, dia: 60 }, 'inflating', 1), 160); // never starts below 160
+  assert.equal(cuffPressure(r, 'measuring', 0), 180);
+  assert.equal(cuffPressure(r, 'measuring', 1), 80);
+  let prev = 999;
+  for (let p = 0; p <= 1; p += 0.01) {
+    const c = cuffPressure(r, 'measuring', p);
+    assert.ok(c <= prev && (prev === 999 || prev - c === 0 || prev - c <= DEFLATE_STEP), `steps down at ${p}`);
+    prev = c;
+  }
+  const m = new NibpMachine({ inflateMs: 1000, measureMs: 2000 });
+  m.tick({ sys: 120, dia: 75, at: 0 }, false, 0);
+  assert.equal(m.tick({ sys: 150, dia: 90, at: 100 }, false, 100).cuff, 0);
+  const t = m.tick({ sys: 150, dia: 90, at: 100 }, false, 1100);
+  assert.equal(t.phase, 'measuring');
+  assert.equal(t.cuff, 180);
+  assert.equal(m.tick({ sys: 150, dia: 90, at: 100 }, false, 4000).cuff, null);
+});
+
+test('NIBP jitter: small bell-shaped error, never zero spread', () => {
+  assert.deepEqual(nibpJitter(120, 75, () => 0.5), { sys: 120, dia: 75 });
+  assert.deepEqual(nibpJitter(120, 75, () => 1), { sys: 124, dia: 78 });
+  assert.deepEqual(nibpJitter(120, 75, () => 0), { sys: 116, dia: 72 });
+  assert.equal(nibpJitter(40, 38, () => 0.5).dia, 30);
+  const seen = new Set();
+  for (let i = 0; i < 200; i++) {
+    const j = nibpJitter(120, 75);
+    assert.ok(Math.abs(j.sys - 120) <= 4 && Math.abs(j.dia - 75) <= 3);
+    seen.add(j.sys);
+  }
+  assert.ok(seen.size > 3, 'readings vary');
 });
 
 test('NIBP helpers: MAP, cycle due, reading age', () => {
