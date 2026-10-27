@@ -1,6 +1,6 @@
 // @ts-check
 // Entry `engine`: pure functions on room state. No side effects on import.
-export { displayed, glideValue, restartGlide, ease } from './glide.js';
+export { displayed, glideValue, restartGlide, startGlide, remainingMs, fieldMs, GLIDE_FIELDS, ease } from './glide.js';
 export { pulseless, shown } from './rhythm.js';
 export { BeatScheduler, RHYTHM_INFO, rhythmInfo, WENCKEBACH_PR, MOBITZ2_CONDUCTED, CHB_ATRIAL_RATE } from './beats.js';
 export { BreathScheduler } from './breaths.js';

@@ -8,7 +8,7 @@ export const MAX_LOG_ROWS = 5000;
 
 /**
  * @typedef {{ id?: number, t: number, by: string, kind: string, p?: string, what: string }} LogEvent
- * @typedef {{ t: number, p: string, dur: number, from: Record<string, any>, to: Record<string, any> }} LogGlide
+ * @typedef {{ t: number, p: string, dur: number, from: Record<string, any>, to: Record<string, any>, by?: Record<string, number> }} LogGlide
  *   `from` and `to` are the numerics at the start and the targets after the change (same shape as `numericsOf`)
  * @typedef {{
  *   addEvent(e: LogEvent): void,
@@ -37,6 +37,8 @@ export function sqlLog(sql) {
     sql.exec('CREATE INDEX IF NOT EXISTS events_t ON events (t)');
     sql.exec('CREATE TABLE IF NOT EXISTS glides (id INTEGER PRIMARY KEY AUTOINCREMENT, t INTEGER NOT NULL, p TEXT NOT NULL, dur INTEGER NOT NULL, from_json TEXT NOT NULL, to_json TEXT NOT NULL)');
     sql.exec('CREATE INDEX IF NOT EXISTS glides_t ON glides (t)');
+    // per-field glide times (added later): rooms made before have the table without the column
+    try { sql.exec('ALTER TABLE glides ADD COLUMN by_json TEXT'); } catch { /* already there */ }
     ready = true;
   };
   return {
@@ -47,7 +49,7 @@ export function sqlLog(sql) {
     },
     addGlide(g) {
       ensure();
-      sql.exec('INSERT INTO glides (t, p, dur, from_json, to_json) VALUES (?, ?, ?, ?, ?)', g.t, g.p, g.dur, JSON.stringify(g.from), JSON.stringify(g.to));
+      sql.exec('INSERT INTO glides (t, p, dur, from_json, to_json, by_json) VALUES (?, ?, ?, ?, ?, ?)', g.t, g.p, g.dur, JSON.stringify(g.from), JSON.stringify(g.to), g.by ? JSON.stringify(g.by) : null);
       sql.exec('DELETE FROM glides WHERE id <= (SELECT MAX(id) FROM glides) - ?', MAX_LOG_ROWS);
     },
     events(sinceT, limit) {
@@ -60,9 +62,9 @@ export function sqlLog(sql) {
       ensure();
       // everything from sinceT, plus each patient's last start before it (the value in force when the window opens)
       const rows = sql.exec(
-        'SELECT t, p, dur, from_json, to_json FROM glides WHERE t >= ? OR id IN (SELECT MAX(id) FROM glides WHERE t < ? GROUP BY p) ORDER BY id',
+        'SELECT t, p, dur, from_json, to_json, by_json FROM glides WHERE t >= ? OR id IN (SELECT MAX(id) FROM glides WHERE t < ? GROUP BY p) ORDER BY id',
         sinceT, sinceT).toArray();
-      return rows.map((r) => ({ t: Number(r.t), p: String(r.p), dur: Number(r.dur), from: JSON.parse(String(r.from_json)), to: JSON.parse(String(r.to_json)) }));
+      return rows.map((r) => ({ t: Number(r.t), p: String(r.p), dur: Number(r.dur), from: JSON.parse(String(r.from_json)), to: JSON.parse(String(r.to_json)), ...(r.by_json ? { by: JSON.parse(String(r.by_json)) } : {}) }));
     },
     clear() {
       sql.exec('DROP TABLE IF EXISTS events');

@@ -38,7 +38,7 @@ export const groupsFor = (modules) => TREND_GROUPS.filter((g) => !g.module || g.
  * The glide of a log record as a patient-like object `displayed()` can evaluate.
  * @param {LogGlide} g
  */
-const asPatient = (g) => /** @type {any} */ ({ ...g.to, glide: { startedAt: g.t, durationMs: g.dur, from: g.from } });
+const asPatient = (g) => /** @type {any} */ ({ ...g.to, glide: { startedAt: g.t, durationMs: g.dur, from: g.from, ...(g.by ? { glideMsBy: g.by } : {}) } });
 
 /**
  * Glided numerics of one bed at `t`: the last glide record that started at or before `t`. Before the first record the

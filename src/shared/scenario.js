@@ -2,6 +2,7 @@
 // Scenarios (timed steps run by the room) and drug buttons (relative changes): shared checks for the room, the phone and
 // the tests (DESIGN.md section 12). No DOM, no timers.
 import { RANGES, validatePatch } from './schema.js';
+import { GLIDE_FIELDS } from '../engine/glide.js';
 
 export const MAX_STEPS = 30;
 export const MAX_STEP_SEC = 3600;
@@ -18,15 +19,17 @@ export const DRUG_NUMBERS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'cvp', 'bis'];
 export const DRUG_PRESSURES = ['nibp', 'abp', 'abp2'];
 
 /**
- * @typedef {{ atSec?: number, onTap?: boolean, patch: any, glideMs: number }} ScenarioStep
+ * @typedef {{ atSec?: number, onTap?: boolean, patch: any, glideMs: number, glideMsBy?: Record<string, number> }} ScenarioStep
  *   `atSec` = seconds after the previous step ran (the first: after the start); `onTap` = waits for a tap instead
  * @typedef {{ name: string, steps: ScenarioStep[] }} Scenario
  * @typedef {{ mul?: number, add?: number }} Op
  * @typedef {{ name: string, note?: string, glideMs: number, effects: Record<string, any> }} Drug
  * @typedef {{
  *   id: string, name: string, p: string, step: number, total: number, startedAt: number, pausedAt: number,
- *   nextAt: number, waiting: boolean, done: boolean
- * }} ScenarioRun  `step` = steps already run; `nextAt` = server ms of the next timed step (0 = none or waiting for a tap)
+ *   nextAt: number, waiting: boolean, done: boolean, queue?: boolean, tempo?: number, baseAt?: number, q?: ScenarioStep[]
+ * }} ScenarioRun  `step` = steps already run; `nextAt` = server ms of the next timed step (0 = none or waiting for a tap).
+ *   Queue runs (`queue`) hold their steps in `q` (all of them, run or not) so every phone can show and edit them;
+ *   `tempo` is the live speed (0.5, 2; absent = 1) and `baseAt` the time the next step's delay counts from
  */
 
 /** @param {unknown} v */
@@ -35,6 +38,55 @@ const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 const num = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 /** @param {unknown} v */
 const name24 = (v) => (typeof v === 'string' && v.trim() && v.trim().length <= 24 ? v.trim() : null);
+
+/**
+ * Per-field glide times (`glideMsBy`): known fields only, 0 to 10 min each.
+ * @param {unknown} raw
+ * @returns {{ ok: true, by: Record<string, number> } | { ok: false, msg: string }}
+ */
+export function validateGlideMsBy(raw) {
+  if (!isObj(raw)) return { ok: false, msg: 'glideMsBy must be an object' };
+  /** @type {Record<string, number>} */
+  const by = {};
+  for (const [k, v] of Object.entries(/** @type {Record<string, unknown>} */ (raw))) {
+    if (!/** @type {readonly string[]} */ (GLIDE_FIELDS).includes(k)) return { ok: false, msg: `glideMsBy: unknown field ${k.slice(0, 16)}` };
+    if (!num(v, 0, 600000)) return { ok: false, msg: `glideMsBy.${k} must be 0-600000` };
+    by[k] = /** @type {number} */ (v);
+  }
+  return { ok: true, by };
+}
+
+/**
+ * One scenario step (also one queue step).
+ * @param {unknown} raw
+ * @param {string} at where it is, for the message
+ * @returns {{ ok: true, step: ScenarioStep } | { ok: false, msg: string }}
+ */
+export function validateStep(raw, at) {
+  if (!isObj(raw)) return { ok: false, msg: `${at} must be an object` };
+  const s = /** @type {Record<string, any>} */ (raw);
+  const glideMs = s.glideMs ?? 0;
+  if (!num(glideMs, 0, 600000)) return { ok: false, msg: `${at}: glideMs must be 0-600000` };
+  if (!isObj(s.patch) || !Object.keys(s.patch).length) return { ok: false, msg: `${at}: patch must be a non-empty object` };
+  const bad = Object.keys(s.patch).find((k) => !STEP_KEYS.includes(k));
+  if (bad) return { ok: false, msg: `${at}: patch may only change patient and alarms, not ${bad.slice(0, 16)}` };
+  const v = validatePatch(s.patch);
+  if (!v.ok) return { ok: false, msg: `${at}: ${v.msg}` };
+  /** @type {{ glideMsBy?: Record<string, number> }} */
+  const extra = {};
+  if (s.glideMsBy !== undefined) {
+    const b = validateGlideMsBy(s.glideMsBy);
+    if (!b.ok) return { ok: false, msg: `${at}: ${b.msg}` };
+    if (Object.keys(b.by).length) extra.glideMsBy = b.by;
+  }
+  if (s.onTap === true) {
+    if (s.atSec !== undefined) return { ok: false, msg: `${at}: use atSec or onTap, not both` };
+    return { ok: true, step: { onTap: true, patch: v.patch, glideMs, ...extra } };
+  }
+  if (s.onTap !== undefined && s.onTap !== false) return { ok: false, msg: `${at}: onTap must be true or false` };
+  if (!num(s.atSec, 0, MAX_STEP_SEC)) return { ok: false, msg: `${at}: atSec must be 0-${MAX_STEP_SEC} (or set onTap: true)` };
+  return { ok: true, step: { atSec: s.atSec, patch: v.patch, glideMs, ...extra } };
+}
 
 /**
  * @param {unknown} raw
@@ -51,23 +103,9 @@ export function validateScenario(raw) {
   /** @type {ScenarioStep[]} */
   const steps = [];
   for (const [i, s] of r.steps.entries()) {
-    const at = `"${name}" step ${i + 1}`;
-    if (!isObj(s)) return { ok: false, msg: `${at} must be an object` };
-    const glideMs = s.glideMs ?? 0;
-    if (!num(glideMs, 0, 600000)) return { ok: false, msg: `${at}: glideMs must be 0-600000` };
-    if (!isObj(s.patch) || !Object.keys(s.patch).length) return { ok: false, msg: `${at}: patch must be a non-empty object` };
-    const bad = Object.keys(s.patch).find((k) => !STEP_KEYS.includes(k));
-    if (bad) return { ok: false, msg: `${at}: patch may only change patient and alarms, not ${bad.slice(0, 16)}` };
-    const v = validatePatch(s.patch);
-    if (!v.ok) return { ok: false, msg: `${at}: ${v.msg}` };
-    if (s.onTap === true) {
-      if (s.atSec !== undefined) return { ok: false, msg: `${at}: use atSec or onTap, not both` };
-      steps.push({ onTap: true, patch: v.patch, glideMs });
-    } else {
-      if (s.onTap !== undefined && s.onTap !== false) return { ok: false, msg: `${at}: onTap must be true or false` };
-      if (!num(s.atSec, 0, MAX_STEP_SEC)) return { ok: false, msg: `${at}: atSec must be 0-${MAX_STEP_SEC} (or set onTap: true)` };
-      steps.push({ atSec: s.atSec, patch: v.patch, glideMs });
-    }
+    const v = validateStep(s, `"${name}" step ${i + 1}`);
+    if (!v.ok) return v;
+    steps.push(v.step);
   }
   return { ok: true, scenario: { name, steps } };
 }

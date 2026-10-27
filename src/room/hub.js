@@ -5,9 +5,9 @@ import {
   DEVICE_CHOICES, MAX_PATIENTS, MAX_SCREENS, SCHEMA_VERSION, SCREEN_ID, SCREEN_KINDS, SHOCK_JOULES, TARGETS, validatePace, numericsOf, defaultPatient,
   defaultState, fillDefaults, screenName, validateIam, validatePatch,
 } from '../shared/schema.js';
-import { displayed, restartGlide } from '../engine/glide.js';
+import { displayed, restartGlide, startGlide, remainingMs, GLIDE_FIELDS } from '../engine/glide.js';
 import { MAX_LOG_ROWS, makeLog } from './log.js';
-import { drugPatch, validateDrug, validateScenario } from '../shared/scenario.js';
+import { MAX_STEPS, drugPatch, validateDrug, validateGlideMsBy, validateScenario, validateStep } from '../shared/scenario.js';
 
 /** @typedef {import('../shared/schema.js').RoomState} RoomState */
 
@@ -140,6 +140,38 @@ export class RoomHub {
         if (msg.t === 'scenarioStop') await this.storage.put('scenarioSteps', null);
         return out;
       }
+      case 'queueAdd': {
+        const v = validateStep(msg.step, 'queue step');
+        if (!v.ok) return { reply: err('bad_patch', v.msg) };
+        const st = await this.state();
+        const pid = msg.p ?? st.patients[0].id;
+        if (!st.patients.some((x) => x.id === pid)) return { reply: err('bad_patch', 'unknown patient') };
+        const live = st.scenario && !st.scenario.done ? st.scenario : null;
+        if (live && (!live.queue || live.p !== pid) && msg.replace !== true) return { reply: err('bad_patch', `"${live.name}" is running; send replace to stop it`) };
+        const prev = live?.queue && live.p === pid ? ((await this.storage.get('scenarioSteps')) ?? []) : [];
+        if (prev.length >= MAX_STEPS) return { reply: err('bad_patch', `a queue holds up to ${MAX_STEPS} steps`) };
+        const steps = [...prev, v.step];
+        const out = await this.apply(clientId, now, msg, (s) => this.doQueueAdd(s, steps, pid, now));
+        if (!out.reply) await this.storage.put('scenarioSteps', steps);
+        return out;
+      }
+      case 'queueMove':
+      case 'queueRemove': {
+        const run = (await this.state()).scenario;
+        if (!run?.queue || run.done) return { reply: err('bad_patch', 'no queue is running') };
+        const steps = (await this.storage.get('scenarioSteps')) ?? [];
+        const next = steps.slice();
+        const out = await this.apply(clientId, now, msg, (s) => this.doQueueEdit(s, msg, next));
+        if (!out.reply) await this.storage.put('scenarioSteps', next);
+        return out;
+      }
+      case 'tempo': {
+        if (![0.5, 1, 2, 'finish'].includes(msg.x)) return { reply: err('bad_patch', 'x must be 0.5, 1, 2 or finish') };
+        const steps = (await this.storage.get('scenarioSteps')) ?? [];
+        const out = await this.apply(clientId, now, msg, (s) => this.doTempo(s, msg, steps, now));
+        if (!out.reply && out.broadcast && msg.x === 'finish') await this.storage.put('scenarioSteps', null);
+        return out;
+      }
       case 'drug': {
         const v = validateDrug(msg.drug);
         if (!v.ok) return { reply: err('bad_patch', v.msg) };
@@ -198,7 +230,7 @@ export class RoomHub {
     for (const pt of next.patients) {
       const old = before.patients.find((x) => x.id === pt.id);
       if (old && JSON.stringify(old.glide) === JSON.stringify(pt.glide) && JSON.stringify(numericsOf(old)) === JSON.stringify(numericsOf(pt))) continue;
-      this.log.addGlide({ t: pt.glide.startedAt, p: pt.id, dur: pt.glide.durationMs, from: pt.glide.from, to: numericsOf(pt) });
+      this.log.addGlide({ t: pt.glide.startedAt, p: pt.id, dur: pt.glide.durationMs, from: pt.glide.from, to: numericsOf(pt), ...(pt.glide.glideMsBy ? { by: pt.glide.glideMsBy } : {}) });
     }
   }
 
@@ -255,7 +287,23 @@ export class RoomHub {
         if (typeof msg.glideMs !== 'number' || !(msg.glideMs >= 0 && msg.glideMs <= 600000)) throw new BadPatch('glideMs out of range');
         ms = msg.glideMs;
       }
-      pt.glide = restartGlide(before, now, ms);
+      let by = null;
+      if (msg.glideMsBy !== undefined) {
+        const b = validateGlideMsBy(msg.glideMsBy);
+        if (!b.ok) throw new BadPatch(b.msg);
+        by = b.by;
+      }
+      if (!by && !before.glide.glideMsBy) pt.glide = restartGlide(before, now, ms);
+      else {
+        // per-field times: a changed field takes its own time (else `ms`); a field not in this patch keeps the time it
+        // still had left, so a slow SpO2 glide is not cut short by an unrelated change
+        const left = remainingMs(before, now);
+        const patient = /** @type {Record<string, any>} */ (p.patient);
+        /** @type {Record<string, number>} */
+        const times = {};
+        for (const k of GLIDE_FIELDS) times[k] = k in patient ? by?.[k] ?? ms : left[k];
+        pt.glide = startGlide(before, now, times);
+      }
     }
     return { kind: p.patient && 'rhythm' in p.patient ? 'rhythm' : 'set', what: `set ${Object.keys(p).join(',')}`, p: pt.id };
   }
@@ -432,7 +480,7 @@ export class RoomHub {
     const first = sc.steps[0];
     s.scenario = {
       id: `n${s.rev + 1}`, name: sc.name, p, step: 0, total: sc.steps.length, startedAt: now, pausedAt: 0,
-      nextAt: first.onTap ? 0 : now + (first.atSec ?? 0) * 1000, waiting: !!first.onTap, done: false,
+      nextAt: first.onTap ? 0 : now + (first.atSec ?? 0) * 1000, baseAt: now, waiting: !!first.onTap, done: false,
     };
     const run = s.scenario;
     const ran = this.runDue(s, sc.steps, now);
@@ -458,6 +506,7 @@ export class RoomHub {
     if (t === 'scenarioResume') {
       if (run.pausedAt) {
         if (run.nextAt) run.nextAt += now - run.pausedAt;
+        if (run.baseAt) run.baseAt += now - run.pausedAt;
         run.pausedAt = 0;
         this.runDue(s, steps, now);
       }
@@ -473,17 +522,21 @@ export class RoomHub {
    * @param {import('../shared/scenario.js').ScenarioStep[]} steps
    * @param {number} now
    * @param {number} base
+   * @param {boolean} [instant] land every glide at once (Finish now)
    */
-  runNext(s, steps, now, base) {
+  runNext(s, steps, now, base, instant = false) {
     const run = /** @type {import('../shared/scenario.js').ScenarioRun} */ (s.scenario);
     const step = steps[run.step];
     if (!step) { run.done = true; run.nextAt = 0; run.waiting = false; return; }
-    this.doSet(s, { patch: step.patch, p: run.p, glideMs: step.glideMs }, now);
+    const k = instant ? 0 : 1 / (run.tempo ?? 1);
+    /** @type {Record<string, any>} */
+    const msg = { patch: step.patch, p: run.p, glideMs: Math.round(step.glideMs * k) };
+    if (step.glideMsBy && !instant) msg.glideMsBy = Object.fromEntries(Object.entries(step.glideMsBy).map(([f, ms]) => [f, Math.round(ms * k)]));
+    this.doSet(s, msg, now);
     run.step++;
     const next = steps[run.step];
     if (!next) { run.done = true; run.nextAt = 0; run.waiting = false; return; }
-    run.waiting = !!next.onTap;
-    run.nextAt = next.onTap ? 0 : base + (next.atSec ?? 0) * 1000;
+    planNext(run, next, base);
   }
 
   /**
@@ -500,6 +553,90 @@ export class RoomHub {
       n++;
     }
     return n;
+  }
+
+  /**
+   * Add one step to the queue on bed `p`: a new queue run when none is running (a running scenario or a queue on
+   * another bed is replaced; the phone asks first), else the step goes on the end of the running queue.
+   * @param {RoomState} s
+   * @param {import('../shared/scenario.js').ScenarioStep[]} steps the queue's steps with the new one last
+   * @param {string} p
+   * @param {number} now
+   */
+  doQueueAdd(s, steps, p, now) {
+    const cur = s.scenario;
+    if (cur && !cur.done && cur.queue && cur.p === p) {
+      cur.total = steps.length;
+      cur.q = steps;
+      return { kind: 'queue', what: `add (${steps.length} in queue)`, p };
+    }
+    this.doScenarioStart(s, { name: 'Queue', steps }, p, now);
+    const run = /** @type {import('../shared/scenario.js').ScenarioRun} */ (s.scenario);
+    run.queue = true;
+    run.q = steps;
+    return { kind: 'queue', what: 'start', p };
+  }
+
+  /**
+   * Move (`dir` -1 or 1) or remove a step that has not run yet; `i` counts from the first step of the queue.
+   * @param {RoomState} s
+   * @param {any} msg `queueMove` { i, dir } or `queueRemove` { i }
+   * @param {import('../shared/scenario.js').ScenarioStep[]} steps changed in place
+   */
+  doQueueEdit(s, msg, steps) {
+    const run = /** @type {import('../shared/scenario.js').ScenarioRun} */ (s.scenario);
+    const i = msg.i;
+    if (!Number.isInteger(i) || i < run.step || i >= steps.length) throw new BadPatch('that step has already run or does not exist');
+    if (msg.t === 'queueMove') {
+      const j = i + (msg.dir === -1 ? -1 : msg.dir === 1 ? 1 : 0);
+      if (j === i || j < run.step || j >= steps.length) throw new BadPatch('cannot move there');
+      [steps[i], steps[j]] = [steps[j], steps[i]];
+    } else {
+      steps.splice(i, 1);
+    }
+    run.total = steps.length;
+    run.q = steps;
+    if (run.step >= steps.length) { run.done = true; run.nextAt = 0; run.waiting = false; } else if (i <= run.step) planNext(run, steps[run.step], run.baseAt ?? s.scenario?.startedAt ?? 0);
+    return { kind: 'queue', what: msg.t === 'queueMove' ? `move ${i + 1}` : `skip ${i + 1}`, p: run.p };
+  }
+
+  /**
+   * Live tempo for what is running on a bed: 0.5x, 1x or 2x rescale the time left of its glide and (when a scenario or
+   * queue runs) of the runner's next step and of later steps; `finish` lands everything now. A glide alone is rescaled
+   * once (x counts from the speed it has).
+   * @param {RoomState} s
+   * @param {any} msg `x` and optional `p`
+   * @param {import('../shared/scenario.js').ScenarioStep[]} steps
+   * @param {number} now
+   */
+  doTempo(s, msg, steps, now) {
+    const run = s.scenario && !s.scenario.done ? s.scenario : null;
+    const pt = pick(s, run ? run.p : msg.p);
+    if (!pt) throw new BadPatch('unknown patient');
+    if (msg.x === 'finish') {
+      if (run) {
+        run.pausedAt = 0;
+        for (let guard = 0; !run.done && guard <= MAX_STEPS; guard++) this.runNext(s, steps, now, now, true);
+      }
+      pt.glide = { startedAt: now, durationMs: 0, from: numericsOf(pt) };
+      return { kind: 'tempo', what: run ? `finish ${run.name}` : 'finish now', p: pt.id };
+    }
+    const f = run ? msg.x / (run.tempo ?? 1) : msg.x;
+    if (run) { if (msg.x === 1) delete run.tempo; else run.tempo = msg.x; }
+    if (f !== 1) {
+      const left = remainingMs(pt, now);
+      /** @type {Record<string, number>} */
+      const times = {};
+      for (const k of GLIDE_FIELDS) times[k] = left[k] / f;
+      pt.glide = startGlide(pt, now, times);
+      if (run && run.nextAt > 0) {
+        const ref = run.pausedAt || now;
+        run.nextAt = ref + (run.nextAt - ref) / f;
+        const nxt = steps[run.step];
+        if (nxt && !nxt.onTap) run.baseAt = run.nextAt - ((nxt.atSec ?? 0) * 1000) / (run.tempo ?? 1);
+      }
+    }
+    return { kind: 'tempo', what: `${msg.x}x`, p: pt.id };
   }
 
   /**
@@ -568,6 +705,18 @@ function alarmAt(s, last) {
   const run = s.scenario;
   const idle = last + IDLE_MS;
   return run && !run.done && !run.pausedAt && run.nextAt > 0 ? Math.min(idle, run.nextAt) : idle;
+}
+
+/**
+ * Plan the step that runs after `base`: waits for a tap, or is due `atSec` later (shortened by the live tempo).
+ * @param {import('../shared/scenario.js').ScenarioRun} run
+ * @param {import('../shared/scenario.js').ScenarioStep} next
+ * @param {number} base server ms the delay counts from
+ */
+function planNext(run, next, base) {
+  run.waiting = !!next.onTap;
+  run.baseAt = base;
+  run.nextAt = next.onTap ? 0 : Math.round(base + ((next.atSec ?? 0) * 1000) / (run.tempo ?? 1));
 }
 
 class BadPatch extends Error {}

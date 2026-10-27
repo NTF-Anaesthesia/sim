@@ -51,7 +51,7 @@ export const DEVICE_CHOICES = ['theme', 'p'];
  * @typedef {{ hr: number, spo2: number, etco2: number, rr: number, temp: number, nibp: Pressure, abp: Pressure, cvp: number, abp2: Pressure,
  *   fio2: number, eto2: number, fiag: number, etag: number, fin2o: number, etn2o: number, bis: number }} Numerics
  * @typedef {Record<string, boolean>} SensorOff
- * @typedef {{ startedAt: number, durationMs: number, from: Numerics }} Glide
+ * @typedef {{ startedAt: number, durationMs: number, from: Numerics, glideMsBy?: Record<string, number> }} Glide
  * @typedef {{ sys: number, dia: number, at: number, mode: 'manual' | 'cycle', cycleSec: number }} NibpReading
  * @typedef {{ count: number, ratio: number, at: number, mode: 'manual' | 'cycle', cycleSec: number }} TofReading
  * @typedef {Numerics & {
