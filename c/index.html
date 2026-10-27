@@ -12,14 +12,26 @@
 <script>addEventListener('beforeinstallprompt', e => e.preventDefault());</script>
 </head>
 <body>
+<div id="share" class="share-host"></div>
 <main id="app"><p class="hint">Loading…</p></main>
 <script type="module">
 import { mountController } from '../src/controller/index.js';
 import { isCode, normalizeCode } from '../src/shared/schema.js';
 const code = normalizeCode(location.pathname.split('/')[2] ?? '');
 const app = document.getElementById('app');
-if (isCode(code)) mountController(app, { code });
-else app.innerHTML = '<h1>Controller</h1><form id="join"><label class="label" for="c">Room code, or scan the QR on the monitor with the camera</label><input id="c" maxlength="6" autocapitalize="characters" autocomplete="off" aria-label="Room code"><button type="submit">Join</button></form><p><a href="../">Start a new room</a></p>';
+const start = () => {
+  if (isCode(code)) mountController(app, { code });
+  else app.innerHTML = '<h1>Controller</h1><form id="join"><label class="label" for="c">Room code, or scan the QR on the monitor with the camera</label><input id="c" maxlength="6" autocapitalize="characters" autocomplete="off" aria-label="Room code"><button type="submit">Join</button></form><p><a href="../">Start a new room</a></p>';
+};
+// Opened from a share link: show the Import card first, so the controller loads its library after the import.
+const { mountShareImport } = await import('../src/share/import.js');
+const shared = await mountShareImport(document.getElementById('share'), {
+  hash: location.hash,
+  storage: (() => { try { return localStorage; } catch { return null; } })(),
+  onDone: (imported) => { if (imported) history.replaceState(null, '', location.pathname); start(); },
+  waitForRoom: isCode(code),
+});
+if (!shared || !isCode(code)) start();
 document.getElementById('join')?.addEventListener('submit', (e) => { e.preventDefault(); const v = normalizeCode(document.getElementById('c').value); if (isCode(v)) location.href = v; else document.getElementById('c').setAttribute('aria-invalid', 'true'); });
 </script>
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('../sw.js').catch(() => {});</script>

@@ -21,6 +21,8 @@ monitor conventions, colours on black); no brand names or logos.
 11. Settled details
 12. Scenarios and drug buttons (V2 S3)
 13. Defib screen (V2 S7)
+14. Pacing and rhythms (V2 S8)
+15. Share link, library offer, debrief export (sim-train S3)
 
 ## 1. Pieces and files
 
@@ -227,6 +229,8 @@ Client to server:
 
 | t | fields | effect |
 |---|---|---|
+| `libraryOffer` | `library` | offer this phone's library to the room (section 15) |
+| `libraryGet` | none | reply `library` with the offered library |
 | `hello` | `schema` | optional; server always sends `state` on connect anyway |
 | `set` | `p?`, `patch`, `glideMs?`, `glideMsBy?`, `baseRev?` | merge `patch` (deep, only known paths: `patient.*` = every patient field above except `id`, `glide`, `nibpRead`; `modules`, `alarms.limits`, `alarms.enabled`, `nibp.mode`, `nibp.cycleSec` (these two go to `nibpRead`), `theme`, `themeJson`) into patient `p` (default: the first) or the room. If `glideMs` is a number it replaces the glide time for the changed numerics; otherwise the patient's `glideMs`. Starts that patient's glide (section 6). `rev` +1. |
 | `nibp` | `p?`, `after?` | "measure now" for patient `p`: server sets `nibpRead.sys/dia` to the current glided `nibp` values and `nibpRead.at` = now. `rev` +1. |
@@ -578,3 +582,13 @@ the existing per-device settings. The phone sets `postShock` in More and a scree
 **Rhythms**: `junctional` (retrograde inverted P after the QRS, `Beat.inv`), `bigeminy` and `trigeminy` (every 2nd or 3rd beat an early wide ectopic at 0.62 of the interval, with a compensatory pause so the average rate stays at `hr`).
 
 **Second ECG lead**: module `ecg2` (off by default, switched on from the phone) with wave `ecg2`, the same beats drawn with a V1-style shape. Its label is theme text `labels.wave.ecg2` (default "V1") and its leads-off text `labels.off.ecg2`, so each screen can show a different lead name through its theme.
+
+## 15. Share link, library offer, debrief export (sim-train S3)
+
+**Share link.** `/c/#s=<payload>`: payload = base64url of one version byte (1) followed by raw DEFLATE (`CompressionStream('deflate-raw')`) of the scenario JSON (`src/share/link.js`). The decoder refuses a version above 1 ("made by a newer version of the app"), damaged data, output over 4x `MAX_SCENARIO_CHARS` (decompression bomb) and anything `validateScenario` refuses. The hash never reaches the server. Opening a link shows an Import card (`src/share/import.js`, name box, `LibraryStore.addScenario`); a refused link changes nothing. With a room code in the URL the controller waits for Import or Skip so its library cache is current. QR: vendored `qrcode-generator`, level L (`src/share/qr.js`); above `SAFE_QR_CHARS` (850 characters) only the link is shown with a hint to use the room offer. Measured (realistic varied notes): 3 steps 364 characters, 10 steps 582, 3 steps with notes 606, 10 steps with notes about 1130 (link only).
+
+**Library offer.** Messages: `libraryOffer {library}` (phone to room; validated whole by `validateLibraryFile`, stored under the Room storage key `libraryOffer`, canonical JSON, replaces the previous offer, removed with the room by `deleteAll()` at expiry), `libraryGet` (reply `library {library}` to the asker, or `bad_patch` "no library is offered in this room"). `state.offer = {scenarios, drugs, at, by}` carries counts only and is stripped for monitors (`forMonitor`). Event kind `library` in the log. Limits: the offer message may be up to `MAX_FILE_CHARS` (32 KB) + 2 KB; every other message stays at 16 KB (`too_big`).
+
+**Notes in the log.** When a running scenario reaches a step with a `note`, the room writes a log-only row `kind: 'note'` (`step N/M: <note>`); it is not in `state.events`. The debrief JSON and file therefore contain facilitator notes. `history` replies drop `note` rows for monitor sockets, and trend marks ignore `note` and `library`.
+
+**Debrief export.** From Trends: `debriefPng` (`src/trends/export.js`; 1080 px wide, chart from an SVG data URL, then up to 90 event rows incl. scenario steps, drugs and notes; `screen`, `test` and `silence` rows left out) and `openPrintView` (in-page overlay with `@media print` CSS; Print / Save as PDF through the browser).

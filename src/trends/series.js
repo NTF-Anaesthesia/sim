@@ -86,4 +86,4 @@ export function sampleSeries(o) {
  * @param {number} to
  */
 export const markersFor = (events, p, from, to) =>
-  events.filter((e) => e.t >= from && e.t <= to && (!e.p || e.p === p) && !['screen', 'test', 'silence'].includes(e.kind));
+  events.filter((e) => e.t >= from && e.t <= to && (!e.p || e.p === p) && !['screen', 'test', 'silence', 'note', 'library'].includes(e.kind));

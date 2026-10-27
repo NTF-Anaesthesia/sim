@@ -46,7 +46,7 @@ export class RoomClient {
   }
 
   /**
-   * @param {'state' | 'status' | 'error' | 'presence' | 'screen' | 'history'} name
+   * @param {'state' | 'status' | 'error' | 'presence' | 'screen' | 'history' | 'library'} name
    * @param {(arg: any) => void} fn
    * @returns {() => void} unsubscribe
    */
@@ -127,6 +127,8 @@ export class RoomClient {
       }
     } else if (msg.t === 'history') {
       this.emit('history', msg);
+    } else if (msg.t === 'library') {
+      this.emit('library', msg);
     } else if (msg.t === 'error') {
       this.emit('error', msg);
     } else if (msg.t === 'screenAdded' || msg.t === 'identify' || msg.t === 'clearDevice') {

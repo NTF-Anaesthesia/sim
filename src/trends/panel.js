@@ -3,6 +3,7 @@
 // when opened or refreshed and draws the graph or the table; nothing is kept between openings.
 import { clock, esc, trendSvg, trendTable } from './chart.js';
 import { debriefData, debriefHtml, debriefJson } from './debrief.js';
+import { debriefPng, openPrintView } from './export.js';
 import { TREND_RANGES, groupsFor, sampleSeries } from './series.js';
 
 const RANGE_LABELS = /** @type {Record<string, string>} */ ({ '30m': '30 min', '1h': '1 h', '4h': '4 h' });
@@ -10,7 +11,7 @@ const WARN_MS = 2 * 60 * 60 * 1000;
 
 /**
  * @param {HTMLElement} el container to draw into
- * @param {{ client: import('../room/client.js').RoomClient, code: string, patientId: () => string | undefined, save?: (name: string, type: string, text: string) => void }} opts
+ * @param {{ client: import('../room/client.js').RoomClient, code: string, patientId: () => string | undefined, save?: (name: string, type: string, text: string | Blob) => void }} opts
  */
 export function mountTrends(el, opts) {
   const ui = { range: '1h', view: 'graph', data: /** @type {any} */ (null), note: '' };
@@ -54,6 +55,8 @@ export function mountTrends(el, opts) {
       <div class="row"><button type="button" data-act="trend-refresh" data-testid="trend-refresh">Refresh</button>
         <button type="button" data-act="trend-debrief" data-testid="trend-debrief">Debrief file</button>
         <button type="button" data-act="trend-json" data-testid="trend-json">JSON</button></div>
+      <div class="row"><button type="button" data-act="trend-png" data-testid="trend-png">Save picture (PNG)</button>
+        <button type="button" data-act="trend-print" data-testid="trend-print">Print view</button></div>
       <p class="hint" data-testid="trend-note">${esc(ui.note)}</p></div>`;
   }
 
@@ -62,19 +65,23 @@ export function mountTrends(el, opts) {
     render();
   }
 
-  /** @param {'html' | 'json'} kind */
+  /** @param {'html' | 'json' | 'png' | 'print'} kind */
   async function exportFile(kind) {
     const h = await opts.client.history({ all: true });
     const s = opts.client.state;
     if (!h || !s) { ui.note = 'Could not reach the room.'; render(); return; }
     const data = debriefData({ code: opts.code, state: s, history: h, now: h.now });
     const stamp = new Date(h.now).toISOString().slice(0, 16).replace(/[-:T]/g, '');
-    const [name, type, text] = kind === 'html'
-      ? [`debrief-${opts.code}-${stamp}.html`, 'text/html', debriefHtml(data)]
-      : [`debrief-${opts.code}-${stamp}.json`, 'application/json', debriefJson(data)];
-    (opts.save ?? browserSave)(name, type, text);
-    ui.note = `Saved ${name}`;
     ui.data = h;
+    if (kind === 'print') { openPrintView(data); ui.note = 'Print view open: tap Print / Save as PDF.'; render(); return; }
+    /** @type {[string, string, string | Blob]} */
+    let file;
+    if (kind === 'png') {
+      try { file = [`debrief-${opts.code}-${stamp}.png`, 'image/png', await debriefPng(data, bed()?.id)]; } catch (e) { ui.note = `Could not make the picture: ${e instanceof Error ? e.message : 'error'}`; render(); return; }
+    } else if (kind === 'html') file = [`debrief-${opts.code}-${stamp}.html`, 'text/html', debriefHtml(data)];
+    else file = [`debrief-${opts.code}-${stamp}.json`, 'application/json', debriefJson(data)];
+    (opts.save ?? browserSave)(...file);
+    ui.note = `Saved ${file[0]}`;
     render();
   }
 
@@ -86,15 +93,17 @@ export function mountTrends(el, opts) {
     else if (t.dataset.act === 'trend-refresh') refresh();
     else if (t.dataset.act === 'trend-debrief') exportFile('html');
     else if (t.dataset.act === 'trend-json') exportFile('json');
+    else if (t.dataset.act === 'trend-png') exportFile('png');
+    else if (t.dataset.act === 'trend-print') exportFile('print');
   });
 
   render();
   return { refresh, render, get data() { return ui.data; } };
 }
 
-/** @param {string} name @param {string} type @param {string} text */
-function browserSave(name, type, text) {
-  const url = URL.createObjectURL(new Blob([text], { type }));
+/** @param {string} name @param {string} type @param {string | Blob} data */
+function browserSave(name, type, data) {
+  const url = URL.createObjectURL(new Blob([data], { type }));
   const a = document.createElement('a');
   a.href = url;
   a.download = name;

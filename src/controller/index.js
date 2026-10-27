@@ -8,9 +8,11 @@ import { createThemePanel } from '../theme/panel.js';
 import { pickTheme } from '../theme/store.js';
 import { loadTheme } from '../theme/validate.js';
 import { mountTrends } from '../trends/panel.js';
-import { drugPatch, MAX_NOTE, MAX_OBJECTIVES, MAX_STEP_SEC } from '../shared/scenario.js';
+import { drugPatch, MAX_FILE_CHARS, MAX_NOTE, MAX_OBJECTIVES, MAX_STEP_SEC } from '../shared/scenario.js';
 import { makeActions } from './actions.js';
 import { LibraryStore } from './library.js';
+import { encodeScenario, linkFor, qrFits } from '../share/link.js';
+import { qrSvgLow } from '../share/qr.js';
 import { PresetStore, runPreset, presetFromPatient } from './presets.js';
 import { Recorder } from './recorder.js';
 import { Settings, browserStorage } from './settings.js';
@@ -38,7 +40,8 @@ const esc = (/** @type {unknown} */ s) => String(s).replace(/[&<>"]/g, (c) => ({
  */
 export function mountController(root, opts) {
   const loc = opts.location ?? window.location;
-  const client = new RoomClient({ url: roomUrl(loc, opts.code, 'controller', newClientId('controller')) });
+  const myId = newClientId('controller');
+  const client = new RoomClient({ url: roomUrl(loc, opts.code, 'controller', myId) });
   const kv = opts.storage === undefined ? browserStorage() : opts.storage;
   const settings = new Settings(kv);
   const presets = new PresetStore(kv);
@@ -54,6 +57,8 @@ export function mountController(root, opts) {
     qMode: /** @type {'after' | 'tap'} */ ('after'), qSec: 10, qNote: '', qName: '',
     /** recording a scenario (sim-train S2): every change sent for one bed becomes a step */
     rec: /** @type {Recorder | null} */ (null), recName: '',
+    /** share panel (sim-train S3): the link, its QR (null = too big) and a note; `taking` = waiting for the room's library */
+    share: /** @type {{ name: string, link: string, svg: string | null, note: string } | null} */ (null), taking: false,
     /** scenario being edited: `orig` = saved name it replaces (null = not saved yet), the rest is the draft */
     ed: /** @type {{ orig: string | null, name: string, objectives: string, steps: any[], note: string } | null} */ (null),
   };
@@ -336,19 +341,68 @@ export function mountController(root, opts) {
       ${card}
       ${queuePanel(run)}
       ${recordPanel(pt)}
+      ${sharePanel()}
       <p class="label">Starts on <b>${esc(pt.label)}</b>. The room runs it, so it keeps going with this phone closed.</p>
       <ul class="presets">${library.allScenarios().map((sc, i) => `<li><button type="button" class="preset" data-scn="${i}" data-testid="scn-start-${esc(sc.name)}">${esc(sc.name)} <small>${sc.steps.length} steps</small></button>
+        <button type="button" class="small" data-scn-share="${i}" data-testid="scn-share-${esc(sc.name)}" aria-label="Share ${esc(sc.name)}">Share</button>
         <button type="button" class="small" data-scn-edit="${i}" data-testid="scn-edit-${esc(sc.name)}" aria-label="${sc.builtin ? 'Copy and edit' : 'Edit'} ${esc(sc.name)}">${sc.builtin ? 'Copy' : 'Edit'}</button>
         ${sc.builtin ? '' : `<button type="button" class="small" data-scn-del="${esc(sc.name)}" aria-label="Delete ${esc(sc.name)}">✕</button>`}</li>`).join('')}</ul>
       ${drugsOn ? `<h2>Drug buttons</h2>
       <p class="label">Applies to <b>${esc(pt.label)}</b>. Teaching effects only, not doses.</p>
       <ul class="presets">${library.allDrugs().map((d, i) => `<li><button type="button" class="preset" data-drug="${i}" data-testid="drug-${esc(d.name)}">${esc(d.name)}<br><small>${esc(d.note ?? '')}</small></button>
         ${d.builtin ? '' : `<button type="button" class="small" data-drug-del="${esc(d.name)}" aria-label="Delete ${esc(d.name)}">✕</button>`}</li>`).join('')}</ul>` : ''}
+      <h2>Library in this room</h2>
+      ${offerPanel(s)}
+      <div class="row"><button type="button" data-act="lib-offer" data-testid="lib-offer">Offer my library to this room</button></div>
       <h2>Library file</h2>
       <textarea id="lib" rows="4" aria-label="Library JSON" spellcheck="false">${esc(ui.lib)}</textarea>
       <div class="row"><button type="button" data-act="lib-export" data-testid="lib-export">Export</button><button type="button" data-act="lib-import" data-testid="lib-import">Import</button>
         <label class="btn file">File<input type="file" id="libfile" accept="application/json,.json" hidden></label></div>
       <p class="hint" id="libnote" data-testid="lib-note">${esc(ui.libNote)}</p>`;
+  }
+
+  /** The share card: QR (when the link is small enough to scan) and the link to copy. */
+  function sharePanel() {
+    const sh = ui.share;
+    if (!sh) return '';
+    const qr = sh.svg
+      ? `<div class="qr" data-testid="share-qr" role="img" aria-label="QR code of the share link">${sh.svg}</div>`
+      : `<p class="hint" data-testid="share-noqr">This one is too big for a QR code that scans reliably (${sh.link.length} characters). Send the link, or use "Offer my library to this room".</p>`;
+    return `<div class="share" data-testid="share-card"><h2>Share "${esc(sh.name)}"</h2>${qr}
+      <input class="linkbox" id="share-link" readonly value="${esc(sh.link)}" aria-label="Share link" data-testid="share-link">
+      <div class="row"><button type="button" data-act="share-copy" data-testid="share-copy">Copy link</button>
+        <button type="button" data-act="share-close" data-testid="share-close">Close</button></div>
+      <p class="hint" data-testid="share-note">${esc(sh.note || 'The link holds the whole scenario; nothing is stored on a server.')}</p></div>`;
+  }
+
+  /** What the room has been offered: this phone's own offer, or another's with an Import button. @param {NonNullable<ReturnType<typeof state>>} s */
+  function offerPanel(s) {
+    const o = s.offer;
+    if (!o) return '<p class="hint" data-testid="offer-none">No library has been offered in this room.</p>';
+    const what = `${o.scenarios} scenario${o.scenarios === 1 ? '' : 's'}${o.drugs ? `, ${o.drugs} drug${o.drugs === 1 ? '' : 's'}` : ''}`;
+    return o.by === myId
+      ? `<p class="offer" data-testid="offer-own">You offered ${what} to this room.</p>`
+      : `<div class="offer" data-testid="offer"><p>Library offered: ${what}</p><div class="row"><button type="button" data-act="lib-take" data-testid="lib-take">Import</button></div></div>`;
+  }
+
+  /** @param {number} i index in the scenario list */
+  async function openShare(i) {
+    const sc = library.allScenarios()[i];
+    if (!sc) return;
+    const e = await encodeScenario(sc);
+    if (!e.ok) { ui.share = null; ui.libNote = `Cannot share: ${e.msg}`; renderView(); return; }
+    const link = linkFor(`${loc.protocol}//${loc.host}`, e.payload);
+    ui.share = { name: sc.name, link, svg: qrFits(link) ? qrSvgLow(link) : null, note: '' };
+    renderView();
+  }
+
+  /** Put this phone's saved scenarios and drugs in the room for the other phones to import. */
+  function offerLibrary() {
+    if (!library.scenarios.length && !library.drugs.length) { ui.libNote = 'Nothing saved on this phone to offer: record or import a scenario first.'; renderView(); return; }
+    const file = library.exportJson();
+    if (file.length > MAX_FILE_CHARS) { ui.libNote = `Your saved library is over ${MAX_FILE_CHARS / 1024} KB; delete some scenarios first.`; renderView(); return; }
+    ui.libNote = client.send({ t: 'libraryOffer', library: JSON.parse(file) }) ? 'Offered to this room.' : 'Not connected: nothing was offered.';
+    renderView();
   }
 
   /** @param {NonNullable<ReturnType<typeof patient>>} pt */
@@ -833,6 +887,7 @@ export function mountController(root, opts) {
       }
       return;
     }
+    if (d.scnShare !== undefined) { openShare(Number(d.scnShare)); return; }
     if (d.scnEdit !== undefined) { const sc = library.allScenarios()[Number(d.scnEdit)]; if (sc) openEditor(sc); return; }
     if (d.scnDel) { library.removeScenario(d.scnDel); renderView(); return; }
     if (d.drugDel) { library.removeDrug(d.drugDel); renderView(); return; }
@@ -883,6 +938,10 @@ export function mountController(root, opts) {
       case 'scn-pause': actions.scenarioControl(s.scenario?.pausedAt ? 'scenarioResume' : 'scenarioPause'); break;
       case 'scn-next': actions.scenarioControl('scenarioNext'); break;
       case 'scn-stop': actions.scenarioControl('scenarioStop'); break;
+      case 'lib-offer': offerLibrary(); break;
+      case 'lib-take': ui.taking = true; if (!client.send({ t: 'libraryGet' })) { ui.taking = false; ui.libNote = 'Not connected.'; renderView(); } break;
+      case 'share-close': ui.share = null; renderView(); break;
+      case 'share-copy': copyLink(); break;
       case 'lib-export': ui.lib = library.exportJson(); ui.libNote = 'Copy this text, or paste a library file here and tap Import.'; renderView(); break;
       case 'lib-import': importLibrary(/** @type {HTMLTextAreaElement} */ ($('lib')).value); break;
       case 'save-preset': {
@@ -914,6 +973,14 @@ export function mountController(root, opts) {
     else if (what === 'forget') { if (window.confirm(`Forget ${sc.name}? Its settings go; that monitor asks for a name again.`)) client.send({ t: 'forgetScreen', s: id }); }
     else if (what === 'clear-theme' || what === 'clear-p') client.send({ t: 'clearDevice', s: id, what: what.slice(6) });
     else if (what === 'theme-import') openScreenPanel(id);
+  }
+
+  function copyLink() {
+    if (!ui.share) return;
+    const link = ui.share.link;
+    const done = (/** @type {string} */ note) => { if (ui.share) { ui.share.note = note; renderView(); } };
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(link).then(() => done('Link copied.'), () => done('Could not copy: select the link and copy it.'));
+    else { const box = /** @type {HTMLInputElement | null} */ (document.getElementById('share-link')); box?.select(); done('Select the link and copy it.'); }
   }
 
   /** @param {string} text */
@@ -1005,11 +1072,17 @@ export function mountController(root, opts) {
   root.addEventListener('pointercancel', release);
 
   // ---- connection -------------------------------------------------------------------------------------------------
+  client.on('library', (m) => {
+    if (!ui.taking) return;
+    ui.taking = false;
+    importLibrary(JSON.stringify(m.library));
+  });
   client.on('status', renderStatus);
   client.on('presence', () => { renderStatus(); if (ui.tab === 'screens' && !ui.dragging) render(); });
   client.on('state', () => { render(); if (themePanel.isOpen) themePanel.refresh(); if (screenPanel?.isOpen) screenPanel.refresh(); });
   client.on('error', (e) => {
     $('status').title = e?.msg ?? '';
+    if (ui.taking && e?.code === 'bad_patch') { ui.taking = false; ui.libNote = `Refused: ${e.msg}`; renderView(); }
     if (e?.code === 'schema') $('view').innerHTML = '<p class="hint">Update needed: reload this page.</p>';
   });
   const progressTimer = setInterval(() => { renderProgress(); renderCountdown(); }, 250);

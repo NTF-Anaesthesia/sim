@@ -101,3 +101,12 @@
 .ctl .ed-row { flex-wrap: wrap; align-items: center; }
 .ctl .ed-row label { display: inline-flex; align-items: center; gap: 4px; }
 .ctl .ed-note { margin-top: 6px; }
+
+/* Share link, QR and the import card (sim-train S3) */
+.share, .share-host:not(:empty) { border: 1px solid var(--line, #8886); border-radius: 8px; padding: 8px 12px; margin: 8px 12px; }
+.share-host:empty { display: none; }
+.share .qr { max-width: 280px; margin: 8px auto; background: #fff; padding: 6px; border-radius: 4px; }
+.share .qr svg { display: block; width: 100%; height: auto; }
+.share input { min-width: 0; flex: 1; }
+.share .linkbox { width: 100%; font-size: .8rem; }
+.offer { border: 1px solid #d97706; border-radius: 8px; padding: 8px; margin: 8px 0; }
