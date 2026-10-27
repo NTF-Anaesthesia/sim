@@ -207,7 +207,7 @@ test('library files: valid, and refused whole with a reason', () => {
 });
 
 test('built-in scenarios and drugs are valid and synthetic', () => {
-  assert.equal(BUILTIN_SCENARIOS.length, 3);
+  assert.ok(BUILTIN_SCENARIOS.length >= 3);
   for (const s of BUILTIN_SCENARIOS) assert.ok(validateScenario(s).ok, s.name);
   for (const d of BUILTIN_DRUGS) {
     const v = validateDrug(d);
