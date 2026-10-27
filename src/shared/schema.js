@@ -70,7 +70,8 @@ export const DEVICE_CHOICES = ['theme', 'p'];
  * @typedef {{
  *   schema: number, rev: number, patients: Patient[], modules: string[],
  *   alarms: Alarms, events: RoomEvent[], theme: string, themeJson?: object, test?: unknown,
- *   screens?: Record<string, Screen>, scenario?: import('./scenario.js').ScenarioRun
+ *   screens?: Record<string, Screen>, scenario?: import('./scenario.js').ScenarioRun,
+ *   offer?: { scenarios: number, drugs: number, at: number, by: string }
  * }} RoomState
  */
 

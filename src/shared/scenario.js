@@ -134,17 +134,28 @@ export function validateScenario(raw) {
 
 /**
  * What a monitor may see of a room message: the same, without teaching text (`objectives`, `note`, and the notes inside a
- * queue's steps). Other messages come back as they are. The room applies it to every socket that joined as a monitor.
- * @template {{ t?: string, state?: any }} M
+ * queue's steps) without the library offer (a phone matter) and without the `note` rows of a history reply. Other messages come back as they are. The room applies it to every socket that joined as a monitor.
+ * @template {{ t?: string, state?: any, events?: any[] }} M
  * @param {M} msg
  * @returns {M}
  */
 export function forMonitor(msg) {
-  const run = msg?.t === 'state' ? msg.state?.scenario : null;
-  if (!run || (run.objectives === undefined && run.note === undefined && !run.q)) return msg;
-  const { objectives: _o, note: _n, ...rest } = run;
-  if (rest.q) rest.q = rest.q.map((/** @type {any} */ { note: _s, ...step }) => step);
-  return { ...msg, state: { ...msg.state, scenario: rest } };
+  if (msg?.t === 'library') return { t: 'error', code: 'bad_patch', msg: 'monitors cannot read the offered library' };
+  if (msg?.t === 'history' && Array.isArray(/** @type {any} */ (msg).events)) {
+    const m = /** @type {any} */ (msg);
+    return m.events.some((/** @type {any} */ e) => e.kind === 'note') ? { ...m, events: m.events.filter((/** @type {any} */ e) => e.kind !== 'note') } : msg;
+  }
+  const st = msg?.t === 'state' ? msg.state : null;
+  const run = st?.scenario;
+  const hasText = run && (run.objectives !== undefined || run.note !== undefined || run.q);
+  if (!hasText && st?.offer === undefined) return msg;
+  const { offer: _offer, ...rest } = st;
+  if (hasText) {
+    const { objectives: _o, note: _n, ...r } = run;
+    if (r.q) r.q = r.q.map((/** @type {any} */ { note: _s, ...step }) => step);
+    rest.scenario = r;
+  }
+  return { ...msg, state: rest };
 }
 
 /**

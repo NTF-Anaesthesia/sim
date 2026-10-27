@@ -7,12 +7,16 @@ import {
 } from '../shared/schema.js';
 import { displayed, restartGlide, startGlide, remainingMs, GLIDE_FIELDS } from '../engine/glide.js';
 import { MAX_LOG_ROWS, makeLog } from './log.js';
-import { MAX_STEPS, drugPatch, validateDrug, validateGlideMsBy, validateScenario, validateStep } from '../shared/scenario.js';
+import {
+  LIBRARY_KIND, LIBRARY_VERSION, MAX_FILE_CHARS, MAX_STEPS, drugPatch, validateDrug, validateGlideMsBy, validateLibraryFile, validateScenario, validateStep,
+} from '../shared/scenario.js';
 
 /** @typedef {import('../shared/schema.js').RoomState} RoomState */
 
 export const IDLE_MS = 24 * 60 * 60 * 1000;
 export const MAX_MESSAGE_CHARS = 16 * 1024;
+/** Only `libraryOffer` may be longer: a library file is up to 32 KB (DESIGN.md section 12). */
+export const MAX_OFFER_CHARS = MAX_FILE_CHARS + 2048;
 export const MAX_PER_SECOND = 30;
 export const SILENCE_MS = 120000;
 export const MAX_EVENTS = 20;
@@ -45,6 +49,8 @@ export class RoomHub {
     this.log = makeLog(storage);
     /** @type {RoomState | null} */
     this.cache = null;
+    /** @type {import('./log.js').LogEvent[]} teaching notes reached by the change being applied; logged by `record` (phones only) */
+    this.reached = [];
     /** @type {Map<string, number[]>} message times per client, for the rate limit */
     this.recent = new Map();
   }
@@ -70,12 +76,13 @@ export class RoomHub {
    */
   async onMessage(clientId, text) {
     const now = this.clock();
-    if (typeof text !== 'string' || text.length > MAX_MESSAGE_CHARS) return { reply: err('too_big', 'message too large') };
+    if (typeof text !== 'string' || text.length > MAX_OFFER_CHARS) return { reply: err('too_big', 'message too large') };
     if (!this.allow(clientId, now)) return { reply: err('rate', 'too many messages') };
     /** @type {any} */
     let msg;
-    try { msg = JSON.parse(text); } catch { return { reply: err('bad_json', 'not JSON') }; }
+    try { msg = JSON.parse(text); } catch { return { reply: err(text.length > MAX_MESSAGE_CHARS ? 'too_big' : 'bad_json', text.length > MAX_MESSAGE_CHARS ? 'message too large' : 'not JSON') }; }
     if (typeof msg !== 'object' || msg === null || typeof msg.t !== 'string') return { reply: err('bad_json', 'missing t') };
+    if (text.length > MAX_MESSAGE_CHARS && msg.t !== 'libraryOffer') return { reply: err('too_big', 'message too large') };
 
     switch (msg.t) {
       case 'ping': return { reply: { t: 'pong', n: msg.n ?? null, now } };
@@ -177,6 +184,23 @@ export class RoomHub {
         if (!v.ok) return { reply: err('bad_patch', v.msg) };
         return this.apply(clientId, now, msg, (s) => this.doDrug(s, v.drug, msg.p, now));
       }
+      case 'libraryOffer': {
+        // one library per room, kept in Room storage (not in the broadcast state); the next offer replaces it
+        const v = validateLibraryFile(JSON.stringify(msg.library ?? null));
+        if (!v.ok) return { reply: err('bad_patch', v.msg) };
+        const prev = await this.storage.get('libraryOffer');
+        await this.storage.put('libraryOffer', { sim: LIBRARY_KIND, version: LIBRARY_VERSION, scenarios: v.scenarios, drugs: v.drugs });
+        const out = await this.apply(clientId, now, msg, (s) => {
+          s.offer = { scenarios: v.scenarios.length, drugs: v.drugs.length, at: now, by: clientId };
+          return { kind: 'library', what: `offer ${v.scenarios.length} scenarios, ${v.drugs.length} drugs` };
+        });
+        if (out.reply) await this.storage.put('libraryOffer', prev ?? null);
+        return out;
+      }
+      case 'libraryGet': {
+        const lib = await this.storage.get('libraryOffer');
+        return lib ? { reply: { t: 'library', library: lib } } : { reply: err('bad_patch', 'no library is offered in this room') };
+      }
       case 'shock': return this.apply(clientId, now, msg, (s) => this.doShock(s, msg));
       case 'pace': return this.apply(clientId, now, msg, (s) => this.doPace(s, msg));
       case 'flush': return this.apply(clientId, now, msg, (s) => this.doFlush(s, msg));
@@ -201,7 +225,9 @@ export class RoomHub {
     const before = await this.state();
     const next = structuredClone(before);
     let info;
+    this.reached = [];
     try { info = change(next); } catch (e) {
+      this.reached = [];
       if (e instanceof BadPatch) return { reply: err('bad_patch', e.message) };
       throw e;
     }
@@ -227,6 +253,8 @@ export class RoomHub {
    */
   record(before, next, now, clientId, info) {
     this.log.addEvent({ t: now, by: clientId, kind: info.kind, ...(info.p ? { p: info.p } : {}), what: info.what });
+    for (const e of this.reached) this.log.addEvent(e);
+    this.reached = [];
     for (const pt of next.patients) {
       const old = before.patients.find((x) => x.id === pt.id);
       if (old && JSON.stringify(old.glide) === JSON.stringify(pt.glide) && JSON.stringify(numericsOf(old)) === JSON.stringify(numericsOf(pt))) continue;
@@ -536,6 +564,8 @@ export class RoomHub {
     this.doSet(s, msg, now);
     run.step++;
     if (step.note) run.note = step.note; else delete run.note; // teaching cue of the step that just ran (phone only)
+    // the log keeps the cue for the debrief as a `note` row; `state.events` does not, and monitors never get `note` rows (forMonitor)
+    if (step.note) this.reached.push({ t: now, by: 'room', kind: 'note', p: run.p, what: `step ${run.step}/${run.total}: ${step.note}` });
     const next = steps[run.step];
     if (!next) { run.done = true; run.nextAt = 0; run.waiting = false; return; }
     planNext(run, next, base);
