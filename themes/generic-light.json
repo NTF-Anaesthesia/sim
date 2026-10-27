@@ -421,6 +421,19 @@
       "bis": "BIS SENSOR OFF"
     }
   },
+  "keys": {
+    "show": false,
+    "position": "bottom",
+    "size": 1.1,
+    "radius": 14,
+    "color": "#222222",
+    "background": "#e4e0d3",
+    "border": "#b8b19c",
+    "nibp": true,
+    "cycle": true,
+    "silence": true,
+    "tof": true
+  },
   "alarmStyle": {
     "barPosition": "top-center",
     "flashHz": 1.5,

@@ -66,6 +66,17 @@ try {
   check((await ink('abp')) > 100, 'arterial wave has been drawn');
   await mon.screenshot({ path: `${SHOTS}/monitor-abp-1280.png` });
 
+  // monitor keys are off until this device turns them on; the cycle key steps the NIBP interval
+  check(await mon.getByTestId('mon-keys').isHidden(), 'monitor keys hidden by default');
+  await mon.getByTestId('keys-toggle').click();
+  await mon.getByTestId('key-cycle').waitFor({ state: 'visible', timeout: 3000 });
+  check(/Manual/.test((await mon.getByTestId('key-cycle').textContent()) ?? ''), 'cycle key shows Manual');
+  await mon.getByTestId('key-cycle').click();
+  await mon.getByTestId('key-cycle').filter({ hasText: '1 min' }).waitFor({ timeout: 3000 });
+  check(true, 'cycle key set a 1 min NIBP cycle');
+  await mon.getByTestId('key-nibp').click();
+  await mon.screenshot({ path: `${SHOTS}/monitor-keys-1280.png` });
+
   await mon.setViewportSize({ width: 1024, height: 768 });
   await mon.waitForTimeout(800);
   await mon.screenshot({ path: `${SHOTS}/monitor-abp-1024.png` });

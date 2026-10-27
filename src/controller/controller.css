@@ -1,8 +1,12 @@
 /* Phone controller: one-handed layout, 44 px targets, tabs and Apply at the bottom where the thumb is. */
-.ctl { overflow-x: hidden; --ecg: #00e000; --spo2: #00d8ff; --nibp: #ffffff; --abp: #ff4040; --abp2: #ff8a40; --cvp: #4a8cff; --bis: #c080ff; --etco2: #ffd000; --temp: #c0c0c0; padding: 8px 12px 190px; }
+.ctl { overflow-x: hidden; --ecg: #00e000; --spo2: #00d8ff; --nibp: #ffffff; --abp: #ff4040; --abp2: #ff8a40; --cvp: #4a8cff; --bis: #c080ff; --etco2: #ffd000; --temp: #c0c0c0; padding: 6px 10px 190px; }
 .ctl .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .ctl .code b { font-size: 1.1rem; letter-spacing: .15em; color: var(--accent); }
-.ctl .chip { font-size: .9rem; padding: 4px 12px; }
+.ctl .top .chip { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ctl .top .code { flex: none; font-size: .85rem; }
+.ctl .top .code b { letter-spacing: .08em; }
+.ctl .top .mark { flex: none; padding: 4px 10px; }
+.ctl .chip { font-size: .8rem; padding: 4px 10px; white-space: nowrap; }
 .ctl .chip[data-status="open"] { color: var(--ok); }
 .ctl .beds { display: flex; gap: 6px; overflow-x: auto; margin: 8px 0; }
 .ctl .bed { flex: none; min-width: 44px; }
@@ -11,19 +15,26 @@
 .ctl .field { display: block; color: var(--dim); margin: 6px 0; }
 .ctl select { display: block; width: 100%; min-height: 48px; font: inherit; background: #151515; color: var(--fg); border: 1px solid #444; border-radius: 8px; padding: 6px 10px; margin-top: 4px; }
 .ctl .glide { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+/* Vitals glide: one swipeable row on a small phone */
+.ctl .glide.strip { flex-wrap: nowrap; overflow-x: auto; margin: 4px 0; padding-bottom: 2px; scrollbar-width: none; }
+.ctl .glide.strip > * { flex: none; }
+.ctl .glide.strip .pill { min-height: 40px; padding: 4px 12px; }
 .ctl .pill { min-height: 44px; border-radius: 999px; padding: 6px 14px; }
 .ctl [aria-pressed="true"].pill { background: var(--accent); color: #000; border-color: var(--accent); }
-.ctl .prm { border-top: 1px solid #222; padding: 8px 0; }
+.ctl .prm { border-top: 1px solid #222; padding: 4px 0 6px; }
 .ctl .prm[data-pending="true"] .prm-val { color: var(--warn); }
-.ctl .prm-head { display: flex; align-items: baseline; gap: 8px; }
-.ctl .prm-name { font-weight: 700; flex: 1; }
-.ctl .prm-val { font-size: 2.2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-.ctl .prm-unit { color: var(--dim); width: 3.2em; }
-.ctl .prm-ctl { display: flex; align-items: center; gap: 8px; }
-.ctl .prm-ctl button { width: 56px; min-height: 52px; font-size: 1.6rem; padding: 0; }
-.ctl .prm-ctl input[type=range] { flex: 1; min-height: 52px; padding: 0; margin: 0; width: auto; accent-color: var(--accent); touch-action: pan-y; }
-.ctl .prm-pct { display: flex; gap: 6px; margin-top: 4px; }
-.ctl .prm-pct button { flex: 1; padding: 4px 0; font-size: .85rem; }
+/* one compact row per vital: name, value (tap to type), unit, − + ; slider under it */
+.ctl .prm-head { display: flex; align-items: center; gap: 4px; }
+.ctl .prm-name { font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctl .prm-val { font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; background: transparent; border: 0; border-bottom: 1px dashed #555; border-radius: 0; padding: 0 2px; min-height: 48px; color: inherit; }
+.ctl .prm-edit { width: 4.6em; font-size: 1.5rem; font-weight: 700; min-height: 48px; text-align: center; background: #151515; color: var(--fg); border: 1px solid var(--accent); border-radius: 8px; }
+.ctl .prm-unit { color: var(--dim); width: 2.6em; font-size: .85rem; }
+.ctl .stp { width: 48px; min-height: 48px; font-size: 1.5rem; padding: 0; flex: none; }
+.ctl .link { font-size: .72rem; min-height: 32px; padding: 2px 8px; border-radius: 999px; flex: none; }
+.ctl .link[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.ctl .prm > input[type=range] { display: block; width: 100%; min-height: 40px; padding: 0; margin: 0; accent-color: var(--accent); touch-action: pan-y; }
+.ctl .prm-pct { display: flex; gap: 4px; }
+.ctl .prm-pct button { flex: 1; padding: 2px 0; min-height: 36px; font-size: .8rem; }
 .ctl .sw-row { display: flex; justify-content: space-between; align-items: center; min-height: 48px; border-top: 1px solid #222; }
 .ctl .switch { position: relative; width: 64px; min-height: 36px; height: 36px; border-radius: 18px; padding: 0; background: #333; }
 .ctl .switch i { position: absolute; top: 3px; left: 3px; width: 28px; height: 28px; border-radius: 50%; background: #aaa; transition: left .12s; }
@@ -42,8 +53,8 @@
 .ctl .preset { flex: 1; text-align: left; min-height: 52px; }
 .ctl textarea { width: 100%; font: 14px monospace; background: #151515; color: var(--fg); border: 1px solid #444; border-radius: 8px; }
 .ctl .dock { position: fixed; left: 0; right: 0; bottom: 0; background: #0a0a0a; border-top: 1px solid #333; padding-bottom: env(safe-area-inset-bottom); }
-.ctl .tabs { display: flex; }
-.ctl .tabs button { flex: 1 1 0; min-width: 0; padding: 0 2px; font-size: .72rem; border-radius: 0; border: 0; min-height: 52px; background: transparent; }
+.ctl .tabs { display: flex; overflow-x: auto; scrollbar-width: none; }
+.ctl .tabs button { flex: 1 0 auto; min-width: 52px; padding: 0 2px; font-size: .72rem; border-radius: 0; border: 0; min-height: 52px; background: transparent; }
 .ctl .tabs [aria-current="true"] { color: var(--accent); box-shadow: inset 0 3px var(--accent); }
 .ctl .applybar { display: flex; gap: 8px; padding: 8px 12px; }
 .ctl .apply { flex: 1; min-height: 56px; background: var(--accent); color: #000; font-weight: 700; font-size: 1.1rem; }
@@ -75,7 +86,7 @@
 .ctl .spd input[type=number] { width: 64px; }
 .ctl .custom { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .ctl .custom input { width: 72px; min-height: 44px; }
-.ctl .custom select { min-height: 44px; }
+.ctl .custom select { display: inline-block; width: auto; margin-top: 0; min-height: 44px; }
 .ctl .applybar { flex-wrap: wrap; }
 .ctl .qrow { flex-basis: 100%; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ctl .queue { min-height: 44px; flex: 1; }

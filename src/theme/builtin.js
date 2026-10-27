@@ -55,6 +55,7 @@ export const LIGHT_THEME = {
   audio: { alarm: { volume: 1 }, qrs: { volume: 0.5 }, spo2: { volume: 0.5 } },
   numerics: { showLimits: true, limitsPosition: 'below', decimals: { temp: 1 }, fontScale: 1 },
   nibp: { inflateMs: 4000, measureMs: 6000 },
+  keys: { show: false, position: 'bottom', size: 1.1, radius: 14, color: '#222222', background: '#e4e0d3', border: '#b8b19c', nibp: true, cycle: true, silence: true, tof: true },
   labels: {
     ecg: 'Pulse', spo2: 'Sat', etco2: 'CO2', rr: 'Resp', nibp: 'Cuff', temp: 'Temp', abp: 'Art', abp2: 'Art 2', cvp: 'CVP', o2: 'O2', gas: 'Agent', n2o: 'N2O', tof: 'TOF', bis: 'BIS',
     units: { hr: '/min', spo2: '%', etco2: 'mmHg', rr: '/min', temp: '°C', nibp: 'mmHg', abp: 'mmHg', abp2: 'mmHg', cvp: 'mmHg', o2: '%', gas: '%', n2o: '%', tof: '/4', bis: '' },

@@ -57,6 +57,24 @@ try {
   await phone.getByTestId('cancel').click();
   check((await phone.getByTestId('val-hr').textContent()) === '100', 'cancel drops pending changes');
 
+  // tap a value to type it; sys and dia move together by default
+  await phone.getByTestId('val-hr').click();
+  await phone.getByTestId('edit-hr').fill('75');
+  await phone.getByTestId('edit-hr').press('Enter');
+  check((await phone.getByTestId('val-hr').textContent()) === '75', 'typed HR value is pending');
+  const { sys: sys0, dia: dia0 } = mon.state.patients[0].nibp;
+  const want = String(Math.round((60 * dia0) / sys0));
+  await phone.getByTestId('val-nibpSys').click();
+  await phone.getByTestId('edit-nibpSys').fill('60');
+  await phone.getByTestId('edit-nibpSys').press('Enter');
+  check((await phone.getByTestId('val-nibpDia').textContent()) === want, `linked dia follows sys and keeps the ratio (${sys0}/${dia0} to 60/${want})`);
+  await phone.getByTestId('link-nibpSys').click();
+  await phone.locator('[data-id="nibpSys"] [data-step="1"]').click();
+  check((await phone.getByTestId('val-nibpDia').textContent()) === want, 'unlinked: dia stays put');
+  await phone.getByTestId('link-nibpSys').click();
+  await phone.getByTestId('cancel').click();
+  check(await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no horizontal scroll with the compact rows');
+
   // art line is off until switched on; then its sliders appear
   check((await phone.locator('[data-id="abpSys"]').count()) === 0, 'art line off by default');
   await phone.getByTestId('sw-abp-module').click();

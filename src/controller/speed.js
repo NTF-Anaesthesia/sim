@@ -7,7 +7,7 @@ import { GLIDE_FIELDS } from '../engine/glide.js';
 export const SPEEDS = [0, 5000, 10000, 30000, 60000, 120000, 180000, 300000];
 export const MAX_SPEED_MS = 600000;
 export const SPO2_MIN_MS = 30000;
-/** SpO2 starts at this many times the chosen speed (the finger probe lags, so it moves slower than the rest). */
+/** A falling SpO2 takes this many times the chosen speed (the finger probe lags, so it moves slower than the rest). */
 export const SPO2_FACTOR = 3;
 
 /** @param {number} ms */
@@ -29,16 +29,27 @@ export function customParts(ms) {
   return ms >= 60000 && ms % 60000 === 0 ? { n: ms / 60000, unit: 'min' } : { n: Math.round(ms / 100) / 10, unit: 's' };
 }
 
-/** SpO2's starting speed for a chosen base speed: 3x, at least 30 s, at most 10 min; Instant stays instant. @param {number} base */
-export const spo2Speed = (base) => (base > 0 ? Math.min(MAX_SPEED_MS, Math.max(SPO2_MIN_MS, base * SPO2_FACTOR)) : 0);
+/**
+ * SpO2's speed for a chosen base speed. Falling: 3x, at least 30 s, at most 10 min. Rising: the base speed, so a
+ * patient recovers about 3x faster than they desaturate (as after oxygen or a cleared airway). Instant stays instant.
+ * @param {number} base @param {boolean} [rising]
+ */
+export const spo2Speed = (base, rising = false) => (base > 0 ? rising ? base : Math.min(MAX_SPEED_MS, Math.max(SPO2_MIN_MS, base * SPO2_FACTOR)) : 0);
 
 /**
- * The glide time of one field in a batch: the chip the user set, else the base speed (SpO2: slower).
+ * The glide time of one field in a batch: the chip the user set, else the base speed (SpO2: slower when falling).
  * @param {string} field
  * @param {number} base chosen speed in ms
  * @param {Record<string, number>} [own] speeds set on single changes
+ * @param {boolean} [rising] the field's new target is above its current one
  */
-export const speedFor = (field, base, own = {}) => own[field] ?? (field === 'spo2' ? spo2Speed(base) : base);
+export const speedFor = (field, base, own = {}, rising = false) => own[field] ?? (field === 'spo2' ? spo2Speed(base, rising) : base);
+
+/**
+ * SpO2 in this patch goes up from the patient's current target.
+ * @param {{ patient?: Record<string, any> } | null} patch @param {{ spo2: number } | null} [pt]
+ */
+export const spo2Rising = (patch, pt) => typeof patch?.patient?.spo2 === 'number' && !!pt && patch.patient.spo2 > pt.spo2;
 
 /** @param {string} f */
 export const isGlideField = (f) => /** @type {readonly string[]} */ (GLIDE_FIELDS).includes(f);
@@ -55,13 +66,14 @@ export const changedFields = (patch) => GLIDE_FIELDS.filter((k) => patch?.patien
  * @param {{ patient?: Record<string, any> } | null} patch
  * @param {number} base
  * @param {Record<string, number>} [own]
+ * @param {{ spo2: number } | null} [pt] the patient now, so a rising SpO2 gets its faster speed
  * @returns {{ glideMs: number, glideMsBy?: Record<string, number> }}
  */
-export function timingFor(patch, base, own = {}) {
+export function timingFor(patch, base, own = {}, pt = null) {
   /** @type {Record<string, number>} */
   const by = {};
   for (const f of changedFields(patch)) {
-    const ms = speedFor(f, base, own);
+    const ms = speedFor(f, base, own, f === 'spo2' && spo2Rising(patch, pt));
     if (ms !== base) by[f] = ms;
   }
   return Object.keys(by).length ? { glideMs: base, glideMsBy: by } : { glideMs: base };

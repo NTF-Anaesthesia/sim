@@ -21,6 +21,15 @@ test('SpO2 starts at 3x the speed, at least 30 s, at most 10 min', () => {
   assert.equal(spo2Speed(300000), 600000);
 });
 
+test('a rising SpO2 recovers at the base speed, 3x faster than it falls', () => {
+  assert.equal(spo2Speed(10000, true), 10000);
+  assert.equal(spo2Speed(0, true), 0);
+  const pt = { spo2: 85 };
+  assert.deepEqual(timingFor({ patient: { hr: 80, spo2: 98 } }, 30000, {}, pt), { glideMs: 30000 }, 'rising: no slower SpO2');
+  assert.deepEqual(timingFor({ patient: { spo2: 70 } }, 30000, {}, pt), { glideMs: 30000, glideMsBy: { spo2: 90000 } }, 'falling: 3x');
+  assert.deepEqual(timingFor({ patient: { spo2: 98 } }, 30000, { spo2: 60000 }, pt), { glideMs: 30000, glideMsBy: { spo2: 60000 } }, 'an own speed wins');
+});
+
 test('timingFor lists only fields that differ from the base speed', () => {
   const patch = { patient: { hr: 100, spo2: 90 } };
   assert.deepEqual(timingFor(patch, 30000), { glideMs: 30000, glideMsBy: { spo2: 90000 } });
