@@ -2,14 +2,13 @@
 // Controller parameter table: ranges, steps, unit conversion and patch building. Pure, no DOM, no timers.
 // Messages and state always hold mmHg and C; units only change what the phone shows (DESIGN.md section 3).
 
+import { SPEEDS, speedLabel } from './speed.js';
+
 /** @typedef {import('../shared/schema.js').Patient} Patient */
 /** @typedef {{ co2: 'mmHg' | 'kPa', temp: 'C' | 'F' }} Units */
 
 export const DEFAULT_UNITS = /** @type {Units} */ ({ co2: 'mmHg', temp: 'C' });
-export const GLIDE_CHOICES = [
-  { ms: 0, label: 'Instant' }, { ms: 10000, label: '10 s' }, { ms: 30000, label: '30 s' },
-  { ms: 60000, label: '1 min' }, { ms: 120000, label: '2 min' },
-];
+export const GLIDE_CHOICES = SPEEDS.map((ms) => ({ ms, label: speedLabel(ms) }));
 /** NIBP interval choices in seconds (0 = manual only). */
 export const NIBP_INTERVALS = [0, 60, 120, 180, 300, 600, 900, 1800];
 /** TOF interval choices in seconds (0 = on demand only). */

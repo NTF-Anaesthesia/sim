@@ -2,13 +2,14 @@
 // Presets: `{ name, steps: [{ atSec, patch, glideMs }] }` (plan "V2-ready rules" seam 6). V1 presets have one step at 0;
 // timed scenarios are just longer presets. Built-ins are synthetic. Saved presets live on the phone (localStorage).
 import { validatePatch } from '../shared/schema.js';
+import { validateGlideMsBy } from '../shared/scenario.js';
 
 export const PRESET_KEY = 'sim.presets';
 export const MAX_PRESETS = 40;
 export const MAX_STEPS = 30;
 
 /**
- * @typedef {{ atSec: number, patch: any, glideMs: number }} PresetStep
+ * @typedef {{ atSec: number, patch: any, glideMs: number, glideMsBy?: Record<string, number> }} PresetStep
  * @typedef {{ name: string, steps: PresetStep[], builtin?: boolean }} Preset
  */
 
@@ -47,7 +48,14 @@ export function normalizePreset(raw) {
     if (typeof glideMs !== 'number' || !(glideMs >= 0 && glideMs <= 600000)) return null;
     const v = validatePatch(s.patch);
     if (!v.ok) return null;
-    steps.push({ atSec: s.atSec, patch: v.patch, glideMs });
+    /** @type {PresetStep} */
+    const step = { atSec: s.atSec, patch: v.patch, glideMs };
+    if (s.glideMsBy !== undefined) {
+      const b = validateGlideMsBy(s.glideMsBy);
+      if (!b.ok) return null;
+      if (Object.keys(b.by).length) step.glideMsBy = b.by;
+    }
+    steps.push(step);
   }
   steps.sort((a, b) => a.atSec - b.atSec);
   return { name, steps };
@@ -127,7 +135,7 @@ export class PresetStore {
 /**
  * Run a preset on one patient through the single action path. Steps at 0 s go out at once; later steps wait.
  * @param {Preset} preset
- * @param {(patch: object, glideMs?: number, p?: string) => unknown} act
+ * @param {(patch: object, glideMs?: number, p?: string, glideMsBy?: Record<string, number>) => unknown} act
  * @param {string | undefined} p patient id
  * @param {{ setTimer?: (fn: () => void, ms: number) => any, clearTimer?: (id: any) => void }} [timers]
  * @returns {{ cancel: () => void }}
@@ -138,8 +146,8 @@ export function runPreset(preset, act, p, timers = {}) {
   /** @type {any[]} */
   const ids = [];
   for (const step of preset.steps) {
-    if (step.atSec <= 0) act(step.patch, step.glideMs, p);
-    else ids.push(set(() => act(step.patch, step.glideMs, p), step.atSec * 1000));
+    if (step.atSec <= 0) act(step.patch, step.glideMs, p, step.glideMsBy);
+    else ids.push(set(() => act(step.patch, step.glideMs, p, step.glideMsBy), step.atSec * 1000));
   }
   return { cancel: () => ids.forEach((id) => clear(id)) };
 }

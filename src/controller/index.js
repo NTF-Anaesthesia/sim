@@ -13,7 +13,7 @@ import { LibraryStore } from './library.js';
 import { PresetStore, runPreset, presetFromPatient } from './presets.js';
 import { Settings, browserStorage } from './settings.js';
 import {
-  paramList, LIMIT_PARAMS, GLIDE_CHOICES, NIBP_INTERVALS, TOF_INTERVALS, hasModule, buildPatch, pendingCount, stepPercent, clampDisplay,
+  paramList, LIMIT_PARAMS, NIBP_INTERVALS, TOF_INTERVALS, hasModule, buildPatch, pendingCount, stepPercent, clampDisplay,
   glideProgress, formatValue, intervalLabel, moveDisplay,
 } from './params.js';
 
