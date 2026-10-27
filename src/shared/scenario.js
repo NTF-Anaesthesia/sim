@@ -9,6 +9,9 @@ export const MAX_STEP_SEC = 3600;
 export const MAX_FILE_CHARS = 32 * 1024;
 export const MAX_SCENARIO_CHARS = 12 * 1024;
 export const MAX_SCENARIOS = 20;
+/** Teaching text (sim-train S2): a step `note` and a scenario's `objectives`, shown on the phone only. */
+export const MAX_NOTE = 160;
+export const MAX_OBJECTIVES = 300;
 export const MAX_DRUGS = 20;
 export const LIBRARY_KIND = 'library';
 export const LIBRARY_VERSION = 1;
@@ -19,17 +22,19 @@ export const DRUG_NUMBERS = ['hr', 'spo2', 'etco2', 'rr', 'temp', 'cvp', 'bis'];
 export const DRUG_PRESSURES = ['nibp', 'abp', 'abp2'];
 
 /**
- * @typedef {{ atSec?: number, onTap?: boolean, patch: any, glideMs: number, glideMsBy?: Record<string, number> }} ScenarioStep
+ * @typedef {{ atSec?: number, onTap?: boolean, patch: any, glideMs: number, glideMsBy?: Record<string, number>, note?: string }} ScenarioStep
  *   `atSec` = seconds after the previous step ran (the first: after the start); `onTap` = waits for a tap instead
- * @typedef {{ name: string, steps: ScenarioStep[] }} Scenario
+ * @typedef {{ name: string, objectives?: string, steps: ScenarioStep[] }} Scenario
  * @typedef {{ mul?: number, add?: number }} Op
  * @typedef {{ name: string, note?: string, glideMs: number, effects: Record<string, any> }} Drug
  * @typedef {{
  *   id: string, name: string, p: string, step: number, total: number, startedAt: number, pausedAt: number,
- *   nextAt: number, waiting: boolean, done: boolean, queue?: boolean, tempo?: number, baseAt?: number, q?: ScenarioStep[]
+ *   nextAt: number, waiting: boolean, done: boolean, queue?: boolean, tempo?: number, baseAt?: number, q?: ScenarioStep[],
+ *   objectives?: string, note?: string
  * }} ScenarioRun  `step` = steps already run; `nextAt` = server ms of the next timed step (0 = none or waiting for a tap).
  *   Queue runs (`queue`) hold their steps in `q` (all of them, run or not) so every phone can show and edit them;
- *   `tempo` is the live speed (0.5, 2; absent = 1) and `baseAt` the time the next step's delay counts from
+ *   `tempo` is the live speed (0.5, 2; absent = 1) and `baseAt` the time the next step's delay counts from;
+ *   `objectives` and `note` (the teaching note of the step that ran last) are for the phone only: `forMonitor` strips them
  */
 
 /** @param {unknown} v */
@@ -38,6 +43,18 @@ const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 const num = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 /** @param {unknown} v */
 const name24 = (v) => (typeof v === 'string' && v.trim() && v.trim().length <= 24 ? v.trim() : null);
+
+/**
+ * Optional teaching text: absent or empty is fine, anything but a string of up to `max` characters is refused.
+ * @param {unknown} v @param {number} max @param {string} what
+ * @returns {{ ok: true, text?: string } | { ok: false, msg: string }}
+ */
+function teachingText(v, max, what) {
+  if (v === undefined || v === null) return { ok: true };
+  if (typeof v !== 'string' || v.length > max) return { ok: false, msg: `${what} must be text of up to ${max} characters` };
+  const text = v.trim();
+  return text ? { ok: true, text } : { ok: true };
+}
 
 /**
  * Per-field glide times (`glideMsBy`): known fields only, 0 to 10 min each.
@@ -72,8 +89,11 @@ export function validateStep(raw, at) {
   if (bad) return { ok: false, msg: `${at}: patch may only change patient and alarms, not ${bad.slice(0, 16)}` };
   const v = validatePatch(s.patch);
   if (!v.ok) return { ok: false, msg: `${at}: ${v.msg}` };
-  /** @type {{ glideMsBy?: Record<string, number> }} */
+  /** @type {{ glideMsBy?: Record<string, number>, note?: string }} */
   const extra = {};
+  const note = teachingText(s.note, MAX_NOTE, `${at}: note`);
+  if (!note.ok) return note;
+  if (note.text) extra.note = note.text;
   if (s.glideMsBy !== undefined) {
     const b = validateGlideMsBy(s.glideMsBy);
     if (!b.ok) return { ok: false, msg: `${at}: ${b.msg}` };
@@ -100,6 +120,8 @@ export function validateScenario(raw) {
   if (!Array.isArray(r.steps) || !r.steps.length) return { ok: false, msg: `"${name}" needs at least one step` };
   if (r.steps.length > MAX_STEPS) return { ok: false, msg: `"${name}" has more than ${MAX_STEPS} steps` };
   if (JSON.stringify(r).length > MAX_SCENARIO_CHARS) return { ok: false, msg: `"${name}" is over ${MAX_SCENARIO_CHARS / 1024} KB` };
+  const obj = teachingText(r.objectives, MAX_OBJECTIVES, `"${name}": objectives`);
+  if (!obj.ok) return obj;
   /** @type {ScenarioStep[]} */
   const steps = [];
   for (const [i, s] of r.steps.entries()) {
@@ -107,7 +129,22 @@ export function validateScenario(raw) {
     if (!v.ok) return v;
     steps.push(v.step);
   }
-  return { ok: true, scenario: { name, steps } };
+  return { ok: true, scenario: { name, ...(obj.text ? { objectives: obj.text } : {}), steps } };
+}
+
+/**
+ * What a monitor may see of a room message: the same, without teaching text (`objectives`, `note`, and the notes inside a
+ * queue's steps). Other messages come back as they are. The room applies it to every socket that joined as a monitor.
+ * @template {{ t?: string, state?: any }} M
+ * @param {M} msg
+ * @returns {M}
+ */
+export function forMonitor(msg) {
+  const run = msg?.t === 'state' ? msg.state?.scenario : null;
+  if (!run || (run.objectives === undefined && run.note === undefined && !run.q)) return msg;
+  const { objectives: _o, note: _n, ...rest } = run;
+  if (rest.q) rest.q = rest.q.map((/** @type {any} */ { note: _s, ...step }) => step);
+  return { ...msg, state: { ...msg.state, scenario: rest } };
 }
 
 /**

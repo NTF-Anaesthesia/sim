@@ -4,6 +4,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { RoomHub } from '../src/room/hub.js';
 import { presenceMessage } from '../src/room/presence.js';
+import { forMonitor } from '../src/shared/scenario.js';
 
 const MAX_SOCKETS = 20;
 
@@ -33,7 +34,8 @@ export class Room extends DurableObject {
     }
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ id, role });
-    server.send(JSON.stringify(await this.hub.hello()));
+    const hello = await this.hub.hello();
+    server.send(JSON.stringify(role === 'monitor' ? forMonitor(hello) : hello));
     this.broadcastPresence();
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -45,16 +47,23 @@ export class Room extends DurableObject {
   async webSocketMessage(ws, message) {
     const meta = ws.deserializeAttachment() ?? { id: 'anon' };
     const out = await this.hub.onMessage(meta.id, typeof message === 'string' ? message : '');
-    if (out.reply) ws.send(JSON.stringify(out.reply));
+    if (out.reply) ws.send(JSON.stringify(meta.role === 'monitor' ? forMonitor(out.reply) : out.reply));
     if (out.iam && meta.role === 'monitor') {
       ws.serializeAttachment({ ...meta, s: out.iam.s, dev: out.iam.dev });
       this.broadcastPresence();
     }
-    if (out.broadcast) {
-      const text = JSON.stringify(out.broadcast);
-      for (const peer of this.ctx.getWebSockets()) {
-        try { peer.send(text); } catch { /* socket closing */ }
-      }
+    if (out.broadcast) this.broadcast(out.broadcast);
+  }
+
+  /**
+   * Send a message to every socket; monitors get it without teaching text (notes and objectives are for phones only).
+   * @param {{ t?: string, state?: any }} msg
+   */
+  broadcast(msg) {
+    const text = JSON.stringify(msg);
+    const monitorText = JSON.stringify(forMonitor(msg));
+    for (const peer of this.ctx.getWebSockets()) {
+      try { peer.send(peer.deserializeAttachment()?.role === 'monitor' ? monitorText : text); } catch { /* socket closing */ }
     }
   }
 
@@ -89,11 +98,6 @@ export class Room extends DurableObject {
   async alarm() {
     const { expired, broadcast } = await this.hub.onAlarm();
     if (expired) for (const ws of this.ctx.getWebSockets()) ws.close(4001, 'room expired');
-    if (broadcast) {
-      const text = JSON.stringify(broadcast);
-      for (const peer of this.ctx.getWebSockets()) {
-        try { peer.send(text); } catch { /* socket closing */ }
-      }
-    }
+    if (broadcast) this.broadcast(broadcast);
   }
 }

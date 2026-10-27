@@ -506,6 +506,19 @@ Removing the scenario's bed removes the scenario.
 added. Steps can be moved or skipped until they run; "Save as scenario" is local to the phone (library format
 unchanged). A step may carry `glideMsBy`; library files stay version 1 and old files load as before.
 
+**Record, editor, notes (sim-train S2).** Phone side only, plus two optional text fields. A scenario may carry
+`objectives` (up to 300 characters) and a step a `note` (up to 160), trimmed, blank = absent; library files stay
+version 1 and old files load unchanged. While the phone records (`src/controller/recorder.js`), every `act()` on the
+recorded bed (and every drug button, as its computed patch) becomes a step: the `patient` and `alarms` parts of the
+patch, the change's `glideMs` and `glideMsBy`, and `atSec` = the real gap since the previous step (the first: since
+Record was pressed), rounded to 5 s, at most 30 steps. Stop saves it to the device library under the typed name and opens
+the editor, as does a queue's "Save as scenario" (unsaved until Save). The editor edits a draft: wait or on tap, glide,
+note per step; move, delete; rename; built-ins open as a copy named "... copy". A refused save (bad value, taken name)
+keeps the draft and shows the reason. While a scenario runs, `ScenarioRun.objectives` and `ScenarioRun.note` (the note
+of the step that ran last) are in the state for phones; `forMonitor` (`src/shared/scenario.js`) removes them (and the
+notes inside a queue's `q`) from every message the Room sends to a socket that joined with `role=monitor` (hello, broadcasts
+and replies). A recorded drug becomes a step of absolute values computed from the phone's last-seen state.
+
 **Running.** The Room runs steps on its own clock, so a scenario goes on with every phone closed. It shares the one
 storage alarm with idle expiry: the alarm is set to the earlier of the two (`alarmAt`), and when it fires the Room runs
 every step that is due, in order (a late alarm catches up), then broadcasts. A step's `atSec` is seconds after the

@@ -216,3 +216,64 @@ test('built-in scenarios and drugs are valid and synthetic', () => {
     assert.ok(!/\d+\s*(mg|mcg|ml|µg)/i.test(JSON.stringify(d)), 'no doses');
   }
 });
+
+// ---- teaching notes (sim-train S2) ----
+import { forMonitor, validateStep, MAX_NOTE, MAX_OBJECTIVES } from '../src/shared/scenario.js';
+
+test('objectives and step notes are optional, trimmed, and capped', () => {
+  const ok = validateScenario({ name: 'N', objectives: '  Spot the bleed  ', steps: [{ atSec: 0, glideMs: 0, patch: { patient: { hr: 100 } }, note: ' Ask for help ' }, { onTap: true, glideMs: 0, patch: { patient: { hr: 90 } }, note: '  ' }] });
+  assert.ok(ok.ok);
+  assert.equal(ok.scenario.objectives, 'Spot the bleed');
+  assert.equal(ok.scenario.steps[0].note, 'Ask for help');
+  assert.equal('note' in ok.scenario.steps[1], false, 'a blank note is dropped');
+  assert.equal('objectives' in validateScenario(three).scenario, false, 'old scenarios gain no field');
+  const step = { atSec: 0, glideMs: 0, patch: { patient: { hr: 100 } } };
+  assert.equal(validateStep({ ...step, note: 'x'.repeat(MAX_NOTE) }, 's').ok, true);
+  assert.equal(validateStep({ ...step, note: 'x'.repeat(MAX_NOTE + 1) }, 's').ok, false);
+  assert.equal(validateStep({ ...step, note: 5 }, 's').ok, false);
+  assert.equal(validateScenario({ ...three, objectives: 'x'.repeat(MAX_OBJECTIVES + 1) }).ok, false);
+  assert.equal(validateScenario({ ...three, objectives: { a: 1 } }).ok, false);
+});
+
+test('old library files import unchanged and notes survive an import', () => {
+  const old = JSON.stringify({ sim: 'library', version: 1, scenarios: [three], drugs: [] });
+  const r = validateLibraryFile(old);
+  assert.ok(r.ok);
+  assert.deepEqual(r.scenarios[0], three);
+  const withNotes = { ...three, objectives: 'Goal', steps: three.steps.map((s) => ({ ...s, note: 'cue' })) };
+  const r2 = validateLibraryFile(JSON.stringify({ sim: 'library', version: 1, scenarios: [withNotes] }));
+  assert.ok(r2.ok);
+  assert.equal(r2.scenarios[0].steps[2].note, 'cue');
+});
+
+test('the running scenario shows the objectives and the note of the step that ran last', async () => {
+  const { hub, clock } = makeHub();
+  const sc = { name: 'T', objectives: 'Call for help', steps: [
+    { atSec: 0, glideMs: 0, patch: { patient: { hr: 100 } }, note: 'First cue' },
+    { atSec: 30, glideMs: 0, patch: { patient: { hr: 120 } } },
+    { onTap: true, glideMs: 0, patch: { patient: { hr: 140 } }, note: 'Last cue' },
+  ] };
+  const r = await start(hub, sc);
+  assert.equal(r.broadcast.state.scenario.objectives, 'Call for help');
+  assert.equal(r.broadcast.state.scenario.note, 'First cue');
+  clock.t += 30000;
+  const a = await hub.onAlarm();
+  assert.equal(a.broadcast.state.scenario.note, undefined, 'a step without a note clears the cue');
+  const n = await hub.onMessage('c-1', msg({ t: 'scenarioNext' }));
+  assert.equal(n.broadcast.state.scenario.note, 'Last cue');
+});
+
+test('a monitor never gets teaching text; a phone does', async () => {
+  const { hub } = makeHub();
+  const sc = { name: 'T', objectives: 'Secret goal', steps: [{ atSec: 0, glideMs: 0, patch: { patient: { hr: 100 } }, note: 'Secret cue' }] };
+  const r = await start(hub, sc);
+  const m = forMonitor(r.broadcast);
+  assert.equal(JSON.stringify(m).includes('Secret'), false);
+  assert.equal(m.state.scenario.name, 'T');
+  assert.equal(m.state.scenario.step, 1);
+  assert.ok(JSON.stringify(r.broadcast).includes('Secret cue'), 'the phone copy keeps it');
+  const q = await hub.onMessage('c-1', msg({ t: 'queueAdd', p: 'p1', step: { atSec: 5, glideMs: 0, patch: { patient: { hr: 80 } }, note: 'Queue cue' }, replace: true }));
+  assert.equal(JSON.stringify(forMonitor(q.broadcast)).includes('Queue cue'), false);
+  assert.equal(JSON.stringify(forMonitor(await hub.hello())).includes('Secret'), false);
+  assert.equal(forMonitor({ t: 'error' }).t, 'error');
+});

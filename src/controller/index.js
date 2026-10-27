@@ -8,9 +8,11 @@ import { createThemePanel } from '../theme/panel.js';
 import { pickTheme } from '../theme/store.js';
 import { loadTheme } from '../theme/validate.js';
 import { mountTrends } from '../trends/panel.js';
+import { drugPatch, MAX_NOTE, MAX_OBJECTIVES, MAX_STEP_SEC } from '../shared/scenario.js';
 import { makeActions } from './actions.js';
 import { LibraryStore } from './library.js';
 import { PresetStore, runPreset, presetFromPatient } from './presets.js';
+import { Recorder } from './recorder.js';
 import { Settings, browserStorage } from './settings.js';
 import {
   paramList, LIMIT_PARAMS, NIBP_INTERVALS, TOF_INTERVALS, hasModule, buildPatch, pendingCount, stepPercent, clampDisplay,
@@ -50,6 +52,10 @@ export function mountController(root, opts) {
     /** speed set on single pending changes, per patient id then field */
     own: /** @type {Record<string, Record<string, number>>} */ ({}),
     qMode: /** @type {'after' | 'tap'} */ ('after'), qSec: 10, qNote: '', qName: '',
+    /** recording a scenario (sim-train S2): every change sent for one bed becomes a step */
+    rec: /** @type {Recorder | null} */ (null), recName: '',
+    /** scenario being edited: `orig` = saved name it replaces (null = not saved yet), the rest is the draft */
+    ed: /** @type {{ orig: string | null, name: string, objectives: string, steps: any[], note: string } | null} */ (null),
   };
   const actions = makeActions(client, () => ui.p);
 
@@ -78,7 +84,12 @@ export function mountController(root, opts) {
     if (client.status !== 'open') { themePanel.say('Not connected: the theme was not sent.'); return false; }
     return actions.act(t ? { theme: 'custom', themeJson: t } : { theme: 'default' });
   }
-  const { act } = actions;
+  /** The one action path; also feeds the recorder while recording. @type {typeof actions.act} */
+  const act = (patch, glideMs, p, glideMsBy) => {
+    const ok = actions.act(patch, glideMs, p, glideMsBy);
+    if (ok && ui.rec) ui.rec.add(/** @type {Record<string, any>} */ (patch), p ?? patient()?.id ?? '', Date.now(), glideMs, glideMsBy);
+    return ok;
+  };
 
   // Theme for one named screen (Screens tab): `ui.scr` is the screen the panel is open for.
   const screenTheme = () => {
@@ -133,6 +144,7 @@ export function mountController(root, opts) {
     <nav id="beds" class="beds" aria-label="Patients"></nav>
     <section id="view" class="view" aria-live="off"></section>
     <footer class="dock">
+      <div id="recbar" class="recbar" data-testid="recbar" hidden></div>
       <div id="tempo" class="glide tempo" hidden></div>
       <div id="progress" class="progress" hidden><div id="bar"></div><span id="left"></span></div>
       <div id="apply" class="applybar" hidden></div>
@@ -304,6 +316,7 @@ export function mountController(root, opts) {
   const clock = (ms) => { const t = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 
   function viewScenarios() {
+    if (ui.ed) return viewEditor(ui.ed);
     const s = /** @type {NonNullable<ReturnType<typeof state>>} */ (state());
     const pt = /** @type {NonNullable<ReturnType<typeof patient>>} */ (patient());
     const run = s.scenario;
@@ -311,6 +324,8 @@ export function mountController(root, opts) {
     const card = run ? `<div class="scn-run" data-testid="scn-run">
         <p><b data-testid="scn-name">${esc(run.name)}</b> on ${esc(runBed)}</p>
         <p data-testid="scn-step">${run.done ? 'Finished' : `Step ${run.step} of ${run.total} done`}</p>
+        ${run.objectives ? `<p class="obj" data-testid="scn-objectives"><b>Objectives:</b> ${esc(run.objectives)}</p>` : ''}
+        ${run.note ? `<p class="cue" data-testid="scn-note"><b>Cue:</b> ${esc(run.note)}</p>` : ''}
         <p class="hint" id="scn-count" data-testid="scn-count">${esc(scenarioLine(run))}</p>
         <div class="row">
           ${run.done ? '' : `<button type="button" data-act="scn-pause" data-testid="scn-pause">${run.pausedAt ? 'Resume' : 'Pause'}</button>
@@ -320,8 +335,10 @@ export function mountController(root, opts) {
     return `
       ${card}
       ${queuePanel(run)}
+      ${recordPanel(pt)}
       <p class="label">Starts on <b>${esc(pt.label)}</b>. The room runs it, so it keeps going with this phone closed.</p>
       <ul class="presets">${library.allScenarios().map((sc, i) => `<li><button type="button" class="preset" data-scn="${i}" data-testid="scn-start-${esc(sc.name)}">${esc(sc.name)} <small>${sc.steps.length} steps</small></button>
+        <button type="button" class="small" data-scn-edit="${i}" data-testid="scn-edit-${esc(sc.name)}" aria-label="${sc.builtin ? 'Copy and edit' : 'Edit'} ${esc(sc.name)}">${sc.builtin ? 'Copy' : 'Edit'}</button>
         ${sc.builtin ? '' : `<button type="button" class="small" data-scn-del="${esc(sc.name)}" aria-label="Delete ${esc(sc.name)}">✕</button>`}</li>`).join('')}</ul>
       ${drugsOn ? `<h2>Drug buttons</h2>
       <p class="label">Applies to <b>${esc(pt.label)}</b>. Teaching effects only, not doses.</p>
@@ -332,6 +349,124 @@ export function mountController(root, opts) {
       <div class="row"><button type="button" data-act="lib-export" data-testid="lib-export">Export</button><button type="button" data-act="lib-import" data-testid="lib-import">Import</button>
         <label class="btn file">File<input type="file" id="libfile" accept="application/json,.json" hidden></label></div>
       <p class="hint" id="libnote" data-testid="lib-note">${esc(ui.libNote)}</p>`;
+  }
+
+  /** @param {NonNullable<ReturnType<typeof patient>>} pt */
+  function recordPanel(pt) {
+    if (ui.rec) {
+      const bed = state()?.patients.find((x) => x.id === ui.rec?.bed)?.label ?? ui.rec.bed;
+      return `<div class="rec-panel" data-testid="rec-panel"><h2>Recording on ${esc(bed)}</h2>
+        <p class="label">Every change you apply to this bed becomes a step, with its real wait. Go to the other tabs and work as usual.</p>
+        <div class="row"><input id="rec-name" maxlength="24" placeholder="Scenario name" value="${esc(ui.recName)}" aria-label="Recorded scenario name" data-testid="rec-name">
+          <button type="button" data-act="rec-stop" data-testid="rec-stop">Stop and save</button>
+          <button type="button" class="small" data-act="rec-cancel" data-testid="rec-cancel">Discard</button></div></div>`;
+    }
+    return `<div class="row"><button type="button" data-act="rec-start" data-testid="rec-start">● Record on ${esc(pt.label)}</button></div>`;
+  }
+
+  /** The red bar above the tabs while recording (every tab). */
+  function renderRec() {
+    const el = $('recbar');
+    el.hidden = !ui.rec;
+    if (!ui.rec) return;
+    const n = ui.rec.steps.length;
+    el.innerHTML = `<span data-testid="rec-count">● Recording: ${n} step${n === 1 ? '' : 's'}</span> <button type="button" class="small" data-act="rec-open" data-testid="rec-open">Finish…</button>`;
+  }
+
+  /** @param {string} base a scenario name that no scenario uses yet */
+  function freeName(base) {
+    const taken = library.allScenarios().map((x) => x.name);
+    for (let n = 1; ; n++) {
+      const name = (n === 1 ? base : `${base.slice(0, 21)} ${n}`).slice(0, 24);
+      if (!taken.includes(name)) return name;
+    }
+  }
+
+  /** Open the editor on a scenario. A built-in ("... copy") or `asCopy` (an unsaved draft) opens as a new scenario. @param {any} sc @param {boolean} [asCopy] @param {string} [note] */
+  function openEditor(sc, asCopy, note = '') {
+    const copy = !!(asCopy || sc.builtin);
+    ui.ed = {
+      orig: copy ? null : sc.name, name: sc.builtin ? freeName(`${sc.name} copy`) : copy ? freeName(sc.name) : sc.name, objectives: sc.objectives ?? '',
+      steps: JSON.parse(JSON.stringify(sc.steps)), note,
+    };
+    ui.tab = 'scenarios';
+    render();
+  }
+
+  /** @param {NonNullable<typeof ui.ed>} ed */
+  function viewEditor(ed) {
+    const cards = ed.steps.map((st, i) => `<li class="card" data-testid="ed-step-${i}">
+        <div class="card-h"><span><b>Step ${i + 1}</b> <small>${esc(stepSummary(st))}</small></span>
+          <span class="q-btns"><button type="button" class="small" data-act="ed-up" data-i="${i}" aria-label="Move step ${i + 1} up" data-testid="ed-up-${i}">↑</button>
+          <button type="button" class="small" data-act="ed-down" data-i="${i}" aria-label="Move step ${i + 1} down" data-testid="ed-down-${i}">↓</button>
+          <button type="button" class="small" data-act="ed-del" data-i="${i}" aria-label="Delete step ${i + 1}" data-testid="ed-del-${i}">✕</button></span></div>
+        <div class="row ed-row">
+          <label>Wait <input type="number" inputmode="numeric" min="0" max="${MAX_STEP_SEC}" value="${st.onTap ? '' : st.atSec ?? 0}" ${st.onTap ? 'disabled' : ''} data-ed="atSec" data-i="${i}" data-testid="ed-wait-${i}"> s</label>
+          <label class="chk"><input type="checkbox" ${st.onTap ? 'checked' : ''} data-ed="onTap" data-i="${i}" data-testid="ed-tap-${i}"> On tap</label>
+          <label>Glide <input type="number" inputmode="decimal" min="0" max="600" step="any" value="${(st.glideMs ?? 0) / 1000}" data-ed="glide" data-i="${i}" data-testid="ed-glide-${i}"> s</label></div>
+        ${st.glideMsBy ? `<p class="hint">Own speeds kept: ${Object.entries(st.glideMsBy).map(([f, ms]) => `${esc(f)} ${esc(speedLabel(/** @type {number} */ (ms)))}`).join(', ')}
+          <button type="button" class="small" data-act="ed-onespeed" data-i="${i}">Use one speed</button></p>` : ''}
+        <input class="ed-note" maxlength="${MAX_NOTE}" placeholder="Teaching note (phone only)" value="${esc(st.note ?? '')}" data-ed="note" data-i="${i}" aria-label="Teaching note for step ${i + 1}" data-testid="ed-note-${i}">
+      </li>`).join('');
+    return `<div class="editor" data-testid="editor">
+      <h2>${ed.orig ? 'Edit scenario' : 'New scenario'}</h2>
+      <label class="label">Name <input id="ed-name" maxlength="24" value="${esc(ed.name)}" data-ed="name" data-testid="ed-name"></label>
+      <label class="label">Objectives (shown on phones only)<textarea id="ed-obj" rows="3" maxlength="${MAX_OBJECTIVES}" data-ed="objectives" data-testid="ed-obj">${esc(ed.objectives)}</textarea></label>
+      <ol class="ed-steps">${cards}</ol>
+      <div class="row"><button type="button" data-act="ed-save" data-testid="ed-save">Save</button><button type="button" data-act="ed-cancel" data-testid="ed-cancel">Cancel</button></div>
+      <p class="hint" data-testid="ed-note-msg">${esc(ed.note)}</p></div>`;
+  }
+
+  /** Keep the draft in step with a field the user typed in. @param {HTMLInputElement | HTMLTextAreaElement} el */
+  function editField(el) {
+    const ed = ui.ed;
+    const f = el.dataset.ed;
+    if (!ed || !f) return;
+    if (f === 'name') { ed.name = el.value; return; }
+    if (f === 'objectives') { ed.objectives = el.value; return; }
+    const st = ed.steps[Number(el.dataset.i)];
+    if (!st) return;
+    if (f === 'atSec') st.atSec = Number(el.value) || 0;
+    else if (f === 'glide') st.glideMs = Math.round((Number(el.value) || 0) * 1000);
+    else if (f === 'note') { if (el.value) st.note = el.value; else delete st.note; }
+    else if (f === 'onTap') {
+      if (/** @type {HTMLInputElement} */ (el).checked) { st.onTap = true; delete st.atSec; } else { delete st.onTap; st.atSec = 0; }
+      renderView();
+    }
+  }
+
+  function saveEditor() {
+    const ed = ui.ed;
+    if (!ed) return;
+    const sc = { name: ed.name, ...(ed.objectives.trim() ? { objectives: ed.objectives } : {}), steps: ed.steps };
+    const r = ed.orig ? library.replaceScenario(ed.orig, sc) : library.addScenario(sc);
+    if (!r.ok) { ed.note = `Not saved: ${r.msg}`; renderView(); return; }
+    ui.libNote = `Saved "${ed.name.trim()}" to this phone.`;
+    ui.ed = null;
+    renderView();
+  }
+
+  function startRecording() {
+    const pt = patient();
+    if (!pt || ui.rec) return;
+    if (client.status !== 'open') { ui.libNote = 'Not connected: recording did not start.'; renderView(); return; }
+    ui.rec = new Recorder(pt.id, Date.now());
+    ui.recName = '';
+    render();
+  }
+
+  function stopRecording() {
+    const rec = ui.rec;
+    if (!rec) return;
+    const typed = ui.recName.trim();
+    ui.rec = null;
+    ui.recName = '';
+    if (!rec.steps.length) { ui.libNote = 'Nothing was recorded: apply at least one change while recording.'; render(); return; }
+    const sc = { name: typed || freeName('Recording'), steps: rec.steps };
+    const extra = rec.skipped ? ` ${rec.skipped} change${rec.skipped === 1 ? '' : 's'} could not be recorded.` : '';
+    const r = library.addScenario(sc);
+    if (r.ok) openEditor(sc, false, `Saved "${sc.name}" with ${sc.steps.length} step${sc.steps.length === 1 ? '' : 's'}.${extra} Edit it here or leave.`);
+    else openEditor(sc, true, `Not saved yet: ${r.msg}.${extra}`);
   }
 
   /** One line about where the running scenario is. @param {NonNullable<ReturnType<typeof state>>['scenario']} run */
@@ -499,15 +634,13 @@ export function mountController(root, opts) {
         <button type="button" data-act="q-save" data-testid="q-save">Save as scenario</button></div></div>`;
   }
 
+  /** "Save as scenario" on a queue: open the editor on a copy, where it is named and saved. */
   function saveQueue() {
     const run = state()?.scenario;
     if (!run?.queue || !run.q) return;
-    const name = /** @type {HTMLInputElement} */ ($('qname')).value.trim();
-    ui.qName = name;
-    const r = library.addScenario({ name, steps: run.q });
-    ui.libNote = r.ok ? `Saved "${name}" to this phone.` : `Not saved: ${r.msg}`;
-    if (r.ok) ui.qName = '';
-    renderView();
+    const typed = /** @type {HTMLInputElement} */ ($('qname')).value.trim();
+    ui.qName = '';
+    openEditor({ name: typed || 'Queue', steps: run.q }, true, 'Name it, add notes if you like, then Save.');
   }
 
   function renderProgress() {
@@ -521,9 +654,9 @@ export function mountController(root, opts) {
   }
 
   function render() {
-    renderStatus(); renderBeds(); renderDock(); renderProgress(); renderTempo();
+    renderStatus(); renderBeds(); renderDock(); renderRec(); renderProgress(); renderTempo();
     // do not rebuild the page under a finger that is dragging a slider, or while a screen name is being typed
-    if (!ui.dragging && !root.ownerDocument.activeElement?.matches(ui.tab === 'screens' ? '#view input' : ui.tab === 'scenarios' ? '#view textarea, #view #qname' : ui.tab === 'vitals' ? '#cust-n' : '#never')) renderView();
+    if (!ui.dragging && !root.ownerDocument.activeElement?.matches(ui.tab === 'screens' ? '#view input' : ui.tab === 'scenarios' ? '#view textarea, #view #qname, #view #rec-name, #view .editor input' : ui.tab === 'vitals' ? '#cust-n' : '#never')) renderView();
   }
 
   // ---- edits ------------------------------------------------------------------------------------------------------
@@ -694,9 +827,13 @@ export function mountController(root, opts) {
     }
     if (d.drug !== undefined) {
       const dr = library.allDrugs()[Number(d.drug)];
-      if (dr && !actions.drug(dr, pt.id)) { ui.libNote = 'Not connected: the drug was not given.'; renderView(); } else delete ui.pending[pt.id];
+      if (dr && !actions.drug(dr, pt.id)) { ui.libNote = 'Not connected: the drug was not given.'; renderView(); } else {
+        if (dr && ui.rec) ui.rec.add({ patient: drugPatch(pt, dr.effects) }, pt.id, Date.now(), dr.glideMs);
+        delete ui.pending[pt.id];
+      }
       return;
     }
+    if (d.scnEdit !== undefined) { const sc = library.allScenarios()[Number(d.scnEdit)]; if (sc) openEditor(sc); return; }
     if (d.scnDel) { library.removeScenario(d.scnDel); renderView(); return; }
     if (d.drugDel) { library.removeDrug(d.drugDel); renderView(); return; }
     if (d.switch) { onSwitch(d.switch, t.getAttribute('aria-checked') !== 'true', s, pt); return; }
@@ -714,6 +851,27 @@ export function mountController(root, opts) {
       case 'q-up': case 'q-down': actions.queueMove(Number(d.i), d.act === 'q-up' ? -1 : 1); break;
       case 'q-del': actions.queueRemove(Number(d.i)); break;
       case 'q-save': saveQueue(); break;
+      case 'rec-start': startRecording(); break;
+      case 'rec-stop': stopRecording(); break;
+      case 'rec-cancel':
+        if (ui.rec && ui.rec.steps.length && !window.confirm(`Discard the ${ui.rec.steps.length} recorded step${ui.rec.steps.length === 1 ? '' : 's'}?`)) break;
+        ui.rec = null; ui.recName = ''; render(); break;
+      case 'rec-open': ui.tab = 'scenarios'; render(); break;
+      case 'ed-save': saveEditor(); break;
+      case 'ed-cancel': ui.ed = null; renderView(); break;
+      case 'ed-up': case 'ed-down': case 'ed-del': case 'ed-onespeed': {
+        const ed = ui.ed;
+        const i = Number(d.i);
+        if (!ed || !ed.steps[i]) break;
+        if (d.act === 'ed-del') ed.steps.splice(i, 1);
+        else if (d.act === 'ed-onespeed') delete ed.steps[i].glideMsBy;
+        else {
+          const j = d.act === 'ed-up' ? i - 1 : i + 1;
+          if (ed.steps[j]) [ed.steps[i], ed.steps[j]] = [ed.steps[j], ed.steps[i]];
+        }
+        renderView();
+        break;
+      }
       case 'nibp-now': actions.nibpNow(pt.id); break;
       case 'tof-now': actions.tofNow(pt.id); break;
       case 'flush-abp': actions.flush('abp', pt.id); break;
@@ -792,6 +950,7 @@ export function mountController(root, opts) {
     const t = /** @type {HTMLElement} */ (ev.target);
     const pt = patient();
     const sd = t.dataset;
+    if (sd.ed === 'onTap') { editField(/** @type {HTMLInputElement} */ (t)); return; }
     if (sd.scrSel && sd.s) {
       const v = /** @type {HTMLSelectElement} */ (t).value;
       if (sd.scrSel === 'p') setScreen(sd.s, { p: v || null });
@@ -835,6 +994,8 @@ export function mountController(root, opts) {
     const t = /** @type {HTMLInputElement} */ (ev.target);
     if (t.type === 'range') setFromDisplay(/** @type {HTMLElement} */ (t.closest('.prm')), Number(t.value));
     if (t.id === 'qname') ui.qName = t.value;
+    if (t.id === 'rec-name') ui.recName = t.value;
+    if (t.dataset.ed && t.dataset.ed !== 'onTap') editField(t);
     if (t.id === 'q-sec') ui.qSec = Number(t.value) || 0;
   });
   // do not rebuild the page under a finger that is dragging a slider

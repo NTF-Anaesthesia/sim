@@ -99,6 +99,24 @@ export class LibraryStore {
     return { ok: true };
   }
 
+  /**
+   * Replace a saved scenario (`oldName`) with an edited one, which may have a new name. Refused, nothing changed, when it
+   * is not valid or the new name belongs to a built-in or another saved scenario. Built-ins are never changed.
+   * @param {string} oldName
+   * @param {unknown} sc
+   * @returns {{ ok: true } | { ok: false, msg: string }}
+   */
+  replaceScenario(oldName, sc) {
+    const v = validateScenario(sc);
+    if (!v.ok) return v;
+    const i = this.scenarios.findIndex((x) => x.name === oldName);
+    if (i < 0) return { ok: false, msg: `"${oldName}" is not a saved scenario` };
+    if (v.scenario.name !== oldName && this.allScenarios().some((x) => x.name === v.scenario.name)) return { ok: false, msg: `the name "${v.scenario.name}" is taken` };
+    this.scenarios[i] = v.scenario;
+    this.persist();
+    return { ok: true };
+  }
+
   /** @param {string} name */
   removeScenario(name) { this.scenarios = this.scenarios.filter((x) => x.name !== name); this.persist(); }
   /** @param {string} name */
