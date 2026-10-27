@@ -481,6 +481,7 @@ export class RoomHub {
     s.scenario = {
       id: `n${s.rev + 1}`, name: sc.name, p, step: 0, total: sc.steps.length, startedAt: now, pausedAt: 0,
       nextAt: first.onTap ? 0 : now + (first.atSec ?? 0) * 1000, baseAt: now, waiting: !!first.onTap, done: false,
+      ...(sc.objectives ? { objectives: sc.objectives } : {}),
     };
     const run = s.scenario;
     const ran = this.runDue(s, sc.steps, now);
@@ -534,6 +535,7 @@ export class RoomHub {
     if (step.glideMsBy && !instant) msg.glideMsBy = Object.fromEntries(Object.entries(step.glideMsBy).map(([f, ms]) => [f, Math.round(ms * k)]));
     this.doSet(s, msg, now);
     run.step++;
+    if (step.note) run.note = step.note; else delete run.note; // teaching cue of the step that just ran (phone only)
     const next = steps[run.step];
     if (!next) { run.done = true; run.nextAt = 0; run.waiting = false; return; }
     planNext(run, next, base);

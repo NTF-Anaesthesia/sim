@@ -1,6 +1,7 @@
 # sim: status
 
 ## Now
+- sim-train S2 record, step editor, teaching notes (PR): a Record button in Scenarios (every change on the bed becomes a step with its real wait and its own speeds; drug buttons too); Stop names and saves it and opens the editor; the editor (cards: wait / on tap, glide, note; reorder, delete, rename; built-ins open as a copy) also opens from the queue's "Save as scenario"; scenarios get optional `objectives`, steps an optional `note`, shown on the phone only (the room strips them from everything a monitor receives).
 - sim-train S1 speed per change, queue, live tempo (PR): each pending change can have its own speed (more speeds 5 s to 5 min and a custom time), one Apply sends them all as `glideMs` + `glideMsBy`; "Add to queue" (after X s or on tap) with a queue panel (move, skip, save as scenario); live tempo 0.5x / 1x / 2x / Finish now; fits 360 px.
 - sim-v2 S5 gas + TOF (PR): FiO2, agent Fi/Et with age-adjusted MAC (Nickalls and Mapleson 2003, cited in DESIGN.md), N2O, agent and O2 traces, TOF on demand and on an interval; alarms for FiO2 (hypoxic mixture high) and Et agent in MAC; phone rows, agent select, trends; all off by default, per device.
 - sim-v2 S7 defib screen (PR): a screen of kind defib shows ECG, energy, charge, shock and sync (touch and mouse); pads off blocks the shock; a shock draws artefact on every screen of the bed, applies the bed's postShock rhythm and logs a `shock` event; all off by default.

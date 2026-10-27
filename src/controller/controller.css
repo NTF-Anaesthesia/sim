@@ -86,3 +86,18 @@
 .ctl .queue-panel li[data-state=next] { font-weight: 600; }
 .ctl .q-btns { display: inline-flex; gap: 4px; flex-shrink: 0; }
 .ctl .q-btns button { min-width: 44px; min-height: 44px; }
+
+/* record, step editor, teaching notes (sim-train S2) */
+.ctl .recbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 12px; background: #7a1d1d; color: #fff; font-weight: 600; }
+.ctl .recbar[hidden] { display: none; }
+.ctl .rec-panel { border: 1px solid #b33; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+.ctl .obj, .ctl .cue { margin: 4px 0; padding: 6px 8px; border-left: 3px solid var(--line, #888); overflow-wrap: anywhere; }
+.ctl .cue { border-left-color: #d9a300; }
+.ctl .editor input:not([type=checkbox]), .ctl .editor textarea { width: 100%; box-sizing: border-box; min-height: 40px; }
+.ctl .editor .ed-row input[type=number] { width: 5.5em; }
+.ctl .ed-steps { list-style: none; padding: 0; margin: 8px 0; }
+.ctl .ed-steps .card { border: 1px solid var(--line, #333); border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+.ctl .ed-steps .card-h { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 6px; overflow-wrap: anywhere; }
+.ctl .ed-row { flex-wrap: wrap; align-items: center; }
+.ctl .ed-row label { display: inline-flex; align-items: center; gap: 4px; }
+.ctl .ed-note { margin-top: 6px; }

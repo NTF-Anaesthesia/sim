@@ -72,6 +72,8 @@ try {
   check(true, 'tempo 2x reaches the room');
   await phone.getByTestId('qname').fill('My queue');
   await phone.getByTestId('q-save').click();
+  check((await phone.getByTestId('ed-name').inputValue()) === 'My queue', 'Save as scenario opens the editor with the queue steps');
+  await phone.getByTestId('ed-save').click();
   const ln = (await phone.getByTestId('lib-note').textContent()) ?? '';
   check(/Saved/.test(ln), `queue saved as a scenario (${ln})`);
   await phone.getByTestId('q-del-1').click();
