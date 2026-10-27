@@ -10,7 +10,7 @@ import { SPEEDS, speedLabel } from './speed.js';
 export const DEFAULT_UNITS = /** @type {Units} */ ({ co2: 'mmHg', temp: 'C' });
 export const GLIDE_CHOICES = SPEEDS.map((ms) => ({ ms, label: speedLabel(ms) }));
 /** NIBP interval choices in seconds (0 = manual only). */
-export const NIBP_INTERVALS = [0, 60, 120, 180, 300, 600, 900, 1800];
+export const NIBP_INTERVALS = [0, 60, 120, 150, 180, 300, 600, 900, 1800];
 /** TOF interval choices in seconds (0 = on demand only). */
 export const TOF_INTERVALS = [0, 15, 30, 60, 120, 300];
 const KPA = 0.133322;

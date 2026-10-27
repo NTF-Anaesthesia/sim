@@ -4,7 +4,7 @@
 // the context is made in `enable()`, called from a button. No work on import.
 import { TONE_PULSES } from '../engine/alarms.js';
 
-export const CHANNELS = ['alarm', 'qrs', 'spo2'];
+export const CHANNELS = ['alarm', 'qrs', 'spo2', 'nibp'];
 const TONE_HZ = { 3: 960, 2: 800, 1: 640 };
 
 /**
@@ -91,6 +91,38 @@ export class AudioMixer {
     if (spo2 === null) this.tone('qrs', 700, 0.07);
     else this.tone('spo2', spo2PitchHz(spo2), 0.07);
   }
+
+  /**
+   * NIBP pump: a low, buzzing hum for the inflation (channel `nibp`).
+   * @param {number} durSec
+   */
+  pump(durSec) {
+    const ctx = this.ctx;
+    const out = this.gains.get('nibp');
+    if (!ctx || !out || ctx.state !== 'running' || !(durSec > 0)) return;
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const lp = ctx.createBiquadFilter();
+    const env = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(95, t0);
+    osc.frequency.linearRampToValueAtTime(80, t0 + durSec); // the motor labours as the cuff fills
+    lp.type = 'lowpass';
+    lp.frequency.value = 600;
+    env.gain.setValueAtTime(0, t0);
+    env.gain.linearRampToValueAtTime(0.12, t0 + 0.05);
+    env.gain.setValueAtTime(0.12, t0 + durSec - 0.05);
+    env.gain.linearRampToValueAtTime(0, t0 + durSec);
+    osc.connect(lp).connect(env).connect(out);
+    osc.start(t0);
+    osc.stop(t0 + durSec + 0.02);
+  }
+
+  /** Soft valve click for one deflation step. */
+  click() { this.tone('nibp', 1800, 0.012, 0, 'square'); }
+
+  /** Short tone when the NIBP reading is ready. */
+  nibpDone() { this.tone('nibp', 880, 0.12); }
 
   /**
    * @param {number} priority 1..3

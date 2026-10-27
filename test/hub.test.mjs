@@ -87,8 +87,9 @@ test('nibp now takes the glided target values and stamps the time', async () => 
   await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { nibp: { sys: 80, dia: 40 } } }, glideMs: 0 }));
   clock.t += 1;
   const r = await hub.onMessage('c-1', msg({ t: 'nibp' }));
-  assert.equal(r.broadcast.state.patients[0].nibpRead.sys, 80);
-  assert.equal(r.broadcast.state.patients[0].nibpRead.at, clock.t);
+  const got = r.broadcast.state.patients[0].nibpRead;
+  assert.ok(Math.abs(got.sys - 80) <= 4 && Math.abs(got.dia - 40) <= 3, `close to 80/40 with cuff error: ${got.sys}/${got.dia}`);
+  assert.equal(got.at, clock.t);
 });
 
 test('rooms expire after 24 h idle: alarm deletes state; before that it re-arms', async () => {

@@ -7,5 +7,5 @@ export { BreathScheduler } from './breaths.js';
 export { mulberry32 } from './rng.js';
 export { wobble, jittered, JITTER_AMP } from './jitter.js';
 export { evaluateAlarms, AlarmTracker, burstDue, PRIORITY, PRIORITY_NAME, SILENCE_MS, TONE_EVERY_MS, TONE_PULSES, NIBP_OVERDUE_MS } from './alarms.js';
-export { NibpMachine, nibpCycleDue, mapOf, ageText } from './nibp.js';
+export { NibpMachine, nibpCycleDue, mapOf, ageText, cuffPressure, nibpJitter, DEFLATE_STEP } from './nibp.js';
 export { macAt, macFraction, MAC40, AGENT_IDS, AGENT_NAMES, MAC_PER_YEAR } from './gas.js';

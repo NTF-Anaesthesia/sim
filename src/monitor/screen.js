@@ -55,6 +55,7 @@ export function mountScreen(root, opts) {
   let patient = null;
   let nibp = new NibpMachine();
   let nibpReq = { after: -1, at: 0 };
+  let nibpSound = { phase: '', cuff: /** @type {number | null} */ (null), at: 0 }; // last NIBP phase heard, for the cuff sounds
   let tofReq = { after: -1, at: 0 };
   /** @type {import('./view.js').View | null} */
   let view = null;
@@ -174,6 +175,20 @@ export function mountScreen(root, opts) {
 
   /** Monitor keys: per device once its Keys button is used, else as the theme says (off by default). */
   const keysShown = () => /** @type {boolean} */ (settings.get('keys', theme.keys?.show === true));
+
+  /**
+   * Cuff sounds on phase changes: pump hum while inflating, a click per deflation step, a tone when the number shows.
+   * @param {ReturnType<NibpMachine['tick']>} nb
+   */
+  function nibpSounds(nb) {
+    const prev = nibpSound;
+    nibpSound = { phase: nb.phase, cuff: nb.cuff, at: nb.at };
+    if (!audio.enabled || prev.phase === '') return;
+    const fresh = nb.at !== prev.at || prev.phase !== nb.phase;
+    if (nb.phase === 'inflating' && fresh) audio.pump((1 - nb.progress) * nibp.inflateMs / 1000);
+    else if (nb.phase === 'measuring' && prev.phase === 'measuring' && nb.cuff !== prev.cuff) audio.click();
+    else if (nb.phase === 'result' && (prev.phase === 'measuring' || prev.phase === 'inflating')) audio.nibpDone();
+  }
 
   /** @param {string} k */
   function onKey(k) {
@@ -338,6 +353,7 @@ export function mountScreen(root, opts) {
     Object.assign(v, { fio2: s.fio2, eto2: s.eto2, fiag: s.fiag, etag: s.etag, fin2o: s.fin2o, etn2o: s.etn2o, mac });
     latestVals = v;
     const nb = nibp.tick(patient.nibpRead, !!patient.off?.nibp, nowMs);
+    if (modsOn().includes('nibp')) nibpSounds(nb);
     const due = nibpCycleDue(patient.nibpRead, nowMs);
     if (due !== null && (nibpReq.after !== due || nowMs - nibpReq.at > 5000)) {
       nibpReq = { after: due, at: nowMs };

@@ -23,7 +23,7 @@ export class NibpMachine {
    * @param {{ sys: number, dia: number, at: number }} reading
    * @param {boolean} cuffOff
    * @param {number} nowMs server ms
-   * @returns {{ phase: Phase, sys: number | null, dia: number | null, at: number, progress: number }}
+   * @returns {{ phase: Phase, sys: number | null, dia: number | null, at: number, progress: number, cuff: number | null }}
    */
   tick(reading, cuffOff, nowMs) {
     if (this.seenAt === null) {
@@ -38,13 +38,48 @@ export class NibpMachine {
     this.failed = cuffOff; // follows the cuff: back on, the last reading shows again
     const r = this.reading ?? reading;
     const e = nowMs - this.startedAt;
-    if (this.failed) return { phase: 'failed', sys: null, dia: null, at: r.at, progress: 1 };
-    if (e < this.inflateMs) return { phase: 'inflating', sys: null, dia: null, at: r.at, progress: e / this.inflateMs };
-    if (e < this.inflateMs + this.measureMs) {
-      return { phase: 'measuring', sys: null, dia: null, at: r.at, progress: (e - this.inflateMs) / this.measureMs };
+    if (this.failed) return { phase: 'failed', sys: null, dia: null, at: r.at, progress: 1, cuff: null };
+    if (e < this.inflateMs) {
+      const progress = e / this.inflateMs;
+      return { phase: 'inflating', sys: null, dia: null, at: r.at, progress, cuff: cuffPressure(r, 'inflating', progress) };
     }
-    return { phase: 'result', sys: r.sys, dia: r.dia, at: r.at, progress: 1 };
+    if (e < this.inflateMs + this.measureMs) {
+      const progress = (e - this.inflateMs) / this.measureMs;
+      return { phase: 'measuring', sys: null, dia: null, at: r.at, progress, cuff: cuffPressure(r, 'measuring', progress) };
+    }
+    return { phase: 'result', sys: r.sys, dia: r.dia, at: r.at, progress: 1, cuff: null };
   }
+}
+
+/** mmHg per deflation step, like an oscillometric cuff bleeding down in steps. */
+export const DEFLATE_STEP = 8;
+
+/**
+ * Cuff pressure shown while measuring: pumps up to about 30 above systolic (at least 160), then bleeds down in
+ * `DEFLATE_STEP` steps to just below diastolic. Pure.
+ * @param {{ sys: number, dia: number }} r the reading being taken
+ * @param {'inflating' | 'measuring'} phase
+ * @param {number} progress 0-1 through the phase
+ */
+export function cuffPressure(r, phase, progress) {
+  const top = Math.max(160, Math.ceil((r.sys + 30) / 10) * 10);
+  const p = Math.min(1, Math.max(0, progress));
+  if (phase === 'inflating') return Math.round(top * Math.sqrt(p)); // fast at first, slowing as it fills
+  const bottom = Math.max(10, r.dia - 10);
+  const steps = Math.max(1, Math.ceil((top - bottom) / DEFLATE_STEP));
+  return Math.max(bottom, top - Math.floor(p * steps) * DEFLATE_STEP);
+}
+
+/**
+ * A real cuff never reads the same twice: add a small, roughly bell-shaped error (systolic within 4, diastolic within
+ * 3 mmHg), keeping at least 10 mmHg between them. Pure given `rand`.
+ * @param {number} sys @param {number} dia @param {() => number} [rand] 0-1
+ */
+export function nibpJitter(sys, dia, rand = Math.random) {
+  const bell = () => (rand() + rand()) / 2 - 0.5; // -0.5..0.5, peaks at 0
+  const s = Math.round(sys + bell() * 8);
+  const d = Math.round(dia + bell() * 6);
+  return { sys: Math.max(1, s), dia: Math.max(1, Math.min(d, s - 10)) };
 }
 
 /**

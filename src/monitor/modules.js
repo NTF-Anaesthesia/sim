@@ -116,8 +116,9 @@ export function registerBuiltinModules(registry) {
         const n = c.nibp;
         const base = { label: label(c, 'nibp'), color: 'nibp', param: 'nibp', unit: unit(c, 'nibp'), limits: lim(c, 'nibpSys') };
         if (c.patient.off?.nibp) return { ...base, main: '---', sub: '', off: true, small: 'CUFF OFF' };
-        if (n.phase === 'inflating') return { ...base, main: '---', sub: '', off: false, small: 'INFLATING' };
-        if (n.phase === 'measuring') return { ...base, main: '---', sub: '', off: false, small: 'MEASURING' };
+        // While cuffing, the live cuff pressure stands in for the reading (as on a real monitor).
+        if (n.phase === 'inflating') return { ...base, main: `${n.cuff ?? '---'}`, sub: '', off: false, small: 'INFLATING' };
+        if (n.phase === 'measuring') return { ...base, main: `${n.cuff ?? '---'}`, sub: '', off: false, small: 'MEASURING' };
         if (n.phase === 'failed') return { ...base, main: '---', sub: '', off: true, small: 'NIBP FAILED' };
         const sys = /** @type {number} */ (n.sys);
         const dia = /** @type {number} */ (n.dia);

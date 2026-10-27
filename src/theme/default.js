@@ -63,7 +63,7 @@ export const DEFAULT_THEME = {
   cells: { border: { color: '#404040', width: 0, radius: 0 } },
   audio: { alarm: { volume: 1 }, qrs: { volume: 0.5 }, spo2: { volume: 0.5 } },
   numerics: { showLimits: true, limitsPosition: 'beside', meanPosition: 'below', decimals: { temp: 1 }, fontScale: 1 },
-  nibp: { inflateMs: 0, measureMs: 0 },
+  nibp: { inflateMs: 6000, measureMs: 18000 },
   labels: {
     colorMode: 'parameter',
     ecg: 'HR', spo2: 'SpO2', etco2: 'EtCO2', rr: 'RR', nibp: 'NIBP', temp: 'Temp', abp: 'ABP', abp2: 'ABP2', cvp: 'CVP', o2: 'FiO2', gas: 'Agent', n2o: 'N2O', tof: 'TOF', bis: 'BIS',
