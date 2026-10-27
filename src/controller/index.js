@@ -16,7 +16,7 @@ import {
   paramList, LIMIT_PARAMS, NIBP_INTERVALS, TOF_INTERVALS, hasModule, buildPatch, pendingCount, stepPercent, clampDisplay,
   glideProgress, formatValue, intervalLabel, moveDisplay, GLIDE_CHOICES,
 } from './params.js';
-import { SPEEDS, customMs, customParts, changedFields, speedLabel, speedFor, timingFor, stepSummary } from './speed.js';
+import { SPEEDS, customMs, customParts, isGlideField, speedLabel, speedFor, timingFor, stepSummary } from './speed.js';
 
 const RHYTHM_LABELS = /** @type {Record<string, string>} */ ({
   sinus: 'Sinus', sinus_brady: 'Sinus brady', sinus_tachy: 'Sinus tachy', af: 'AF', flutter: 'Flutter', svt: 'SVT',
@@ -165,14 +165,13 @@ export function mountController(root, opts) {
   /** Speed of one pending change: a select styled as a chip; "Auto" = the shared speed (SpO2 slower). A pressure's sys and dia share one. @param {import('./params.js').ParamSpec} spec @param {import('../shared/schema.js').Patient} pt */
   function speedChip(spec, pt) {
     const field = Object.keys(spec.set(0))[0];
-    if (!changedFieldsKnown(field)) return '';
+    if (!isGlideField(field)) return '';
     const own = ui.own[pt.id]?.[field];
     const opts = [...new Set([...SPEEDS, ...(own !== undefined ? [own] : [])])].sort((a, b) => a - b);
     return `<label class="spd">Speed <select class="chip" data-own="${field}" data-testid="own-${spec.id}" aria-label="${spec.label} speed">
       <option value=""${own === undefined ? ' selected' : ''}>Auto (${speedLabel(speedFor(field, ui.glideMs))})</option>
       ${opts.map((ms) => `<option value="${ms}"${ms === own ? ' selected' : ''}>${speedLabel(ms)}</option>`).join('')}</select></label>`;
   }
-  const changedFieldsKnown = (/** @type {string} */ f) => changedFields({ patient: { [f]: 1 } }).length > 0;
 
   /** @param {import('./params.js').ParamSpec} spec @param {import('../shared/schema.js').Patient} pt */
   function paramRow(spec, pt) {
@@ -195,7 +194,7 @@ export function mountController(root, opts) {
   function customBox() {
     const custom = !SPEEDS.includes(ui.glideMs);
     const c = customParts(ui.glideMs);
-    return `<span class="custom"><input type="number" inputmode="decimal" min="0" max="600" step="any" id="cust-n" value="${custom ? c.n : ''}" placeholder="Custom" aria-label="Custom speed" data-testid="cust-n">
+    return `<span class="custom"><input type="number" inputmode="decimal" min="0" step="any" id="cust-n" value="${custom ? c.n : ''}" placeholder="Custom" aria-label="Custom speed" data-testid="cust-n">
       <select id="cust-u" aria-label="Custom unit" data-testid="cust-u"><option value="s"${c.unit === 's' ? ' selected' : ''}>s</option><option value="min"${c.unit === 'min' ? ' selected' : ''}>min</option></select>
       <button type="button" class="pill" data-act="cust-set" aria-pressed="${custom}" data-testid="cust-set">Set</button></span>`;
   }
@@ -289,7 +288,7 @@ export function mountController(root, opts) {
   function viewPresets() {
     const pt = /** @type {NonNullable<ReturnType<typeof patient>>} */ (patient());
     return `
-      <p class="label">Applies to <b>${esc(pt.label)}</b> over ${esc(GLIDE_CHOICES.find((g) => g.ms === ui.glideMs)?.label ?? '')} unless the preset sets its own time.</p>
+      <p class="label">Applies to <b>${esc(pt.label)}</b> over ${esc(speedLabel(ui.glideMs))} unless the preset sets its own time.</p>
       <ul class="presets">${presets.all().map((pr, i) => `<li><button type="button" class="preset" data-preset="${i}" data-testid="preset-${esc(pr.name)}">${esc(pr.name)}</button>
         ${pr.builtin ? '' : `<button type="button" class="small" data-del="${esc(pr.name)}" aria-label="Delete ${esc(pr.name)}">✕</button>`}</li>`).join('')}</ul>
       <div class="row"><input id="pname" maxlength="24" placeholder="Name for current values" aria-label="Preset name">
@@ -461,6 +460,7 @@ export function mountController(root, opts) {
     const n = pt ? pendingCount(pend(), pt, units()) : 0;
     const bar = $('apply');
     bar.hidden = n === 0;
+    if (n && root.ownerDocument.activeElement?.id === 'q-sec') return;
     bar.innerHTML = n ? `<button type="button" class="apply" data-act="apply" data-testid="apply">Apply ${n} change${n === 1 ? '' : 's'}</button>
       <button type="button" class="cancel" data-act="cancel" data-testid="cancel">Cancel</button>
       <div class="qrow"><button type="button" class="queue" data-act="queue-add" data-testid="queue-add">Add to queue</button>
@@ -477,7 +477,7 @@ export function mountController(root, opts) {
     const live = !!run && !run.done;
     const el = $('tempo');
     el.hidden = !(live || g.active);
-    if (el.hidden) { el.innerHTML = ''; return; }
+    if (el.hidden) { el.innerHTML = ''; delete el.dataset.key; return; }
     const cur = live ? run.tempo ?? 1 : 0;
     const key = `${cur}|${live}`;
     if (el.dataset.key === key) return;
@@ -523,7 +523,7 @@ export function mountController(root, opts) {
   function render() {
     renderStatus(); renderBeds(); renderDock(); renderProgress(); renderTempo();
     // do not rebuild the page under a finger that is dragging a slider, or while a screen name is being typed
-    if (!ui.dragging && !root.ownerDocument.activeElement?.matches(ui.tab === 'screens' ? '#view input' : ui.tab === 'scenarios' ? '#view textarea, #view #qname' : '#never')) renderView();
+    if (!ui.dragging && !root.ownerDocument.activeElement?.matches(ui.tab === 'screens' ? '#view input' : ui.tab === 'scenarios' ? '#view textarea, #view #qname' : ui.tab === 'vitals' ? '#cust-n' : '#never')) renderView();
   }
 
   // ---- edits ------------------------------------------------------------------------------------------------------
@@ -534,6 +534,11 @@ export function mountController(root, opts) {
     const sp = paramList(units()).find((x) => x.id === id);
     if (!sp) return;
     if (wire === sp.get(pt)) delete pend()[id]; else pend()[id] = wire;
+  }
+
+  /** Another pending row (a pressure's sys or dia) still changes glide field `f`. @param {string} f @param {string} id */
+  function otherPending(f, id) {
+    return paramList(units()).some((x) => x.id !== id && typeof pend()[x.id] === 'number' && Object.keys(x.set(0))[0] === f);
   }
 
   /** @param {HTMLElement} row @param {number} display */
@@ -548,7 +553,7 @@ export function mountController(root, opts) {
     /** @type {HTMLElement} */ (row.querySelector('.prm-val')).textContent = formatValue(sp, wire);
     const chip = row.querySelector('.spd');
     if (typeof pend()[sp.id] === 'number' && !chip) row.insertAdjacentHTML('beforeend', speedChip(sp, pt));
-    else if (typeof pend()[sp.id] !== 'number') chip?.remove();
+    else if (typeof pend()[sp.id] !== 'number') { chip?.remove(); const f = Object.keys(sp.set(0))[0]; if (!otherPending(f, sp.id)) delete ui.own[pt.id]?.[f]; }
     /** @type {HTMLInputElement} */ (row.querySelector('input[type=range]')).value = String(d);
     renderDock();
   }
@@ -586,6 +591,8 @@ export function mountController(root, opts) {
     const replace = !!live && (!live.queue || live.p !== pt.id);
     if (replace && !window.confirm(`"${live.name}" is running. Stop it and start a queue?`)) return;
     const tm = timingFor(patch, ui.glideMs, ui.own[pt.id]);
+    const qs = /** @type {HTMLInputElement | null} */ (root.querySelector('#q-sec'));
+    if (qs) ui.qSec = Number(qs.value) || 0;
     const step = { ...(ui.qMode === 'tap' ? { onTap: true } : { atSec: Math.max(0, Math.min(3600, Math.round(ui.qSec))) }), patch, ...tm };
     if (!actions.queueAdd(step, pt.id, replace)) { ui.qNote = 'Not connected: your changes are kept.'; renderDock(); return; }
     ui.qNote = '';
@@ -828,6 +835,7 @@ export function mountController(root, opts) {
     const t = /** @type {HTMLInputElement} */ (ev.target);
     if (t.type === 'range') setFromDisplay(/** @type {HTMLElement} */ (t.closest('.prm')), Number(t.value));
     if (t.id === 'qname') ui.qName = t.value;
+    if (t.id === 'q-sec') ui.qSec = Number(t.value) || 0;
   });
   // do not rebuild the page under a finger that is dragging a slider
   root.addEventListener('pointerdown', (ev) => { if (/** @type {HTMLElement} */ (ev.target).matches('input[type=range]')) ui.dragging = true; });

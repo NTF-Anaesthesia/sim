@@ -16,7 +16,8 @@ test('speed labels and custom times', () => {
 test('SpO2 starts at 3x the speed, at least 30 s, at most 10 min', () => {
   assert.equal(spo2Speed(10000), 30000);
   assert.equal(spo2Speed(30000), 90000);
-  assert.equal(spo2Speed(0), 30000);
+  assert.equal(spo2Speed(0), 0, 'Instant stays instant');
+  assert.equal(spo2Speed(5000), 30000);
   assert.equal(spo2Speed(300000), 600000);
 });
 

@@ -29,8 +29,8 @@ export function customParts(ms) {
   return ms >= 60000 && ms % 60000 === 0 ? { n: ms / 60000, unit: 'min' } : { n: Math.round(ms / 100) / 10, unit: 's' };
 }
 
-/** SpO2's starting speed for a chosen base speed: 3x, at least 30 s, at most 10 min. @param {number} base */
-export const spo2Speed = (base) => Math.min(MAX_SPEED_MS, Math.max(SPO2_MIN_MS, base * SPO2_FACTOR));
+/** SpO2's starting speed for a chosen base speed: 3x, at least 30 s, at most 10 min; Instant stays instant. @param {number} base */
+export const spo2Speed = (base) => (base > 0 ? Math.min(MAX_SPEED_MS, Math.max(SPO2_MIN_MS, base * SPO2_FACTOR)) : 0);
 
 /**
  * The glide time of one field in a batch: the chip the user set, else the base speed (SpO2: slower).
@@ -39,6 +39,9 @@ export const spo2Speed = (base) => Math.min(MAX_SPEED_MS, Math.max(SPO2_MIN_MS, 
  * @param {Record<string, number>} [own] speeds set on single changes
  */
 export const speedFor = (field, base, own = {}) => own[field] ?? (field === 'spo2' ? spo2Speed(base) : base);
+
+/** @param {string} f */
+export const isGlideField = (f) => /** @type {readonly string[]} */ (GLIDE_FIELDS).includes(f);
 
 /**
  * The glide fields a patient patch changes (a pressure counts once).
@@ -68,7 +71,7 @@ export function timingFor(patch, base, own = {}) {
 export function stepSummary(step) {
   const NAMES = /** @type {Record<string, string>} */ ({
     hr: 'HR', spo2: 'SpO₂', etco2: 'EtCO₂', rr: 'RR', temp: 'Temp', cvp: 'CVP', bis: 'BIS', rhythm: 'Rhythm',
-    nibp: 'NIBP', abp: 'ABP', abp2: 'ABP2', fio2: 'FiO₂', fiag: 'Fi agent', etag: 'Et agent', fin2o: 'Fi N₂O', etn2o: 'Et N₂O',
+    nibp: 'NIBP', abp: 'ABP', abp2: 'ABP2', fio2: 'FiO₂', eto2: 'Et O₂', fiag: 'Fi agent', etag: 'Et agent', fin2o: 'Fi N₂O', etn2o: 'Et N₂O',
   });
   const parts = [];
   for (const [k, v] of Object.entries(step.patch?.patient ?? {})) {
