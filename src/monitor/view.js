@@ -189,3 +189,18 @@ export function buildLinkBanner(doc) {
 }
 
 /** @typedef {ReturnType<typeof buildLinkBanner>} LinkBanner */
+
+/**
+ * "Tap anywhere to turn sound on": a small pill at the top centre, shown when Sound was on on this device but the
+ * browser wants a tap before it plays. One per page, kept outside the rebuilt view like the banner.
+ * @param {Document} doc
+ */
+export function buildSoundPrompt(doc) {
+  const el = doc.createElement('div');
+  el.className = 'sound-prompt';
+  el.dataset.testid = 'sound-prompt';
+  el.setAttribute('role', 'status');
+  el.hidden = true;
+  el.textContent = 'Tap anywhere to turn sound on';
+  return el;
+}

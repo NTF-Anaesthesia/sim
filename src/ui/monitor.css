@@ -107,3 +107,5 @@ html, body { margin: 0; height: 100%; background: var(--m-bg, #000); color: var(
 .link-banner[hidden] { display: none; }
 .link-banner .lb-sub { font-size: .6em; font-weight: 400; opacity: .85; }
 .link-banner .lb-join { font-size: .6em; color: inherit; pointer-events: auto; }
+.sound-prompt { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 21; max-width: calc(100vw - 32px); padding: 6px 16px; border-radius: 999px; background: rgba(0, 0, 0, .78); color: #fff; border: 1px solid rgba(255, 255, 255, .45); font: 600 15px/1.3 system-ui, sans-serif; text-align: center; cursor: pointer; }
+.sound-prompt[hidden] { display: none; }
