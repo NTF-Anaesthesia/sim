@@ -25,7 +25,7 @@ export function linkBanner({ status, downSince, lastStateAt, now }) {
   const down = now - downSince;
   if (down < LINK_GRACE_MS) return { show: false };
   const sub = lastStateAt > 0 ? `last update ${clockText(lastStateAt)}` : `not connected for ${Math.floor(down / 1000)} s`;
-  return { show: true, kind: 'lost', text: 'Connection lost: values may be out of date', sub };
+  return { show: true, kind: 'lost', text: 'Connection lost: values may be out of date, alarms continue', sub };
 }
 
 /**

@@ -273,8 +273,8 @@ Rules:
 - Server is the only writer of `rev`, `patients[].id`, `glide.startedAt`, `nibpRead.at`, `silencedUntil`, `events`.
 - Last write wins; `baseRev` is optional and only recorded in `events` (no rejection) in v1.
 - Clients reconnect with backoff 0.5, 1, 2, 4, 8 s (max 8 s), then keep trying; on reconnect the server's `state` replaces
-  local state. The monitor keeps drawing from the last state while disconnected and shows a small "reconnecting"
-  chip after 3 s.
+  local state. The monitor keeps drawing (and sounding its alarms, section 7) from the last state while disconnected
+  and shows a small "reconnecting" chip after 3 s.
 - The phone (`src/controller/feedback.js`) shows a banner under the header while offline ("Reconnecting… your changes
   are kept"; red "Room full" / "Room expired" with Reload), "Reconnected" for 3 s after, and one toast line above the
   tabs for every change that was not sent and every server `error` ("Refused: …", except `schema`). Nothing is resent
@@ -389,6 +389,15 @@ Evaluated **on each monitor** from glided values and `alarms.limits`; the contro
   (`performance.now()`), only filters what that monitor shows, and never changes room state or replays; so two monitors
   with different settings can disagree for those few seconds. Turning it on keeps an alarm already showing; turning it
   off shows any waiting alarm at once. Off, the alarms are exactly as before.
+- Connection lost: the monitor keeps judging its last known state on its own clock (server clock estimate), so its
+  alarm tones keep sounding and repeating, and a silence from that state runs out on time. The link status is not an
+  input to the tone step (`alarmToneStep` in `src/monitor/beeps.js`). The banner reads "Connection lost: values may be
+  out of date, alarms continue".
+- Beat beep (channels `spo2` and `qrs`, `beatBeeps` in `src/monitor/beeps.js`): with the SpO2 module on (probe on and a
+  pleth signal, quality not `none`) SpO2 is the tone source: one beep per pleth pulse, at the start of its upstroke
+  (`PLETH_DELAY`, 0.25 s after the R wave), pitch falling with the saturation (`spo2PitchHz`). A beat with no pulse gives
+  no beep, exactly as the pleth stays flat: PEA, VF, asystole, pulseless VT, dropped beats, pacing spikes that do not
+  capture. With SpO2 off, probe off or no pleth signal, a plain fixed-pitch beep on each QRS (R wave), as before.
 - Alarm state is not stored on the server and not shared; each monitor derives it, so all monitors agree because their
   inputs agree (the realistic alarm delay, a device option, can hold one back for a few seconds).
 
@@ -610,7 +619,7 @@ the existing per-device settings. The phone sets `postShock` in More and a scree
 - Patient fields (all additive, schema stays 1): `paceOn` (false), `paceRate` 30-180 (70), `paceMa` 0-200 (0), `paceMode` `demand`|`fixed` (demand), `paceThreshold` 10-250 (60, set from the phone), `paceNoSense` (false, set from the phone).
 - `pacing(p)` in `engine/rhythm.js` returns `{on, capture}`. `on` needs `paceOn` and pads on; `capture` also needs `paceMa >= paceThreshold` and a rhythm that can be captured (not VF, VT or torsades). Capture makes `pulseless()` false and `shown().hr` the paced rate when the patient's own rate is slower or absent.
 - Scheduler: intrinsic beats and pacer stimuli are merged in time order. A stimulus that captures outside the 0.3 s refractory period becomes a `paced` beat; otherwise it stays a `spike`. Demand mode times from the last complex it saw (inhibited by a faster intrinsic rhythm); fixed mode, and demand with failure to sense, time from the pacer's own last stimulus (so spikes land on intrinsic beats and in the refractory period). A captured beat restarts the intrinsic clock; intrinsic beats inside the refractory period are skipped.
-- Beeps, sync marks and the arterial baseline ignore `spike` beats.
+- Beeps, sync marks and the arterial baseline ignore `spike` beats (with SpO2 as the tone source a beep needs a pulse, section 7).
 - Message `{t:'pace', p, on?, rate?, ma?, mode?}` (at least one field; `validatePace`), sent from the defib screen only. Pads off refuses starting ("pads are off: pacing cannot start"). Logged as event kind `pace`, text like `on 70/min 80mA demand` or `off`. Threshold and failure to sense travel in the normal `set` patch (More tab, Pacing).
 - Defib screen: a PACER toggle, rate and output steppers (steps of 5), Demand/Fixed. `root.dataset.pacing` is `1` while pacing.
 
