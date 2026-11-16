@@ -78,19 +78,29 @@ export class RoomClient {
     const ws = new this.WS(this.url);
     this.ws = ws;
     ws.onopen = () => {
+      // A socket that was replaced while still connecting (wake on a slow network) must never go live: it would count
+      // as a second device in the room and start a ping chain nothing can stop.
+      if (this.ws !== ws || this.stopped) { try { ws.close(); } catch { /* already gone */ } return; }
       this.attempt = 0;
+      // Fresh clock estimate per connection: after an NTP step on wake or a manual clock change the old best round
+      // trip would pin a stale offset. The old offset stays until the first pong replaces it.
+      this.bestRtt = Infinity;
       this.setStatus('open');
       this.sendPing();
-      this.pingTimer = this.setTimer(() => this.pingLoop(), PING_EVERY_MS);
+      this.clearTimer(this.pingTimer);
+      this.pingTimer = this.setTimer(() => this.pingLoop(ws), PING_EVERY_MS);
     };
     ws.onmessage = (ev) => this.onMessage(String(ev.data));
     ws.onclose = (ev) => this.onClose(ev.code);
     ws.onerror = () => {};
   }
 
-  pingLoop() {
+  /** @param {WebSocket} [ws] the socket this chain belongs to; the chain ends once it is no longer current */
+  pingLoop(ws) {
+    if (this.stopped || (ws && this.ws !== ws)) return;
     this.sendPing();
-    this.pingTimer = this.setTimer(() => this.pingLoop(), PING_EVERY_MS);
+    this.clearTimer(this.pingTimer);
+    this.pingTimer = this.setTimer(() => this.pingLoop(ws), PING_EVERY_MS);
   }
 
   sendPing() {
@@ -121,9 +131,11 @@ export class RoomClient {
       this.pings.delete(msg.n);
       if (sent === undefined) return;
       const rtt = this.now() - sent;
-      if (rtt < this.bestRtt) {
+      const offset = msg.now + rtt / 2 - this.now();
+      // Keep the smallest-round-trip estimate, but follow a clock step (local or server) seen on a near-best ping.
+      if (rtt < this.bestRtt || (rtt < this.bestRtt * 1.5 + 20 && Math.abs(offset - this.offsetMs) > 250)) {
         this.bestRtt = rtt;
-        this.offsetMs = msg.now + rtt / 2 - this.now();
+        this.offsetMs = offset;
       }
     } else if (msg.t === 'history') {
       this.emit('history', msg);
@@ -172,7 +184,10 @@ export class RoomClient {
     this.clearTimer(this.retryTimer);
     this.clearTimer(this.pingTimer);
     const old = this.ws;
-    if (old) { old.onclose = null; old.onmessage = null; try { old.close(); } catch { /* already gone */ } }
+    if (old) {
+      old.onopen = null; old.onclose = null; old.onmessage = null; old.onerror = null;
+      try { old.close(); } catch { /* already gone */ }
+    }
     this.ws = null;
     this.attempt = 0;
     this.setStatus('reconnecting');
