@@ -203,3 +203,39 @@ test('steppers always move to a different wire value (F and kPa)', () => {
     }
   }
 });
+
+test('scenario strip: hidden with no run, on the Scenarios tab or once done; shows name, step, countdown and cue', async () => {
+  const { scenarioBar } = await import('../src/controller/scnbar.js');
+  const run = { name: 'Bleed <A>', p: 'p1', step: 1, total: 3, startedAt: 0, nextAt: 5000, waiting: false, pausedAt: 0, done: false, note: 'Ask for help' };
+  assert.equal(scenarioBar(undefined, { tab: 'vitals', line: '' }).show, false);
+  assert.equal(scenarioBar(null, { tab: 'vitals', line: '' }).show, false);
+  assert.equal(scenarioBar(run, { tab: 'scenarios', line: 'x' }).show, false, 'the full card is on the Scenarios tab');
+  assert.equal(scenarioBar({ ...run, done: true }, { tab: 'vitals', line: 'x' }).show, false);
+  const b = scenarioBar(run, { tab: 'vitals', line: 'Next step in 0:05' });
+  assert.ok(b.show);
+  assert.match(b.html, /data-testid="scnbar-name">Bleed &lt;A&gt;</);
+  assert.match(b.html, /data-testid="scnbar-step">1\/3 done</);
+  assert.match(b.html, /id="scnbar-count"[^>]*>Next step in 0:05</);
+  assert.match(b.html, /data-testid="scnbar-cue"[^>]*><b>Cue:<\/b> Ask for help</);
+  assert.match(b.html, /data-act="scn-pause" data-testid="scnbar-pause">Pause</);
+  assert.match(b.html, /data-act="scn-next" data-testid="scnbar-next">Skip wait</);
+  assert.doesNotMatch(b.html, /scn-stop/, 'Stop stays on the Scenarios tab');
+  assert.doesNotMatch(b.html, /data-testid="scn-(pause|next)"/, 'the card testids stay unique');
+  assert.doesNotMatch(scenarioBar({ ...run, note: undefined }, { tab: 'vitals', line: '' }).html, /scnbar-cue/);
+  assert.match(scenarioBar(run, { tab: 'alarms', bed: 'Bed 2', line: '' }).html, /· Bed 2 ·/);
+});
+
+test('scenario strip: waiting and paused change the labels and the key, the countdown does not', async () => {
+  const { scenarioBar } = await import('../src/controller/scnbar.js');
+  const run = { name: 'S', p: 'p1', step: 2, total: 3, startedAt: 0, nextAt: 0, waiting: true, pausedAt: 0, done: false };
+  const w = scenarioBar(run, { tab: 'vitals', line: 'Waiting for you: tap Next step.' });
+  assert.ok(w.show && w.waiting);
+  assert.match(w.html, /data-testid="scnbar-next">Next step</);
+  const p = scenarioBar({ ...run, waiting: false, pausedAt: 10, nextAt: 99 }, { tab: 'vitals', line: '' });
+  assert.ok(p.show && !p.waiting);
+  assert.match(p.html, /data-testid="scnbar-pause">Resume</);
+  assert.notEqual(w.key, p.key);
+  const a = scenarioBar({ ...run, waiting: false, nextAt: 5000 }, { tab: 'vitals', line: '0:05' });
+  const c = scenarioBar({ ...run, waiting: false, nextAt: 5000 }, { tab: 'vitals', line: '0:04' });
+  assert.ok(a.show && c.show && a.key === c.key, 'a ticking countdown does not rebuild the buttons');
+});
