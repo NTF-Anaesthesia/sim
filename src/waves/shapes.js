@@ -104,14 +104,20 @@ export function ecgSample(src, t, lead = 'ii') {
 
 /** Pulse reaches the finger about this long after the R wave. */
 export const PLETH_DELAY = 0.25;
-const plethBeat = (/** @type {number} */ x) => {
+/** Beat gap (s) below which the pleth's downslope shortens, so fast beats return near baseline instead of piling up. */
+const PLETH_FULL_GAP = 0.75;
+const plethBeat = (/** @type {number} */ x, gap = 1) => {
   if (x < 0) return 0;
-  const up = x < 0.12 ? g(x, 0.12, 0.05) : Math.exp(-(x - 0.12) / 0.32);
+  const tau = 0.32 * Math.min(1, gap / PLETH_FULL_GAP);
+  const up = x < 0.12 ? g(x, 0.12, 0.05) : Math.exp(-(x - 0.12) / tau);
   return up + 0.12 * g(x, 0.36, 0.04) * Math.exp(-x / 0.6);
 };
 
 /** Largest a single pleth beat gets, with or without a ventilation swing, so the lane never clips. */
 const PLETH_MAX = 1.3;
+/** Above this the pleth bends smoothly towards PLETH_KNEE + PLETH_SOFT instead of leaving its lane (fast, wide pulses). */
+const PLETH_KNEE = 1.1;
+const PLETH_SOFT = 0.25;
 /** The pleth swings a little more with the breath than the arterial pulse pressure does. */
 const PLETH_PPV_GAIN = 1.4;
 
@@ -132,9 +138,11 @@ export function plethSample(src, t, quality, ppv = 0) {
     const pp = Math.max(0, b[k].sbp - b[k].dbp);
     let a = Math.min(1.3, pp / 45) * b[k].amp;
     if (swing) a = Math.min(PLETH_MAX, a * ppvFactor(src.breaths, b[k].t, ppv * PLETH_PPV_GAIN));
-    v += plethBeat(t - PLETH_DELAY - b[k].t) * a;
+    const gap = k > 0 ? b[k].t - b[k - 1].t : 1;
+    v += plethBeat(t - PLETH_DELAY - b[k].t, gap) * a;
   }
   if (swing && pulsed) v += 0.04 * Math.min(2, ppv / 15) * breathPhase(src.breaths, t - PLETH_DELAY);
+  if (v > PLETH_KNEE) v = PLETH_KNEE + PLETH_SOFT * Math.tanh((v - PLETH_KNEE) / PLETH_SOFT); // the lane tops out at 1.4
   if (quality === 'poor') {
     v = v * 0.35 + 0.05 * Math.sin(t * 37) + 0.04 * Math.sin(t * 61 + 1) + 0.03 * Math.sin(t * 17);
   }
