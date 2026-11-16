@@ -102,3 +102,8 @@ html, body { margin: 0; height: 100%; background: var(--m-bg, #000); color: var(
 .defib .d-shock[data-armed="1"] { background: var(--c-alarmHigh, #ff2020); color: var(--c-flashText, #000); border-color: var(--c-alarmHigh, #ff2020); }
 .defib .d-sync[aria-pressed="true"] { background: var(--c-alarmMed, #ffd000); color: var(--c-flashText, #000); border-color: var(--c-alarmMed, #ffd000); }
 .defib[data-waiting="1"] .d-msg { font-weight: 700; }
+/* connection-lost banner (src/monitor/view.js buildLinkBanner): a centred box, never the alarm colours, waves stay visible around it */
+.link-banner { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 20; max-width: min(90vw, 640px); padding: 16px 24px; border-radius: 10px; background: rgba(0, 0, 0, .72); color: #fff; border: 1px solid rgba(255, 255, 255, .35); font: 600 clamp(18px, 3.2vw, 30px)/1.25 var(--m-font, system-ui, sans-serif); text-align: center; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.link-banner[hidden] { display: none; }
+.link-banner .lb-sub { font-size: .6em; font-weight: 400; opacity: .85; }
+.link-banner .lb-join { font-size: .6em; color: inherit; pointer-events: auto; }

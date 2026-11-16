@@ -255,3 +255,78 @@ test('settings: namespaced, JSON, survives broken storage', () => {
 test('defaultPatient is usable by the waves layer', () => {
   assert.equal(defaultPatient('p9', 'x', 0).id, 'p9');
 });
+
+// --- link banner and wake (src/monitor/link.js) ---
+import { LINK_GRACE_MS, clockText, linkBanner, watchWake } from '../src/monitor/link.js';
+import { AudioMixer } from '../src/monitor/audio.js';
+
+test('link banner: hidden while open, after a 3 s blip; shown after 6 s with the last update; cleared on open', () => {
+  const lastStateAt = new Date(2026, 10, 16, 9, 5, 7).getTime();
+  const downSince = lastStateAt + 1000;
+  assert.equal(linkBanner({ status: 'open', downSince: 0, lastStateAt, now: downSince + 60000 }).show, false);
+  assert.equal(linkBanner({ status: 'reconnecting', downSince, lastStateAt, now: downSince + 3000 }).show, false);
+  const b = linkBanner({ status: 'reconnecting', downSince, lastStateAt, now: downSince + 6000 });
+  assert.equal(b.show, true);
+  assert.ok(b.show && b.kind === 'lost' && /Connection lost/.test(b.text) && b.sub === 'last update 09:05:07');
+  assert.equal(linkBanner({ status: 'open', downSince, lastStateAt, now: downSince + 7000 }).show, false);
+  assert.equal(LINK_GRACE_MS, 5000);
+  assert.equal(clockText(new Date(2026, 0, 1, 23, 0, 9).getTime()), '23:00:09');
+});
+
+test('link banner: first connection gets the same grace, then counts seconds', () => {
+  assert.equal(linkBanner({ status: 'connecting', downSince: 1000, lastStateAt: 0, now: 5000 }).show, false);
+  const b = linkBanner({ status: 'connecting', downSince: 1000, lastStateAt: 0, now: 8500 });
+  assert.ok(b.show && b.kind === 'lost' && b.sub === 'not connected for 7 s');
+});
+
+test('link banner: full and expired show at once; expired is its own kind (the join link)', () => {
+  const e = linkBanner({ status: 'expired', downSince: 1000, lastStateAt: 900, now: 1000 });
+  assert.ok(e.show && e.kind === 'expired' && e.text === 'This room has expired');
+  const f = linkBanner({ status: 'full', downSince: 1000, lastStateAt: 0, now: 1000 });
+  assert.ok(f.show && f.kind === 'full' && f.text === 'Room is full');
+});
+
+/** @param {string} vis */
+const fakeDoc = (vis) => Object.assign(new EventTarget(), { visibilityState: vis });
+
+test('watchWake: becoming visible, pageshow, online and focus wake the client; hidden does not', () => {
+  const doc = fakeDoc('hidden');
+  const win = new EventTarget();
+  let wakes = 0;
+  let shown = 0;
+  const off = watchWake({ wake: () => { wakes++; } }, { doc, win, onVisible: () => { shown++; } });
+  doc.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(wakes, 0);
+  doc.visibilityState = 'visible';
+  doc.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(wakes, 1);
+  assert.equal(shown, 1);
+  for (const ev of ['pageshow', 'online', 'focus']) win.dispatchEvent(new Event(ev));
+  assert.equal(wakes, 4);
+  off();
+  doc.dispatchEvent(new Event('visibilitychange'));
+  win.dispatchEvent(new Event('online'));
+  assert.equal(wakes, 4);
+});
+
+test('AudioMixer.resume: resumes a suspended context only when sound was turned on', async () => {
+  let resumes = 0;
+  const ctx = {
+    state: 'running', destination: {},
+    createGain: () => ({ gain: { value: 0 }, connect() {} }),
+    async resume() { resumes++; this.state = 'running'; },
+    async suspend() { this.state = 'suspended'; },
+  };
+  const a = new AudioMixer({ volume: () => 1, makeContext: () => /** @type {any} */ (ctx) });
+  await a.resume();
+  assert.equal(resumes, 0);
+  await a.enable();
+  assert.equal(resumes, 1);
+  ctx.state = 'interrupted';
+  await a.resume();
+  assert.equal(resumes, 2);
+  assert.equal(a.enabled, true);
+  await a.disable();
+  await a.resume();
+  assert.equal(resumes, 2);
+});

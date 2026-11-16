@@ -39,12 +39,15 @@ export class AudioMixer {
     this.ctx = null;
     /** @type {Map<string, GainNode>} */
     this.gains = new Map();
+    /** sound was turned on with a tap and not turned off since */
+    this.wanted = false;
   }
 
   get enabled() { return !!this.ctx && this.ctx.state === 'running'; }
 
   /** Call from a tap. */
   async enable() {
+    this.wanted = true;
     if (!this.ctx) {
       this.ctx = this.makeContext();
       for (const ch of CHANNELS) {
@@ -57,7 +60,17 @@ export class AudioMixer {
     await this.ctx.resume();
   }
 
-  async disable() { await this.ctx?.suspend(); }
+  async disable() { this.wanted = false; await this.ctx?.suspend(); }
+
+  /**
+   * After the page comes back (lid opened, tab shown): browsers may have suspended or interrupted the context. Resume it
+   * if sound was on; a browser that still wants a tap refuses quietly and the Sound button stays off.
+   */
+  async resume() {
+    const ctx = this.ctx;
+    if (!this.wanted || !ctx || ctx.state === 'running' || ctx.state === 'closed') return;
+    try { await ctx.resume(); } catch { /* needs a tap again */ }
+  }
 
   /** Re-read the volumes (after a setting changed). */
   refreshVolumes() {

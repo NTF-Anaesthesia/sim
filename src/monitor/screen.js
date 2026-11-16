@@ -22,7 +22,8 @@ import { createDefib } from '../defib/index.js';
 import { createIdentity } from './identity.js';
 import { createModuleRegistry, registerBuiltinModules } from './modules.js';
 import { createSettings } from './settings.js';
-import { buildView } from './view.js';
+import { buildLinkBanner, buildView } from './view.js';
+import { linkBanner, watchWake } from './link.js';
 import { NIBP_INTERVALS, intervalLabel } from '../controller/params.js';
 
 const TICK_MS = 250;
@@ -79,6 +80,13 @@ export function mountScreen(root, opts) {
   /** @type {import('../shared/schema.js').Screen | null} this monitor's named screen (set from the phone) */
   let screen = null;
   let pick = opts.pick ?? null; // bed chosen on this device (`?p=`)
+  // link state for the banner: when the status last left 'open' (page load counts, before the first connection) and
+  // the local time of the last state message
+  let downSince = Date.now();
+  let lastStatus = client.status;
+  let lastStateAt = 0;
+  const banner = buildLinkBanner(root.ownerDocument);
+  root.ownerDocument.body.append(banner.el);
 
   const audio = new AudioMixer({
     volume: (ch) => (theme.audio?.[ch]?.volume ?? 1) * settings.get(`vol.${ch}`, 1),
@@ -331,9 +339,27 @@ export function mountScreen(root, opts) {
     renderChips();
   }
 
+  /** Show or clear the connection-lost banner (every tick, on every screen kind, before any state has come). */
+  function renderBanner() {
+    const s = client.status;
+    if (s !== lastStatus) {
+      if (lastStatus === 'open') downSince = Date.now();
+      lastStatus = s;
+    }
+    const b = linkBanner({ status: s, downSince, lastStateAt, now: Date.now() });
+    banner.el.hidden = !b.show;
+    if (!b.show) { delete banner.el.dataset.kind; return; }
+    banner.el.dataset.kind = b.kind;
+    if (banner.text.textContent !== b.text) banner.text.textContent = b.text;
+    if (banner.sub.textContent !== b.sub) banner.sub.textContent = b.sub;
+    banner.sub.hidden = !b.sub;
+    banner.join.hidden = b.kind !== 'expired';
+  }
+
   /** @param {number} perfNow */
   function tick(perfNow) {
     lastTick = perfNow;
+    renderBanner();
     if (!state || !patient || !view) return;
     const nowMs = client.serverNow();
     const tSec = perfNow / 1000;
@@ -476,17 +502,24 @@ export function mountScreen(root, opts) {
       return;
     }
     state = st;
+    lastStateAt = Date.now();
     applyState();
     pickFlush();
   });
-  client.on('status', () => renderChips());
+  client.on('status', () => { renderChips(); renderBanner(); });
   const refill = () => { needRefill = true; };
   addEventListener('resize', refill);
   document.addEventListener('visibilitychange', async () => {
     refill();
     if (document.visibilityState === 'visible' && wake === null && wakeWanted) await acquireWake();
   });
+  // laptop lid opened, tab shown, Wi-Fi back: check the socket at once instead of waiting out a half-open one or the
+  // backoff (RoomClient.wake ignores a full or expired room); a sound context the browser suspended is resumed
+  watchWake(client, { doc: document, win: window, onVisible: () => { audio.resume(); } });
   document.addEventListener('fullscreenchange', renderChips);
+  // the frame loop's tick only runs on the monitor view with a state; the banner must also work on the defib screen,
+  // before the first state and while the page shows a frozen picture
+  setInterval(renderBanner, TICK_MS);
   requestAnimationFrame(frame);
-  return { audio, panel, tick: () => tick(performance.now()) };
+  return { audio, panel, banner, tick: () => tick(performance.now()) };
 }
