@@ -439,6 +439,7 @@
     "flashHz": 1,
     "limitStyle": "small",
     "tones": "iec",
+    "pattern": "iec",
     "toneHz": {
       "high": 960,
       "medium": 800,

@@ -10,9 +10,14 @@ export const PRIORITY = { none: 0, low: 1, medium: 2, high: 3 };
 export const PRIORITY_NAME = { 0: 'none', 1: 'low', 2: 'medium', 3: 'high' };
 export const SILENCE_MS = 120000;
 export const NIBP_OVERDUE_MS = 10 * 60000;
-/** Repeat interval of the tone burst per priority (ms). */
-export const TONE_EVERY_MS = { 3: 6000, 2: 12000, 1: 24000 };
-/** Pulses per burst per priority. */
+/**
+ * Repeat interval of the tone burst per priority (ms), IEC 60601-1-8 style (the default `alarmStyle.pattern: "iec"`):
+ * high every 5 s (the standard allows 2.5 to 15 s), medium every 7.5 s, low every 20 s (15 to 30 s, or once).
+ */
+export const TONE_EVERY_MS = { 3: 5000, 2: 7500, 1: 20000 };
+/** Repeat interval per priority of the earlier pattern (`alarmStyle.pattern: "classic"`). */
+export const CLASSIC_TONE_EVERY_MS = { 3: 6000, 2: 12000, 1: 24000 };
+/** Pulses per burst per priority of the earlier pattern (`classic`); the IEC pattern is `alarmPattern` in monitor/audio.js. */
 export const TONE_PULSES = { 3: 10, 2: 3, 1: 2 };
 
 /**
@@ -166,10 +171,11 @@ export class AlarmTracker {
  * @param {boolean} silenced
  * @param {{ lastAt: number, lastPriority: number }} st last burst
  * @param {number} nowMs
+ * @param {string} [pattern] theme `alarmStyle.pattern`: `iec` (default) or `classic`
  */
-export function burstDue(priority, silenced, st, nowMs) {
+export function burstDue(priority, silenced, st, nowMs, pattern = 'iec') {
   if (priority <= 0 || silenced) return false;
   if (priority > st.lastPriority) return true;
-  const every = /** @type {Record<number, number>} */ (TONE_EVERY_MS)[priority];
+  const every = /** @type {Record<number, number>} */ (pattern === 'classic' ? CLASSIC_TONE_EVERY_MS : TONE_EVERY_MS)[priority];
   return nowMs - st.lastAt >= every;
 }

@@ -77,5 +77,5 @@ export const DEFAULT_THEME = {
     show: false, position: 'bottom', size: 1, radius: 8, color: '#ffffff', background: '#1a1a1a', border: '#606060',
     nibp: true, cycle: true, silence: true, tof: false,
   },
-  alarmStyle: { barPosition: 'top-right', flashHz: 1, limitStyle: 'small', tones: 'iec', toneHz: { high: 960, medium: 800, low: 640 } },
+  alarmStyle: { barPosition: 'top-right', flashHz: 1, limitStyle: 'small', tones: 'iec', pattern: 'iec', toneHz: { high: 960, medium: 800, low: 640 } },
 };

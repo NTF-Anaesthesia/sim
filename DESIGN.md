@@ -356,8 +356,17 @@ Evaluated **on each monitor** from glided values and `alarms.limits`; the contro
   "NIBP not measured > 10 min" and similar notices. Highest priority wins in the alarm bar.
 - Display: alarm bar top right with the text ("HR LOW", "ASYSTOLE"), numeric of the violating parameter flashes
   (1 Hz, inverted colours); high = red, medium = yellow bar background.
-- Sound: tone sequence per priority generated with Web Audio (no audio files): high 10 pulses burst, medium 3 pulses,
-  low 2 pulses; repeated while active. Audio starts only after a tap on the monitor ("enable sound" button) because of
+- Sound: tone sequence per priority generated with Web Audio (no audio files), IEC 60601-1-8 style by default
+  (`alarmStyle.pattern: "iec"`). **High**: 5 pulses in a 3 + 2 group (150 ms pulses 100 ms apart; the pause between the
+  3 and the 2 is one missing pulse, 350 ms), repeated every 5 s (the standard allows 2.5 to 15 s). **Medium**: 3 evenly
+  spaced 200 ms pulses (200 ms apart), every 7.5 s. **Low**: 2 pulses like medium, every 20 s (15 to 30 s allowed). Each
+  pulse is harmonic-rich (`alarmStyle.tones: "iec"`: the fundamental plus four harmonics at 0.8, 0.6, 0.5 and 0.4 of its
+  amplitude, a Web Audio periodic wave) with 20 ms soft attack and decay. The fundamental is the theme's
+  `alarmStyle.toneHz` held to 150-1000 Hz, and high is never below medium (raised to the medium pitch if a theme sets it
+  lower). The pattern is the pure function `alarmPattern(priority, alarmStyle)` in `src/monitor/audio.js` (a list of
+  `{startMs, freq, durMs}`), the repeat intervals `TONE_EVERY_MS` in `src/engine/alarms.js`. `tones: "soft"` keeps the
+  same pattern with plain sine pulses; `pattern: "classic"` is the earlier sound (high 10 pulses in two groups of five,
+  medium 3, low 2, 100 ms pulses, repeated every 6, 12 and 24 s, pitch as written). Repeated while active. Audio starts only after a tap on the monitor ("enable sound" button) because of
   browser autoplay rules; sound is off per device until then.
 - Silence: `silence` message sets `silencedUntil = now + 120000`; while silenced, tones are off and the bar shows a
   silence icon with remaining time; flashing continues. A **new** alarm of higher priority than anything active when
@@ -403,7 +412,7 @@ file, URL or paste (S4). **THEMES.md documents every field.**
   "numerics": { "showLimits": true, "limitsPosition": "beside", "decimals": { "temp": 1 } },
   "labels": { "ecg": "HR", "spo2": "SpO2", "etco2": "EtCO2", "rr": "RR", "nibp": "NIBP", "temp": "Temp", "abp": "ABP",
               "units": { "hr": "/min", "etco2": "mmHg", "rr": "/min", "temp": "°C", "nibp": "mmHg", "abp": "mmHg" } },
-  "alarmStyle": { "barPosition": "top-right", "flashHz": 1, "limitStyle": "small", "tones": "iec" }
+  "alarmStyle": { "barPosition": "top-right", "flashHz": 1, "limitStyle": "small", "tones": "iec", "pattern": "iec" }
 }
 ```
 
@@ -417,8 +426,8 @@ editor and the range checks in `resolve.js`), `migrate.js` (`themeSchema` steps;
 (`parseThemeText`, `validateTheme` with fatal errors versus per-value warnings, `loadTheme` which never throws),
 `builtin.js` (default and "Generic light", a second theme with another layout and palette), `store.js` (device choice
 `sim.settings.theme`, precedence device, then room, then default) and `panel.js` (shared DOM panel: choose, import by file,
-URL or paste, export, live editor). New alarm style keys: `alarmStyle.toneHz.{high,medium,low}`, `tones` (`iec` triangle or
-`soft` sine), `limitStyle` (`small`/`bold`), `barPosition`, and `numerics.limitsPosition` (`beside`/`below`) now take effect.
+URL or paste, export, live editor). New alarm style keys: `alarmStyle.toneHz.{high,medium,low}`, `tones` (`iec` or
+`soft` sine; `iec` is now harmonic-rich, see section 7), `pattern` (`iec`/`classic`, section 7), `limitStyle` (`small`/`bold`), `barPosition`, and `numerics.limitsPosition` (`beside`/`below`) now take effect.
 Refused outright: not an object, over 32 KB, newer schema, custom CSS/script/markup (keys and text), no usable cell, over 12 KB
 complete. The Room validates `themeJson` with the same code and stores the complete theme; `theme: 'default'` clears it.
 

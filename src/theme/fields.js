@@ -78,6 +78,7 @@ export const FIELDS = [
   { path: 'alarmStyle.flashHz', label: 'Flash rate (Hz)', group: 'Alarms', type: 'number', min: 0.2, max: 4, step: 0.1 },
   { path: 'alarmStyle.limitStyle', label: 'Limit text', group: 'Alarms', type: 'select', options: ['small', 'bold'] },
   { path: 'alarmStyle.tones', label: 'Tone wave', group: 'Alarms', type: 'select', options: ['iec', 'soft'] },
+  { path: 'alarmStyle.pattern', label: 'Tone pattern', group: 'Alarms', type: 'select', options: ['iec', 'classic'] },
   { path: 'alarmStyle.toneHz.high', label: 'High tone (Hz)', group: 'Alarms', type: 'number', min: 200, max: 2000, step: 10 },
   { path: 'alarmStyle.toneHz.medium', label: 'Medium tone (Hz)', group: 'Alarms', type: 'number', min: 200, max: 2000, step: 10 },
   { path: 'alarmStyle.toneHz.low', label: 'Low tone (Hz)', group: 'Alarms', type: 'number', min: 200, max: 2000, step: 10 },
