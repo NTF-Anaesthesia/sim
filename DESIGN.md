@@ -239,7 +239,7 @@ Client to server:
 | `mark` | `p?`, `text?` | bookmark in the event log (`kind: "bookmark"`, text up to 200 chars) for debriefs; the phone's Mark button (header) and Trends tab send it. `rev` +1. |
 | `history` | `range?` (ms, default 4 h, max 24 h), `all?` | asks for the full log (section 5a); the sender gets `history`. Not stored, `rev` unchanged. |
 | `tof` | `p?`, `after?` | take a TOF reading now (see Gas and TOF); a stale `after` is ignored (several monitors, one reading). |
-| `silence` | none | `alarms.silencedUntil` = now + 120000. |
+| `silence` | optional `cancel: true` | `alarms.silencedUntil` = now + 120000; with `cancel: true`, 0 (alarms sound again at once). |
 | `ping` | `n` | server replies `pong` with same `n`; used to measure delay and keep the connection alive. |
 | `addScreen` | `name?`, `kind?` | adds a named screen (section 4a; id `s<n>`, name default `Screen <n>`); the sender gets `screenAdded`. `rev` +1. |
 | `forgetScreen` | `s` | deletes screen `s`. `rev` +1. |
@@ -362,6 +362,8 @@ Evaluated **on each monitor** from glided values and `alarms.limits`; the contro
 - Silence: `silence` message sets `silencedUntil = now + 120000`; while silenced, tones are off and the bar shows a
   silence icon with remaining time; flashing continues. A **new** alarm of higher priority than anything active when
   silenced ends the silence on the monitor.
+- The phone's header has Silence on every tab: `Silence`, then `Silenced m:ss` (tap to cancel), or `Alarms off`
+  (tap opens the Alarms tab). The Alarms tab's button agrees (`Cancel silence (N s left)` while silenced).
 - Master off (`alarms.enabled = false`): no bar, no flashing, no sound.
 - Alarm state is not stored on the server and not shared; each monitor derives it, so all monitors agree because their
   inputs agree.

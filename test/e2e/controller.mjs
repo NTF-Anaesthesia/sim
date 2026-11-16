@@ -40,16 +40,34 @@ try {
   check(await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no horizontal scroll at 390 px');
   check(await phone.getByTestId('offline-banner').isHidden(), 'offline banner hidden while connected');
 
+  // header Silence, on every tab: silence with a countdown, tap again to cancel; Mark confirms in the toast line
+  await phone.getByTestId('silence-top').click();
+  await until((s) => s.alarms.silencedUntil > 0);
+  await phone.locator('[data-testid="silence-top"][data-state="silenced"]').waitFor({ timeout: 3000 });
+  check(/^Silenced \d:\d\d$/.test((await phone.getByTestId('silence-top').textContent()) ?? ''), 'header shows Silenced m:ss');
+  await phone.getByTestId('silence-top').click();
+  await until((s) => s.alarms.silencedUntil === 0);
+  await phone.locator('[data-testid="silence-top"][data-state="ready"]').waitFor({ timeout: 3000 });
+  check(true, 'tapping Silenced cancels the silence on the monitor');
+  await phone.getByTestId('mark').click();
+  await phone.locator('[data-testid="toast"]', { hasText: 'Bookmarked at' }).waitFor({ timeout: 3000 });
+  check(true, 'Mark confirms in the toast on the Vitals tab');
+  await phone.setViewportSize({ width: 320, height: 800 });
+  check(await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no horizontal scroll at 320 px with the Silence button');
+  await phone.setViewportSize({ width: 390, height: 800 });
+
   // pending edits stay local until Apply, then go out together over the chosen glide time
   await phone.getByTestId('glide-30000').click();
   for (let i = 0; i < 20; i++) await phone.locator('[data-id="hr"] [data-step="1"]').click();
   await phone.locator('[data-id="spo2"] [data-pct="-10"]').click();
   check(mon.state.patients[0].hr === 80, 'unapplied change is not sent');
+  check(await phone.locator('[data-bed="p1"][data-pending="true"]').count() === 1, 'bed chip shows a dot for unapplied changes');
   const t0 = Date.now();
   await phone.getByTestId('apply').click();
   await until((s) => s.patients[0].hr === 100 && s.patients[0].spo2 === 88);
   const dt = Date.now() - t0;
   check(dt < LIMIT_MS, `applied HR and SpO2 reached the monitor together in ${dt} ms`);
+  check(await phone.locator('[data-bed="p1"][data-pending="true"]').count() === 0, 'the dot goes after Apply');
   check(mon.state.patients[0].glide.durationMs === 90000, 'longest glide recorded: SpO2 starts at 3x the 30 s speed');
   check(mon.state.patients[0].glide.glideMsBy?.hr === 30000, 'HR keeps the chosen 30 s in glideMsBy');
   await phone.locator('#progress').waitFor({ state: 'visible', timeout: 3000 });

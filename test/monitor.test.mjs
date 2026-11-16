@@ -122,6 +122,13 @@ test('alarms: limits give medium, lethal rhythms high, sensor off low, silence f
   assert.equal(t.update(med, cfg(1000 + SILENCE_MS), 7000).silenced, false, 'and it stays broken');
   assert.equal(new AlarmTracker().update(med, cfg(1000 + SILENCE_MS), 1000 + SILENCE_MS + 1).silenced, false, 'expires');
   assert.equal(t.update(med, { enabled: false, silencedUntil: 0 }, 9000).master, false);
+  // a cancelled silence (silencedUntil back to 0) sounds again at once, and a new silence then holds again
+  const c = new AlarmTracker();
+  assert.equal(c.update(med, cfg(1000 + SILENCE_MS), 1000).silenced, true);
+  const back = c.update(med, cfg(0), 2000);
+  assert.equal(back.silenced, false, 'cancel ends the silence at once');
+  assert.equal(burstDue(back.priority, back.silenced, { lastAt: 0, lastPriority: 0 }, 2000), true, 'tones play again');
+  assert.equal(c.update(med, cfg(3000 + SILENCE_MS), 3000).silenced, true, 'a new silence works after a cancel');
 });
 
 test('tone bursts repeat by priority and restart for a higher one', () => {
