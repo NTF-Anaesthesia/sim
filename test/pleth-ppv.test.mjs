@@ -63,3 +63,18 @@ test('pleth swing never makes a beat taller than the lane allows', () => {
   assert.ok(Math.max(...a) < 1.47, String(Math.max(...a)));
   assert.ok(Math.min(...a) > -0.17, String(Math.min(...a)));
 });
+
+test('fast, wide pulses stay inside the pleth lane and still return towards baseline', () => {
+  for (const [hr, ppv] of [[150, 0], [180, 0], [150, 40], [200, 0]]) {
+    const src = source({ sbp: 210, dbp: 55, hr }, 30);
+    const a = trace((t) => plethSample(src, t, 'good', ppv), 8, 28, 0.004);
+    assert.ok(Math.max(...a) < 1.4, `hr ${hr} ppv ${ppv}: max ${Math.max(...a)}`);
+    assert.ok(Math.min(...a) < 0.5, `hr ${hr} ppv ${ppv}: trough ${Math.min(...a)}`);
+  }
+});
+
+test('normal rates keep the same pleth shape', () => {
+  const src = source({ hr: 72 }, 30);
+  const a = trace((t) => plethSample(src, t, 'good', 0), 8, 28, 0.004);
+  assert.ok(Math.max(...a) < 1.1 && Math.max(...a) > 0.8, String(Math.max(...a)));
+});
