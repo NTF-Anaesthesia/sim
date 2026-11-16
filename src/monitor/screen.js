@@ -48,6 +48,7 @@ export function mountScreen(root, opts) {
   const src = new WaveSource(7);
   const tracker = new AlarmTracker();
   const burstSt = { lastAt: 0, lastPriority: 0 };
+  let brokeSent = 0; // the silence this monitor last told the room it saw broken by a new alarm
   let theme = resolveTheme(undefined).theme;
   let themeKey = '';
   const screenPick = () => { const m = /** @type {string} */ (settings.get('screen', 'theme')); return m === 'fill' || m === 'fixed' ? m : 'theme'; };
@@ -445,6 +446,12 @@ export function mountScreen(root, opts) {
       bis: s.bis === null ? null : Math.round(s.bis),
     }, nowMs);
     const av = tracker.update(alarms, { enabled: state.alarms.enabled, silencedUntil: state.alarms.silencedUntil }, nowMs);
+    if (av.broke && av.broke !== brokeSent) {
+      // a new alarm broke the silence: sound at once, and end the room's silence so the phone and other screens agree
+      brokeSent = av.broke;
+      burstSt.lastPriority = 0;
+      client.send({ t: 'silence', broken: true, until: av.broke });
+    }
 
     const ctx = {
       patient, state, v, nibp: nb, nowMs, theme,

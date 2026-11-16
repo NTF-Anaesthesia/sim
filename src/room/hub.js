@@ -103,12 +103,21 @@ export class RoomHub {
       }
       case 'addPatient': return this.apply(clientId, now, msg, (s) => this.doAdd(s, msg, now));
       case 'removePatient': return this.apply(clientId, now, msg, (s) => this.doRemove(s, msg));
-      case 'silence': return this.apply(clientId, now, msg, (s) => {
-        // cancel: true ends a silence now (monitors sound again at once); otherwise silence for SILENCE_MS
-        if (msg.cancel === true) { s.alarms.silencedUntil = 0; return { kind: 'silence', what: 'silence off' }; }
-        s.alarms.silencedUntil = now + SILENCE_MS;
-        return { kind: 'silence', what: 'silence' };
-      });
+      case 'silence': {
+        // broken: true (from a monitor) = a new alarm broke the silence ending at `until`: end it for everyone; a stale
+        // report (that silence already ended or was replaced by a fresh one) changes nothing
+        if (msg.broken === true) {
+          const until = (await this.state()).alarms.silencedUntil;
+          if (typeof msg.until !== 'number' || msg.until !== until || until <= now) return {};
+          return this.apply(clientId, now, msg, (s) => { s.alarms.silencedUntil = 0; return { kind: 'silence', what: 'silence broken' }; });
+        }
+        return this.apply(clientId, now, msg, (s) => {
+          // cancel: true ends a silence now (monitors sound again at once); otherwise silence for SILENCE_MS
+          if (msg.cancel === true) { s.alarms.silencedUntil = 0; return { kind: 'silence', what: 'silence off' }; }
+          s.alarms.silencedUntil = now + SILENCE_MS;
+          return { kind: 'silence', what: 'silence' };
+        });
+      }
       case 'history': return { reply: await this.history(msg, now) };
       case 'mark': return this.apply(clientId, now, msg, (s) => this.doMark(s, msg));
       case 'addScreen': {
