@@ -62,7 +62,7 @@ export const LIGHT_THEME = {
     wave: { ecg: 'ECG', ecg2: 'V1', spo2: 'SpO2', etco2: 'CO2', abp: 'ART', abp2: 'ART2', cvp: 'CVP', gas: 'AGENT', o2: 'O2', bis: 'EEG' },
     off: { ecg: 'LEADS OFF', ecg2: 'LEADS OFF', spo2: 'PROBE OFF', etco2: 'CO2 LINE OFF', abp: 'ART LINE OFF', abp2: 'ART2 LINE OFF', cvp: 'CVP LINE OFF', gas: 'GAS LINE OFF', bis: 'BIS SENSOR OFF' },
   },
-  alarmStyle: { barPosition: 'top-center', flashHz: 1.5, limitStyle: 'bold', tones: 'soft', toneHz: { high: 880, medium: 700, low: 560 } },
+  alarmStyle: { barPosition: 'top-center', flashHz: 1.5, limitStyle: 'bold', tones: 'iec', pattern: 'iec', toneHz: { high: 880, medium: 700, low: 560 } },
 };
 
 /** @type {{ id: string, theme: Record<string, any> }[]} */

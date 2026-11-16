@@ -438,7 +438,8 @@
     "barPosition": "top-center",
     "flashHz": 1.5,
     "limitStyle": "bold",
-    "tones": "soft",
+    "tones": "iec",
+    "pattern": "iec",
     "toneHz": {
       "high": 880,
       "medium": 700,

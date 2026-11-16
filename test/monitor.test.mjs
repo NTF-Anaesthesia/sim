@@ -5,7 +5,7 @@ import { BreathScheduler } from '../src/engine/breaths.js';
 import { AlarmTracker, burstDue, evaluateAlarms, SILENCE_MS } from '../src/engine/alarms.js';
 import { NibpMachine, ageText, cuffPressure, mapOf, nibpCycleDue, nibpJitter, DEFLATE_STEP } from '../src/engine/nibp.js';
 import { JITTER_AMP, jittered } from '../src/engine/jitter.js';
-import { burstPattern, spo2PitchHz } from '../src/monitor/audio.js';
+import { alarmPattern, AudioMixer as Mixer, IEC_HARMONICS, IEC_MAX_HZ, IEC_MIN_HZ, PULSE_EDGE_SEC, spo2PitchHz } from '../src/monitor/audio.js';
 import { resolveTheme, waveSettings } from '../src/theme/resolve.js';
 import { layoutCells } from '../src/theme/layout.js';
 import { DEFAULT_THEME } from '../src/theme/default.js';
@@ -184,9 +184,90 @@ test('tone bursts repeat by priority and restart for a higher one', () => {
   assert.equal(burstDue(2, true, { lastAt: 0, lastPriority: 0 }, 1e6), false);
   assert.equal(burstDue(2, false, { lastAt: 0, lastPriority: 0 }, 1000), true);
   assert.equal(burstDue(2, false, { lastAt: 1000, lastPriority: 2 }, 5000), false);
-  assert.equal(burstDue(2, false, { lastAt: 1000, lastPriority: 2 }, 13500), true);
+  assert.equal(burstDue(2, false, { lastAt: 1000, lastPriority: 2 }, 8500), true, 'medium repeats every 7.5 s');
   assert.equal(burstDue(3, false, { lastAt: 1000, lastPriority: 2 }, 1500), true);
-  assert.ok(burstPattern(3).length > burstPattern(1).length);
+  assert.equal(burstDue(3, false, { lastAt: 1000, lastPriority: 3 }, 5900), false);
+  assert.equal(burstDue(3, false, { lastAt: 1000, lastPriority: 3 }, 6000), true, 'high repeats every 5 s');
+  assert.equal(burstDue(1, false, { lastAt: 1000, lastPriority: 1 }, 20900), false);
+  assert.equal(burstDue(1, false, { lastAt: 1000, lastPriority: 1 }, 21000), true, 'low repeats every 20 s');
+  assert.equal(burstDue(2, false, { lastAt: 1000, lastPriority: 2 }, 8500, 'classic'), false, 'classic keeps 12 s');
+  assert.equal(burstDue(2, false, { lastAt: 1000, lastPriority: 2 }, 13000, 'classic'), true);
+});
+
+test('IEC alarm pattern: high 3 + 2, medium 3 even, low 2; pitch in range, high not below medium', () => {
+  const style = DEFAULT_THEME.alarmStyle;
+  const hi = alarmPattern(3, style), med = alarmPattern(2, style), lo = alarmPattern(1, style);
+  assert.equal(hi.length, 5);
+  assert.equal(med.length, 3);
+  assert.equal(lo.length, 2);
+  // gaps between the end of one pulse and the start of the next
+  const gaps = (ps) => ps.slice(1).map((p, i) => p.startMs - (ps[i].startMs + ps[i].durMs));
+  const g = gaps(hi);
+  assert.equal(g[0], g[1], 'first three evenly spaced');
+  assert.equal(g[3], g[0], 'last two at the same spacing');
+  assert.ok(g[2] > g[0] * 2, 'a short pause between the 3 and the 2');
+  assert.ok(g[2] < 1000, 'the pause is short, not a new burst');
+  const gm = gaps(med);
+  assert.equal(gm[0], gm[1], 'medium pulses evenly spaced');
+  for (const ps of [hi, med, lo]) {
+    assert.equal(ps[0].startMs, 0);
+    for (const p of ps) {
+      assert.ok(p.freq >= IEC_MIN_HZ && p.freq <= IEC_MAX_HZ, `${p.freq} Hz in range`);
+      assert.ok(p.durMs >= 75 && p.durMs <= 250, 'pulse 75-250 ms');
+      assert.ok(p.durMs >= 2 * PULSE_EDGE_SEC * 1000, 'room for the soft edges');
+    }
+    const last = ps[ps.length - 1];
+    assert.ok(last.startMs + last.durMs < 2000, 'a burst ends well before the next one');
+  }
+  assert.ok(hi[0].freq >= med[0].freq, 'high pitch at or above medium');
+  assert.deepEqual(hi.map((p) => p.freq), [960, 960, 960, 960, 960], 'the theme pitch is used');
+  // a theme's own pitch is kept when in range, held to 150-1000 Hz when not, high raised to medium
+  assert.equal(alarmPattern(2, { toneHz: { medium: 700 } })[0].freq, 700);
+  assert.equal(alarmPattern(2, { toneHz: { medium: 1800 } })[0].freq, IEC_MAX_HZ);
+  assert.equal(alarmPattern(1, { toneHz: { low: 100 } })[0].freq, IEC_MIN_HZ);
+  assert.equal(alarmPattern(3, { toneHz: { high: 500, medium: 700 } })[0].freq, 700);
+  assert.equal(alarmPattern(3, {}).length, 5, 'no style: built-in pitches');
+  assert.deepEqual(alarmPattern(0, style), []);
+  assert.ok(IEC_HARMONICS.length >= 5, 'fundamental plus at least four harmonics');
+  for (const a of IEC_HARMONICS.slice(1)) assert.ok(20 * Math.log10(a) > -15, 'harmonics within 15 dB');
+});
+
+test('classic alarm pattern keeps the earlier bursts and the theme pitch as written', () => {
+  const hi = alarmPattern(3, { pattern: 'classic', toneHz: { high: 1500 } });
+  assert.equal(hi.length, 10);
+  assert.equal(hi[0].freq, 1500);
+  assert.equal(hi[5].startMs - hi[4].startMs, 560);
+  assert.equal(alarmPattern(2, { pattern: 'classic' }).length, 3);
+  assert.equal(alarmPattern(1, { pattern: 'classic' }).length, 2);
+});
+
+test('AudioMixer.burst plays harmonic pulses with 20 ms edges, sine for soft tones', async () => {
+  const oscs = [];
+  const ramps = [];
+  let waves = 0;
+  const ctx = {
+    state: 'running', destination: {}, currentTime: 10,
+    createGain: () => ({ gain: { value: 0, setValueAtTime() {}, linearRampToValueAtTime: (v, t) => ramps.push([v, t]) }, connect: (n) => n }),
+    createOscillator: () => {
+      const o = { type: 'sine', wave: null, frequency: { value: 0 }, setPeriodicWave(w) { this.wave = w; }, connect: (n) => n, start() {}, stop() {} };
+      oscs.push(o);
+      return o;
+    },
+    createPeriodicWave: (real, imag) => { waves++; return { real, imag }; },
+    async resume() {}, async suspend() {},
+  };
+  const a = new Mixer({ volume: () => 1, makeContext: () => /** @type {any} */ (ctx) });
+  await a.enable();
+  a.burst(3, DEFAULT_THEME.alarmStyle);
+  assert.equal(oscs.length, 5);
+  assert.ok(oscs.every((o) => o.wave && o.frequency.value === 960));
+  assert.equal(waves, 1, 'the wave is made once');
+  assert.equal(Array.from(oscs[0].wave.imag).filter((x) => x > 0).length, 5);
+  assert.ok(Math.abs(ramps[0][1] - 10 - PULSE_EDGE_SEC) < 1e-9, 'soft 20 ms attack');
+  oscs.length = 0;
+  a.burst(2, { ...DEFAULT_THEME.alarmStyle, tones: 'soft' });
+  assert.equal(oscs.length, 3);
+  assert.ok(oscs.every((o) => !o.wave && o.type === 'sine'));
 });
 
 test('SpO2 pitch is log-scaled, rises with SpO2 and clamps low', () => {

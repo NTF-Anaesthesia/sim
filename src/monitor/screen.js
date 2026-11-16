@@ -508,7 +508,7 @@ export function mountScreen(root, opts) {
     // tone: repeats while active, restarts at once for a higher priority; a lower priority resets the ceiling
     if (av.priority <= 0) burstSt.lastPriority = 0;
     else if (av.priority < burstSt.lastPriority) burstSt.lastPriority = av.priority;
-    if (audio.enabled && burstDue(av.priority, av.silenced, burstSt, nowMs)) {
+    if (audio.enabled && burstDue(av.priority, av.silenced, burstSt, nowMs, theme.alarmStyle?.pattern)) {
       audio.burst(av.priority, theme.alarmStyle);
       burstSt.lastAt = nowMs;
       burstSt.lastPriority = av.priority;

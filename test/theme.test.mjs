@@ -123,7 +123,7 @@ test('the second theme moves every module and changes every colour', () => {
   for (const k of Object.keys(DEFAULT_THEME.colors)) assert.notEqual(LIGHT_THEME.colors[k], DEFAULT_THEME.colors[k], `colour ${k}`);
   assert.notEqual(LIGHT_THEME.background, DEFAULT_THEME.background);
   assert.notEqual(LIGHT_THEME.font.family, DEFAULT_THEME.font.family);
-  assert.notEqual(LIGHT_THEME.alarmStyle.tones, DEFAULT_THEME.alarmStyle.tones);
+  assert.notDeepEqual(LIGHT_THEME.alarmStyle.toneHz, DEFAULT_THEME.alarmStyle.toneHz);
   assert.notEqual(LIGHT_THEME.numerics.limitsPosition, DEFAULT_THEME.numerics.limitsPosition);
 });
 

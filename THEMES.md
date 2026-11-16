@@ -91,8 +91,9 @@ Every example value is the default unless stated. Ranges are enforced; a value o
 | `alarmStyle.barPosition` | `"top-right"` | Where the message sits in the bar: `top`/`bottom` plus `left`/`center`/`right`. |
 | `alarmStyle.flashHz` | `1` | Flash rate of a flashing numeric or bar, 0.2 to 4. |
 | `alarmStyle.limitStyle` | `"small"` | `small` or `bold` limit text. |
-| `alarmStyle.tones` | `"iec"` | Tone wave: `iec` (triangle) or `soft` (sine). The pulse pattern per priority is the same. |
-| `alarmStyle.toneHz.high medium low` | `960`, `800`, `640` | Alarm pitch per priority in Hz, 200 to 2000. |
+| `alarmStyle.tones` | `"iec"` | Tone wave: `iec` (harmonic-rich: the fundamental plus four harmonics, soft 20 ms edges) or `soft` (sine). The pulse pattern per priority is the same. |
+| `alarmStyle.pattern` | `"iec"` | Pulse pattern: `iec` (IEC 60601-1-8 style: high 5 pulses as 3 + 2 every 5 s, medium 3 pulses every 7.5 s, low 2 pulses every 20 s) or `classic` (the earlier bursts: high 10, medium 3, low 2, every 6, 12 and 24 s). |
+| `alarmStyle.toneHz.high medium low` | `960`, `800`, `640` | Alarm pitch per priority in Hz, 200 to 2000. With `pattern: "iec"` the pitch played is held to 150-1000 Hz and high is never below medium. |
 
 ### Layout cells
 
