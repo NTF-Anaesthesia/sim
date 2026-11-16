@@ -110,19 +110,31 @@ const plethBeat = (/** @type {number} */ x) => {
   return up + 0.12 * g(x, 0.36, 0.04) * Math.exp(-x / 0.6);
 };
 
+/** Largest a single pleth beat gets, with or without a ventilation swing, so the lane never clips. */
+const PLETH_MAX = 1.3;
+/** The pleth swings a little more with the breath than the arterial pulse pressure does. */
+const PLETH_PPV_GAIN = 1.4;
+
 /**
  * Pleth, 0..~1.3; flat 0 while there is no pulse. quality: good | poor (small, noisy).
- * @param {WaveSrc} src @param {number} t @param {string} quality
+ * `ppv` (percent, default 0) makes beat height and baseline swing with positive-pressure breaths.
+ * @param {WaveSrc} src @param {number} t @param {string} quality @param {number} [ppv]
  */
-export function plethSample(src, t, quality) {
+export function plethSample(src, t, quality, ppv = 0) {
   const b = src.beats;
   const i = upper(b, t - PLETH_DELAY);
+  const swing = ppv > 0;
   let v = 0;
+  let pulsed = false;
   for (let k = Math.max(0, i - 8); k < i; k++) {
     if (!b[k].pulse) continue;
+    pulsed = true;
     const pp = Math.max(0, b[k].sbp - b[k].dbp);
-    v += plethBeat(t - PLETH_DELAY - b[k].t) * Math.min(1.3, pp / 45) * b[k].amp;
+    let a = Math.min(1.3, pp / 45) * b[k].amp;
+    if (swing) a = Math.min(PLETH_MAX, a * ppvFactor(src.breaths, b[k].t, ppv * PLETH_PPV_GAIN));
+    v += plethBeat(t - PLETH_DELAY - b[k].t) * a;
   }
+  if (swing && pulsed) v += 0.04 * Math.min(2, ppv / 15) * breathPhase(src.breaths, t - PLETH_DELAY);
   if (quality === 'poor') {
     v = v * 0.35 + 0.05 * Math.sin(t * 37) + 0.04 * Math.sin(t * 61 + 1) + 0.03 * Math.sin(t * 17);
   }
@@ -152,11 +164,19 @@ export function abpBeat(/** @type {number} */ x, /** @type {string} */ damping) 
  */
 export function ppvFactor(breaths, t, ppv) {
   if (!(ppv > 0)) return 1;
+  return 1 + (ppv / 200) * breathPhase(breaths, t);
+}
+
+/**
+ * Where time `t` sits in the breath: 1 mid-inspiration, -1 mid-expiration (a cosine over the breath cycle);
+ * 0 when there is no breath to follow (apnoea, or the last breath is long gone).
+ * @param {Breath[]} breaths @param {number} t
+ */
+export function breathPhase(breaths, t) {
   const i = upper(breaths, t) - 1;
   const b = breaths[i];
-  if (!b || t - b.t > b.cycle + 1) return 1;
-  const m = Math.cos((2 * Math.PI * (t - b.t - b.ti / 2)) / b.cycle);
-  return 1 + (ppv / 200) * m;
+  if (!b || t - b.t > b.cycle + 1) return 0;
+  return Math.cos((2 * Math.PI * (t - b.t - b.ti / 2)) / b.cycle);
 }
 
 /**
