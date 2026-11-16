@@ -404,6 +404,7 @@ test('link banner: hidden while open, after a 3 s blip; shown after 6 s with the
   const b = linkBanner({ status: 'reconnecting', downSince, lastStateAt, now: downSince + 6000 });
   assert.equal(b.show, true);
   assert.ok(b.show && b.kind === 'lost' && /Connection lost/.test(b.text) && b.sub === 'last update 09:05:07');
+  assert.ok(b.show && /alarms continue/.test(b.text), 'the banner says alarms keep sounding');
   assert.equal(linkBanner({ status: 'open', downSince, lastStateAt, now: downSince + 7000 }).show, false);
   assert.equal(LINK_GRACE_MS, 5000);
   assert.equal(clockText(new Date(2026, 0, 1, 23, 0, 9).getTime()), '23:00:09');

@@ -1,7 +1,7 @@
 // @ts-check
 // The monitor screen: joins a room's state to the view. One frame loop draws the waves; a 250 ms tick updates numerics,
 // alarms and the alarm tone. Waves run on the display clock (seconds), glide / silence / NIBP on the server clock (ms).
-import { ALARM_DELAY_MS, AlarmDelay, AlarmTracker, burstDue, evaluateAlarms, PRIORITY_NAME } from '../engine/alarms.js';
+import { ALARM_DELAY_MS, AlarmDelay, AlarmTracker, evaluateAlarms, PRIORITY_NAME } from '../engine/alarms.js';
 import { displayed } from '../engine/glide.js';
 import { macFraction } from '../engine/gas.js';
 import { jittered } from '../engine/jitter.js';
@@ -17,6 +17,7 @@ import { resolveTheme, waveSettings } from '../theme/resolve.js';
 import { createThemeStore, pickTheme } from '../theme/store.js';
 import { loadTheme } from '../theme/validate.js';
 import { AudioMixer } from './audio.js';
+import { alarmToneStep, beatBeeps } from './beeps.js';
 import { Lane } from './lane.js';
 import { createDefib } from '../defib/index.js';
 import { createIdentity } from './identity.js';
@@ -516,13 +517,10 @@ export function mountScreen(root, opts) {
       : (top ? top.text + (av.alarms.length > 1 ? ` +${av.alarms.length - 1}` : '') : (av.master ? '' : 'ALARMS OFF'));
     bar.title = 'Tap to silence alarms for 2 minutes';
 
-    // tone: repeats while active, restarts at once for a higher priority; a lower priority resets the ceiling
-    if (av.priority <= 0) burstSt.lastPriority = 0;
-    else if (av.priority < burstSt.lastPriority) burstSt.lastPriority = av.priority;
-    if (audio.enabled && burstDue(av.priority, av.silenced, burstSt, nowMs, theme.alarmStyle?.pattern)) {
+    // tone: repeats while active, restarts at once for a higher priority. Not gated on the room link: with the
+    // connection lost the last known state is still judged on this monitor's clock and its alarms keep sounding.
+    if (alarmToneStep(av, burstSt, nowMs, { audioOn: audio.enabled, pattern: theme.alarmStyle?.pattern })) {
       audio.burst(av.priority, theme.alarmStyle);
-      burstSt.lastAt = nowMs;
-      burstSt.lastPriority = av.priority;
     }
     renderChips();
   }
@@ -536,11 +534,11 @@ export function mountScreen(root, opts) {
     latestD = dd;
     src.update(t, patient, dd);
     if (t - lastBeepT > 0.5) lastBeepT = t; // tab was hidden: no burst of old beeps
-    for (const b of src.beats) {
-      if (b.t > lastBeepT && b.t <= t && b.kind !== 'dropped' && b.kind !== 'spike') {
-        audio.beep(modsOn().includes('spo2') && typeof latestVals.spo2 === 'number' ? latestVals.spo2 : null);
-      }
-    }
+    // beat beep: with SpO2 on (sensor attached, a signal) it comes with each pleth pulse and its pitch follows the
+    // saturation, none when there is no pulse; with SpO2 off (or no pleth signal) a plain beep on each QRS
+    const spo2Source = modsOn().includes('spo2') && !patient.off?.spo2 && patient.spo2Quality !== 'none';
+    const pitch = spo2Source ? (typeof latestVals.spo2 === 'number' ? latestVals.spo2 : dd.spo2) : null;
+    for (let n = beatBeeps(src.beats, lastBeepT, t, spo2Source).length; n > 0; n--) audio.beep(pitch);
     lastBeepT = t;
     if (defib) {
       if (needRefill) { needRefill = false; defib.refill(t); }

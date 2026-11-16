@@ -82,18 +82,24 @@ try {
   await mon.screenshot({ path: `${SHOTS}/monitor-abp-1024.png` });
   check((await ink('ecg')) > 100, 'still drawn after a resize');
 
-  // link lost: the banner shows within a few seconds (waves keep drawing), and waking with the network back clears it
+  // link lost: the banner shows within a few seconds (waves keep drawing), alarms keep running from the last state,
+  // and waking with the network back clears it
   check(await mon.getByTestId('link-banner').isHidden(), 'link banner hidden while live');
+  await set({ patient: { rhythm: 'vf' } });
+  await mon.locator('.alarmbar[data-alarm="high"]').waitFor({ timeout: 3000 });
   await mon.context().setOffline(true);
   await mon.evaluate(() => window.dispatchEvent(new Event('focus'))); // wake: ping, no answer, reconnect fails
   await mon.getByTestId('link-banner').waitFor({ state: 'visible', timeout: 15000 });
-  check(/Connection lost/.test((await mon.getByTestId('link-banner').textContent()) ?? ''), 'link banner says connection lost');
+  const lost = (await mon.getByTestId('link-banner').textContent()) ?? '';
+  check(/Connection lost/.test(lost) && /alarms continue/.test(lost), 'link banner says connection lost, alarms continue');
+  check(await mon.locator('.alarmbar[data-alarm="high"]').count() === 1, 'the VF alarm is still active while offline');
   await mon.screenshot({ path: `${SHOTS}/monitor-link-lost-1024.png` });
   await mon.context().setOffline(false);
   await mon.evaluate(() => window.dispatchEvent(new Event('online')));
   await mon.locator('#status[data-status="open"]').waitFor({ timeout: 10000 });
   await mon.getByTestId('link-banner').waitFor({ state: 'hidden', timeout: 3000 });
   check(true, 'link banner clears on reconnect');
+  await set({ patient: { rhythm: 'sinus' } });
   check(errors.length === 0, `no page errors ${errors.join('; ')}`);
 } finally {
   await browser.close();
