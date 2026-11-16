@@ -171,3 +171,21 @@ export function buildView(root, theme, cells, act) {
 }
 
 /** @typedef {ReturnType<typeof buildView>} View */
+
+/**
+ * The "connection lost" banner: a centred box over the screen (waves keep drawing around it), hidden until the link
+ * has been down a while. One per page, kept outside the rebuilt view so it also covers the defib screen.
+ * @param {Document} doc
+ */
+export function buildLinkBanner(doc) {
+  const el = doc.createElement('div');
+  el.className = 'link-banner';
+  el.dataset.testid = 'link-banner';
+  el.setAttribute('role', 'status');
+  el.hidden = true;
+  el.innerHTML = '<b class="lb-text"></b><span class="lb-sub"></span><a class="lb-join" href="../" data-testid="link-banner-join" hidden>Start or join a room</a>';
+  const q = (/** @type {string} */ s) => /** @type {HTMLElement} */ (el.querySelector(s));
+  return { el, text: q('.lb-text'), sub: q('.lb-sub'), join: q('.lb-join') };
+}
+
+/** @typedef {ReturnType<typeof buildLinkBanner>} LinkBanner */
