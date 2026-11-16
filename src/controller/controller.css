@@ -121,3 +121,20 @@
 .share input { min-width: 0; flex: 1; }
 .share .linkbox { width: 100%; font-size: .8rem; }
 .offer { border: 1px solid #d97706; border-radius: 8px; padding: 8px; margin: 8px 0; }
+
+/* Running scenario strip above the tabs (every tab but Scenarios): name, step, countdown, Pause, Next; cue on one line, tap to show all */
+.ctl .scnbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 8px; padding: 4px 12px; background: #1a1608; border-bottom: 1px solid #3a3210; }
+.ctl .scnbar p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctl .scnbar-main { min-width: 0; }
+.ctl .scnbar-head { font-size: .85rem; }
+.ctl .scnbar-count { font-size: .8rem; color: var(--dim); font-variant-numeric: tabular-nums; }
+.ctl .scnbar-btns { display: flex; gap: 6px; }
+.ctl .scnbar-btns button { min-height: 44px; min-width: 44px; padding: 4px 10px; font-size: .85rem; }
+.ctl .scnbar-cue { grid-column: 1 / -1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow: hidden; overflow-wrap: anywhere;
+  text-align: left; min-height: 0; padding: 2px 0 2px 8px; border: 0; border-left: 3px solid #d9a300; border-radius: 0; background: transparent; font-size: .85rem; }
+.ctl .scnbar-cue.open { -webkit-line-clamp: unset; line-clamp: none; display: block; max-height: 30vh; overflow-y: auto; }
+.ctl .scnbar[data-waiting="true"] { animation: scnbar-pulse 1.4s ease-in-out infinite; }
+.ctl .scnbar[data-waiting="true"] .scnbar-count { color: #ffd000; font-weight: 600; }
+.ctl .scnbar[data-waiting="true"] .scnbar-next { background: #d9a300; border-color: #d9a300; color: #000; font-weight: 700; }
+@keyframes scnbar-pulse { 0%, 100% { background: #1a1608; } 50% { background: #4a3c08; } }
+@media (prefers-reduced-motion: reduce) { .ctl .scnbar[data-waiting="true"] { animation: none; background: #3a3008; } }

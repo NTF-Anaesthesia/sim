@@ -15,6 +15,7 @@ import { encodeScenario, linkFor, qrFits } from '../share/link.js';
 import { qrSvgLow } from '../share/qr.js';
 import { PresetStore, runPreset, presetFromPatient } from './presets.js';
 import { Recorder } from './recorder.js';
+import { scenarioBar } from './scnbar.js';
 import { Settings, browserStorage } from './settings.js';
 import {
   paramList, LIMIT_PARAMS, NIBP_INTERVALS, TOF_INTERVALS, hasModule, buildPatch, pendingCount, stepPercent, clampDisplay,
@@ -150,6 +151,7 @@ export function mountController(root, opts) {
     <section id="view" class="view" aria-live="off"></section>
     <footer class="dock">
       <div id="recbar" class="recbar" data-testid="recbar" hidden></div>
+      <div id="scnbar" class="scnbar" data-testid="scnbar" hidden></div>
       <div id="tempo" class="glide tempo" hidden></div>
       <div id="progress" class="progress" hidden><div id="bar"></div><span id="left"></span></div>
       <div id="apply" class="applybar" hidden></div>
@@ -568,6 +570,23 @@ export function mountController(root, opts) {
     const run = state()?.scenario;
     const el = root.querySelector('#scn-count');
     if (el && run) el.textContent = scenarioLine(run);
+    const bar = root.querySelector('#scnbar-count');
+    if (bar && run) bar.textContent = scenarioLine(run);
+  }
+
+  /** The running scenario strip above the tabs (every tab but Scenarios): rebuilt only when its key changes. */
+  function renderScnBar() {
+    const s = state();
+    const run = s?.scenario;
+    const bed = run && s && s.patients.length > 1 ? s.patients.find((x) => x.id === run.p)?.label ?? run.p : undefined;
+    const b = scenarioBar(run, { tab: ui.tab, bed, line: run ? scenarioLine(run) : '' });
+    const el = $('scnbar');
+    el.hidden = !b.show;
+    if (!b.show) { el.innerHTML = ''; delete el.dataset.key; delete el.dataset.waiting; return; }
+    if (el.dataset.key === b.key) return;
+    el.dataset.key = b.key;
+    el.dataset.waiting = String(b.waiting);
+    el.innerHTML = b.html;
   }
 
   function viewScreens() {
@@ -742,7 +761,7 @@ export function mountController(root, opts) {
   }
 
   function render() {
-    renderStatus(); renderBeds(); renderDock(); renderRec(); renderProgress(); renderTempo();
+    renderStatus(); renderBeds(); renderDock(); renderRec(); renderProgress(); renderTempo(); renderScnBar();
     // do not rebuild the page under a finger that is dragging a slider, or while a screen name is being typed
     if (!ui.dragging && !root.ownerDocument.activeElement?.matches(ui.tab === 'screens' ? '#view input' : ui.tab === 'scenarios' ? '#view textarea, #view #qname, #view #rec-name, #view .editor input' : ui.tab === 'vitals' ? '#cust-n, .prm-edit' : '#never')) renderView();
   }
@@ -890,6 +909,7 @@ export function mountController(root, opts) {
     const s = state();
     const pt = patient();
     if (d.tab) { ui.tab = d.tab; ui.forceView = true; render(); return; }
+    if (d.act === 'scnbar-cue') { const open = t.classList.toggle('open'); t.setAttribute('aria-expanded', String(open)); return; }
     if (d.bed) { ui.p = d.bed; ui.forceView = true; render(); return; }
     if (d.act === 'mark' || d.act === 'mark-text') {
       const input = /** @type {HTMLInputElement | null} */ (root.querySelector('#marktext'));

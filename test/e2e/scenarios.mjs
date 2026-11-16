@@ -1,6 +1,6 @@
 // Scenarios and drug buttons against a running Worker (BASE_URL): a library file is imported (bad files refused with a
 // reason), a 3-step scenario is started from the phone, the phone is closed and the room still runs the timed step, then
-// the phone pauses, resumes and advances it by tap, and a drug button applies its relative change.
+// the phone pauses, resumes and advances it by tap (from the strip on Vitals and the card on Scenarios), and a drug button applies its relative change.
 import { chromium } from 'playwright';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:8787';
@@ -77,14 +77,31 @@ try {
   phone = await ctx.newPage();
   await phone.goto(`${BASE}/c/${code}`);
   await phone.locator('#status[data-status="open"]').waitFor({ timeout: 10000 });
+  // the strip above the tabs shows the run on Vitals (the phone opens there) and drives it with one tap
+  const strip = phone.getByTestId('scnbar');
+  await strip.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+  check(await strip.isVisible(), 'the scenario strip shows on the Vitals tab during a run');
+  check((await phone.getByTestId('scnbar-step').textContent()) === '2/3 done', 'the strip shows the step');
+  check((await strip.getAttribute('data-waiting')) === 'true', 'the strip marks a step waiting for a tap');
+  check((await phone.getByTestId('scnbar-next').textContent()) === 'Next step', 'the strip says Next step while waiting');
+  check(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no sideways scroll with the strip');
+  await phone.getByTestId('scnbar-pause').click();
+  check(await until(async () => (await sc())?.pausedAt > 0), 'strip pause');
+  await phone.getByTestId('scnbar-pause').click();
+  check(await until(async () => (await sc())?.pausedAt === 0), 'strip resume');
   await phone.getByTestId('tab-scenarios').click();
+  check(await strip.isHidden(), 'the strip hides on the Scenarios tab (the full card is there)');
   check((await phone.getByTestId('scn-step').textContent()) === 'Step 2 of 3 done', 'a new phone shows the running scenario');
   await phone.getByTestId('scn-pause').click();
   check(await until(async () => (await sc())?.pausedAt > 0), 'pause');
   await phone.getByTestId('scn-pause').click();
   check(await until(async () => (await sc())?.pausedAt === 0), 'resume');
-  await phone.getByTestId('scn-next').click();
-  check(await until(async () => (await hr()) === 140 && (await sc())?.done === true), 'tap advances the last step');
+  await phone.getByTestId('tab-vitals').click();
+  await phone.getByTestId('scnbar-next').click();
+  check(await until(async () => (await hr()) === 140 && (await sc())?.done === true), 'Next step on the strip advances the last step');
+  await strip.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+  check(await strip.isHidden(), 'the strip hides once the scenario is done');
+  await phone.getByTestId('tab-scenarios').click();
   await phone.getByTestId('scn-stop').click();
   check(await until(async () => (await sc()) === null), 'clear removes it');
 
