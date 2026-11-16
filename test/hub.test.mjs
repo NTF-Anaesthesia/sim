@@ -73,6 +73,18 @@ test('silence sets silencedUntil to now + 2 min', async () => {
   assert.equal(r.broadcast.state.alarms.silencedUntil, clock.t + 120000);
 });
 
+test('silence cancel: silencedUntil back to 0 and a "silence off" event; plain silence unchanged', async () => {
+  const { hub, clock } = makeHub();
+  await hub.onMessage('c-1', msg({ t: 'silence' }));
+  clock.t += 30000;
+  const r = await hub.onMessage('c-1', msg({ t: 'silence', cancel: true }));
+  assert.equal(r.broadcast.state.alarms.silencedUntil, 0);
+  const ev = (await hub.state()).events.filter((e) => e.kind === 'silence');
+  assert.deepEqual(ev.map((e) => e.what), ['silence', 'silence off']);
+  const again = await hub.onMessage('c-1', msg({ t: 'silence', cancel: 'yes' }));
+  assert.equal(again.broadcast.state.alarms.silencedUntil, clock.t + 120000, 'only cancel: true cancels');
+});
+
 test('glide: a change records a glide from the values shown at that moment', async () => {
   const { hub, clock } = makeHub();
   await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { hr: 180 } }, glideMs: 10000 }));

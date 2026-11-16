@@ -32,6 +32,8 @@ export function makeActions(client, currentPatient) {
     /** Flush test of an art line. @param {'abp' | 'abp2'} line @param {string} [p] */
     flush: (line, p) => client.send({ t: 'flush', line, p: p ?? currentPatient() }),
     silence: () => client.send({ t: 'silence' }),
+    /** End a silence now: the monitors sound again at once. */
+    silenceCancel: () => client.send({ t: 'silence', cancel: true }),
     /** Start a scenario on a patient; the room runs it. @param {object} scenario @param {string} [p] */
     scenarioStart: (scenario, p) => client.send({ t: 'scenarioStart', scenario, p: p ?? currentPatient() }),
     /** @param {'scenarioPause' | 'scenarioResume' | 'scenarioNext' | 'scenarioStop'} t */

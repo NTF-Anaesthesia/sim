@@ -16,6 +16,7 @@ import { qrSvgLow } from '../share/qr.js';
 import { PresetStore, runPreset, presetFromPatient } from './presets.js';
 import { Recorder } from './recorder.js';
 import { scenarioBar } from './scnbar.js';
+import { alarmsTabSilence, bedLabel, bedsHtml, markNote, silenceButton } from './topbar.js';
 import { applyLabel, createFeedback, errorText } from './feedback.js';
 import { Settings, browserStorage } from './settings.js';
 import {
@@ -145,8 +146,11 @@ export function mountController(root, opts) {
   root.innerHTML = `
     <header class="top">
       <span class="chip" id="status" data-status="connecting" data-testid="status">connecting</span>
-      <span class="code">Room <b id="code"></b></span>
-      <button type="button" class="small mark" data-act="mark" data-testid="mark" aria-label="Bookmark this moment in the log">Mark</button>
+      <span class="code"><span class="room-word">Room </span><b id="code"></b></span>
+      <span class="top-btns">
+        <button type="button" class="small mark" data-act="mark" data-testid="mark" aria-label="Bookmark this moment in the log">Mark</button>
+        <button type="button" class="small sil" id="silence-top" data-act="silence" data-testid="silence-top" data-state="ready" aria-pressed="false" title="Silence alarms for 2 min">Silence</button>
+      </span>
     </header>
     <div id="offline" class="offline" data-testid="offline-banner" role="status" aria-live="polite" hidden>
       <span id="offline-text"></span>
@@ -196,7 +200,8 @@ export function mountController(root, opts) {
       : st === 'full' ? 'room full' : st === 'expired' ? 'room expired' : st;
     const mon = st === 'open' && pr ? ` · ${pr.monitors} monitor${pr.monitors === 1 ? '' : 's'}` : '';
     const chip = $('status');
-    chip.textContent = label + mon;
+    chip.textContent = label;
+    if (mon) { const m = root.ownerDocument.createElement('span'); m.className = 'chip-mon'; m.textContent = mon; chip.append(m); } // hidden by CSS on a narrow phone
     chip.dataset.status = st;
     chip.dataset.monitors = pr ? String(pr.monitors) : '';
   }
@@ -204,9 +209,45 @@ export function mountController(root, opts) {
   function renderBeds() {
     const s = state();
     const cur = patient();
-    $('beds').innerHTML = s ? s.patients.map((x) =>
-      `<button type="button" class="bed" data-bed="${esc(x.id)}" aria-pressed="${x.id === cur?.id}">${esc(x.label)}</button>`).join('')
-      + '<button type="button" class="bed add" data-act="add" aria-label="Add patient">+</button>' : '';
+    $('beds').innerHTML = s ? bedsHtml(s.patients, cur?.id, bedPending) : '';
+  }
+
+  /** A bed has changes not yet applied (the same count the Apply bar shows). @param {string} id */
+  function bedPending(id) {
+    const x = state()?.patients.find((q) => q.id === id);
+    const pd = ui.pending[id];
+    return !!x && !!pd && pendingCount(pd, x, units()) > 0;
+  }
+
+  /** Keep the bed chips' unapplied-changes dot in step without rebuilding them (called after every edit). */
+  function syncBedDots() {
+    for (const b of root.querySelectorAll('#beds [data-bed]')) {
+      const el = /** @type {HTMLElement} */ (b);
+      const p = bedPending(/** @type {string} */ (el.dataset.bed));
+      if ((el.dataset.pending === 'true') === p) continue;
+      if (p) { el.dataset.pending = 'true'; el.setAttribute('aria-label', bedLabel(el.textContent ?? '', true)); }
+      else { delete el.dataset.pending; el.removeAttribute('aria-label'); }
+    }
+  }
+
+  /** Header Silence button (every tab) and the Alarms tab's button: text and state from the room, ticking with the clock. */
+  function renderSilence() {
+    const s = state();
+    const now = client.serverNow();
+    const b = silenceButton(s?.alarms, now);
+    const el = $('silence-top');
+    if (el.dataset.state !== b.state) {
+      el.dataset.state = b.state;
+      if (b.state === 'off') el.removeAttribute('aria-pressed'); else el.setAttribute('aria-pressed', String(b.state === 'silenced'));
+      el.title = b.title;
+    }
+    if (el.textContent !== b.text) el.textContent = b.text;
+    const tab = /** @type {HTMLElement | null} */ (root.querySelector('[data-testid="silence"]'));
+    if (tab && s) {
+      const a = alarmsTabSilence(s.alarms, now);
+      if (tab.textContent !== a.text) tab.textContent = a.text;
+      if (tab.dataset.state !== (a.cancel ? 'silenced' : 'ready')) tab.dataset.state = a.cancel ? 'silenced' : 'ready';
+    }
   }
 
   /** "Auto" speed of a field for the pending change on it (SpO2: slower falling, base speed rising). @param {string} field @param {import('../shared/schema.js').Patient} pt */
@@ -346,10 +387,10 @@ export function mountController(root, opts) {
     const s = /** @type {NonNullable<ReturnType<typeof state>>} */ (state());
     const u = units();
     const specs = new Map(paramList(u).map((sp) => [sp.id, sp]));
-    const left = Math.max(0, s.alarms.silencedUntil - client.serverNow());
+    const sil = alarmsTabSilence(s.alarms, client.serverNow());
     return `
       <div class="sw-row"><span>Alarms on</span>${toggle('alarms-on', s.alarms.enabled, 'Alarms on')}</div>
-      <div class="row"><button type="button" class="wide" data-act="silence" data-testid="silence">Silence 2 min${left > 0 ? ` (${Math.ceil(left / 1000)} s left)` : ''}</button></div>
+      <div class="row"><button type="button" class="wide" data-act="silence" data-testid="silence" data-state="${sil.cancel ? 'silenced' : 'ready'}">${sil.text}</button></div>
       ${LIMIT_PARAMS.filter((l) => hasModule(l.needs, s.modules)).map((l) => {
         const sp = /** @type {import('./params.js').ParamSpec} */ (specs.get(l.spec));
         const [lo, hi] = s.alarms.limits[l.name] ?? [sp.min, sp.max];
@@ -726,6 +767,7 @@ export function mountController(root, opts) {
   }
 
   function renderDock() {
+    syncBedDots();
     for (const b of root.querySelectorAll('[data-tab]')) b.setAttribute('aria-current', String(/** @type {HTMLElement} */ (b).dataset.tab === ui.tab));
     const pt = patient();
     const n = pt ? pendingCount(pend(), pt, units()) : 0;
@@ -792,7 +834,7 @@ export function mountController(root, opts) {
   }
 
   function render() {
-    renderStatus(); renderBeds(); renderDock(); renderRec(); renderProgress(); renderTempo(); renderScnBar();
+    renderStatus(); renderBeds(); renderDock(); renderRec(); renderProgress(); renderTempo(); renderScnBar(); renderSilence();
     // do not rebuild the page under a finger that is dragging a slider, or while a screen name is being typed
     if (!ui.dragging && !root.ownerDocument.activeElement?.matches(ui.tab === 'screens' ? '#view input' : ui.tab === 'scenarios' ? '#view textarea, #view #qname, #view #rec-name, #view .editor input' : ui.tab === 'vitals' ? '#cust-n, .prm-edit' : '#never')) renderView();
   }
@@ -946,8 +988,13 @@ export function mountController(root, opts) {
       const input = /** @type {HTMLInputElement | null} */ (root.querySelector('#marktext'));
       const text = d.act === 'mark-text' ? (input?.value ?? '').trim().slice(0, 200) : '';
       if (!client.send({ t: 'mark', ...(ui.p ? { p: ui.p } : {}), ...(text ? { text } : {}) })) { ui.markNote = ''; say('Not connected: bookmark not saved.'); }
-      else { ui.markNote = `Bookmarked at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`; if (input) input.value = ''; }
-      t.dataset.done = 'true';
+      else {
+        ui.markNote = markNote(new Date()); if (input) input.value = '';
+        say(ui.markNote); // the toast line is on every tab
+        t.dataset.done = 'true'; // a brief highlight (CSS), then back
+        clearTimeout(timers.get('mark-done'));
+        timers.set('mark-done', setTimeout(() => { delete t.dataset.done; }, 1000));
+      }
       const note = root.querySelector('[data-testid=mark-note]');
       if (note) note.textContent = ui.markNote;
       return;
@@ -1035,7 +1082,12 @@ export function mountController(root, opts) {
       case 'tof-now': actions.tofNow(pt.id); break;
       case 'flush-abp': actions.flush('abp', pt.id); break;
       case 'flush-abp2': actions.flush('abp2', pt.id); break;
-      case 'silence': actions.silence(); break;
+      case 'silence': {
+        // header button with alarms off: open the Alarms tab, where they are switched back on
+        if (d.testid === 'silence-top' && !s.alarms.enabled) { ui.tab = 'alarms'; ui.forceView = true; render(); break; }
+        if (alarmsTabSilence(s.alarms, client.serverNow()).cancel) actions.silenceCancel(); else actions.silence();
+        break;
+      }
       case 'theme': themePanel.open(); break;
       case 'add': actions.addPatient(); break;
       case 'remove': if (window.confirm(`Remove ${pt.label}?`)) { actions.removePatient(pt.id); ui.p = undefined; } break;
@@ -1205,7 +1257,7 @@ export function mountController(root, opts) {
     if (ui.taking && e?.code === 'bad_patch') { ui.taking = false; ui.libNote = `Refused: ${e.msg}`; renderView(); }
     if (e?.code === 'schema') $('view').innerHTML = '<p class="hint">Update needed: reload this page.</p>';
   });
-  const progressTimer = setInterval(() => { renderProgress(); renderCountdown(); }, 250);
+  const progressTimer = setInterval(() => { renderProgress(); renderCountdown(); renderSilence(); }, 250);
   const wake = () => { if (document.visibilityState !== 'hidden') client.wake(); };
   document.addEventListener('visibilitychange', wake);
   window.addEventListener('pageshow', wake);

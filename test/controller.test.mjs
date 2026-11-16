@@ -339,3 +339,59 @@ test('Apply while offline: the label says so, the send fails, the pending change
   assert.equal(FakeWS.all[0].sent.length, 0);
   assert.equal(pendingCount(pending, p, DEFAULT_UNITS), 1, 'the pending edit is still there');
 });
+
+// ---- header Silence button, bed dots, Mark note (topbar.js) ----------------------------------------------------
+test('header Silence: "Silence", "Silenced m:ss" from the server clock, "Alarms off"; the Alarms tab agrees', async () => {
+  const { silenceButton, alarmsTabSilence, clockLeft } = await import('../src/controller/topbar.js');
+  const now = 50_000;
+  assert.equal(silenceButton({ enabled: true, silencedUntil: 0 }, now).state, 'ready');
+  assert.equal(silenceButton({ enabled: true, silencedUntil: 0 }, now).text, 'Silence');
+  assert.equal(silenceButton(undefined, now).state, 'ready', 'before the first state');
+  const s = silenceButton({ enabled: true, silencedUntil: now + 119_200 }, now);
+  assert.deepEqual([s.state, s.text], ['silenced', 'Silenced 2:00']);
+  assert.equal(silenceButton({ enabled: true, silencedUntil: now + 61_000 }, now).text, 'Silenced 1:01');
+  assert.equal(silenceButton({ enabled: true, silencedUntil: now + 1 }, now).text, 'Silenced 0:01', 'never 0:00 while silenced');
+  assert.equal(silenceButton({ enabled: true, silencedUntil: now }, now).state, 'ready', 'expired');
+  const off = silenceButton({ enabled: false, silencedUntil: now + 5000 }, now);
+  assert.deepEqual([off.state, off.text], ['off', 'Alarms off'], 'off wins over a silence');
+  assert.equal(clockLeft(9_000), '0:09');
+  assert.deepEqual(alarmsTabSilence({ silencedUntil: 0 }, now), { cancel: false, text: 'Silence 2 min' });
+  assert.deepEqual(alarmsTabSilence({ silencedUntil: now + 44_100 }, now), { cancel: true, text: 'Cancel silence (45 s left)' });
+});
+
+test('silenceCancel sends {t:"silence",cancel:true}; a failed send returns false for the toast', () => {
+  const out = [];
+  let up = true;
+  const a = makeActions({ send: (m) => { if (!up) return false; out.push(m); return true; } }, () => 'p1');
+  assert.equal(a.silence(), true);
+  assert.equal(a.silenceCancel(), true);
+  assert.deepEqual(out, [{ t: 'silence' }, { t: 'silence', cancel: true }]);
+  up = false;
+  assert.equal(a.silenceCancel(), false);
+});
+
+test('bed chips: a dot and "unapplied changes" label only on beds with pending edits', async () => {
+  const { bedsHtml, bedLabel } = await import('../src/controller/topbar.js');
+  const beds = [{ id: 'p1', label: 'Bed 1' }, { id: 'p2', label: 'Bed <2>' }];
+  const p1 = pt();
+  const pending = { p1: { hr: 120 } };
+  const has = (id) => id === 'p1' && pendingCount(pending.p1, p1, DEFAULT_UNITS) > 0;
+  const html = bedsHtml(beds, 'p2', has);
+  assert.match(html, /data-bed="p1" aria-pressed="false" data-pending="true" aria-label="Bed 1, unapplied changes">Bed 1</);
+  assert.match(html, /data-bed="p2" aria-pressed="true">Bed &lt;2&gt;</);
+  assert.match(html, /data-act="add"/);
+  // after Apply the pending edits are cleared: no dot
+  delete pending.p1;
+  assert.doesNotMatch(bedsHtml(beds, 'p2', (id) => !!pending[id]), /data-pending/);
+  // an edit back to the current value is not pending
+  assert.equal(pendingCount({ hr: p1.hr }, p1, DEFAULT_UNITS), 0);
+  assert.equal(bedLabel('Bed 1', false), 'Bed 1');
+});
+
+test('Mark: the toast line reads "Bookmarked at HH:MM"', async () => {
+  const { markNote } = await import('../src/controller/topbar.js');
+  const { createFeedback } = await import('../src/controller/feedback.js');
+  const fb = createFeedback({ now: () => 0, setTimer: () => 0, clearTimer: () => {}, onChange: () => {} });
+  fb.say(markNote(new Date(2026, 10, 16, 9, 5)));
+  assert.equal(fb.toast(), 'Bookmarked at 09:05');
+});

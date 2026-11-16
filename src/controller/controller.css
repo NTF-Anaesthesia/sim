@@ -1,16 +1,32 @@
 /* Phone controller: one-handed layout, 44 px targets, tabs and Apply at the bottom where the thumb is. */
 .ctl { overflow-x: hidden; --ecg: #00e000; --spo2: #00d8ff; --nibp: #ffffff; --abp: #ff4040; --abp2: #ff8a40; --cvp: #4a8cff; --bis: #c080ff; --etco2: #ffd000; --temp: #c0c0c0; padding: 6px 10px 190px; }
-.ctl .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ctl .top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; }
 .ctl .code b { font-size: 1.1rem; letter-spacing: .15em; color: var(--accent); }
-.ctl .top .chip { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ctl .top .chip { flex: 1 1 0; min-width: 5.5em; padding: 4px 7px; overflow: hidden; text-overflow: ellipsis; }
 .ctl .top .code { flex: none; font-size: .85rem; }
-.ctl .top .code b { letter-spacing: .08em; }
-.ctl .top .mark { flex: none; padding: 4px 10px; }
+.ctl .top .code b { font-size: 1rem; letter-spacing: .08em; }
+.ctl .top .mark { flex: none; }
+/* Mark and Silence stay together at the right; on a very narrow phone they drop to a second row instead of scrolling */
+.ctl .top-btns { display: flex; gap: 6px; flex: none; margin-left: auto; }
+.ctl .top-btns button { min-height: 44px; min-width: 44px; padding: 4px 8px; font-size: .8rem; }
+/* fixed width so the countdown and the state changes never move the header */
+.ctl .top .sil { flex: none; width: 7.4em; padding: 4px 2px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ctl .sil[data-state="silenced"], .ctl [data-testid="silence"][data-state="silenced"] { border-color: var(--warn); color: var(--warn); }
+.ctl .sil[data-state="off"] { border-color: var(--warn); color: #111; background: var(--warn); }
+.ctl .mark { transition: background-color .2s, color .2s; }
+.ctl .mark[data-done="true"] { background: var(--accent); color: #000; }
+@media (prefers-reduced-motion: reduce) { .ctl .mark { transition: none; } }
+/* below 480 px the code shows without "Room", below 400 px the chip drops " · N monitors" (still in the page) */
+@media (max-width: 479px) { .ctl .top .room-word { display: none; } }
+@media (max-width: 399px) { .ctl .top .chip-mon { display: none; } }
 .ctl .chip { font-size: .8rem; padding: 4px 10px; white-space: nowrap; }
 .ctl .chip[data-status="open"] { color: var(--ok); }
 .ctl .beds { display: flex; gap: 6px; overflow-x: auto; margin: 8px 0; }
 .ctl .bed { flex: none; min-width: 44px; }
 .ctl .bed[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+/* a bed with unapplied changes: a small dot in the pending colour */
+.ctl .bed[data-pending="true"] { position: relative; }
+.ctl .bed[data-pending="true"]::after { content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
 .ctl h2 { font-size: 1rem; color: var(--dim); margin: 18px 0 6px; }
 .ctl .field { display: block; color: var(--dim); margin: 6px 0; }
 .ctl select { display: block; width: 100%; min-height: 48px; font: inherit; background: #151515; color: var(--fg); border: 1px solid #444; border-radius: 8px; padding: 6px 10px; margin-top: 4px; }

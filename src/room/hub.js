@@ -103,7 +103,12 @@ export class RoomHub {
       }
       case 'addPatient': return this.apply(clientId, now, msg, (s) => this.doAdd(s, msg, now));
       case 'removePatient': return this.apply(clientId, now, msg, (s) => this.doRemove(s, msg));
-      case 'silence': return this.apply(clientId, now, msg, (s) => { s.alarms.silencedUntil = now + SILENCE_MS; return { kind: 'silence', what: 'silence' }; });
+      case 'silence': return this.apply(clientId, now, msg, (s) => {
+        // cancel: true ends a silence now (monitors sound again at once); otherwise silence for SILENCE_MS
+        if (msg.cancel === true) { s.alarms.silencedUntil = 0; return { kind: 'silence', what: 'silence off' }; }
+        s.alarms.silencedUntil = now + SILENCE_MS;
+        return { kind: 'silence', what: 'silence' };
+      });
       case 'history': return { reply: await this.history(msg, now) };
       case 'mark': return this.apply(clientId, now, msg, (s) => this.doMark(s, msg));
       case 'addScreen': {
