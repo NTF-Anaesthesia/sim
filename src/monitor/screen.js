@@ -22,7 +22,8 @@ import { createDefib } from '../defib/index.js';
 import { createIdentity } from './identity.js';
 import { createModuleRegistry, registerBuiltinModules } from './modules.js';
 import { createSettings } from './settings.js';
-import { buildLinkBanner, buildView } from './view.js';
+import { buildLinkBanner, buildSoundPrompt, buildView } from './view.js';
+import { requestWake, soundPrompt, wakeLabel } from './device.js';
 import { linkBanner, watchWake } from './link.js';
 import { NIBP_INTERVALS, intervalLabel } from '../controller/params.js';
 
@@ -76,7 +77,12 @@ export function mountScreen(root, opts) {
   let defib = null;
   /** @type {WakeLockSentinel | null} */
   let wake = null;
-  let wakeWanted = false;
+  // Keep awake and Sound are remembered per device (settings `wake`, `sound`; both off by default)
+  let wakeWanted = settings.get('wake', /** @type {unknown} */ (false)) === true;
+  let wakeSupported = typeof navigator !== 'undefined' && !!navigator.wakeLock;
+  let wakeFailed = false;
+  let wakePending = false;
+  let soundIntent = settings.get('sound', /** @type {unknown} */ (false)) === true;
   /** @type {import('../shared/schema.js').Screen | null} this monitor's named screen (set from the phone) */
   let screen = null;
   let pick = opts.pick ?? null; // bed chosen on this device (`?p=`)
@@ -87,6 +93,8 @@ export function mountScreen(root, opts) {
   let lastStateAt = 0;
   const banner = buildLinkBanner(root.ownerDocument);
   root.ownerDocument.body.append(banner.el);
+  const soundPill = buildSoundPrompt(root.ownerDocument);
+  root.ownerDocument.body.append(soundPill);
 
   const audio = new AudioMixer({
     volume: (ch) => (theme.audio?.[ch]?.volume ?? 1) * settings.get(`vol.${ch}`, 1),
@@ -309,15 +317,37 @@ export function mountScreen(root, opts) {
     view.chip.textContent = s === 'open' ? 'live' : s;
     view.chip.dataset.status = s;
     view.soundBtn.textContent = audio.enabled ? 'Sound on' : 'Sound';
-    view.wakeBtn.textContent = wakeWanted ? 'Awake on' : 'Keep awake';
+    const wl = wakeLabel({ wanted: wakeWanted, held: wake !== null, supported: wakeSupported, failed: wakeFailed });
+    view.wakeBtn.textContent = wl.text;
+    if (wl.title) view.wakeBtn.title = wl.title;
+    else view.wakeBtn.removeAttribute('title');
     view.fullBtn.textContent = document.fullscreenElement ? 'Exit full screen' : 'Full screen';
   }
 
   async function toggleSound() {
     if (audio.enabled) await audio.disable();
     else await audio.enable();
+    soundIntent = audio.wanted;
+    settings.set('sound', soundIntent);
     renderChips();
+    renderSoundPrompt();
   }
+  /** The "tap anywhere to turn sound on" pill: sound is wanted on this device but the browser has not let it play. */
+  function renderSoundPrompt() {
+    const show = soundPrompt({ soundWanted: soundIntent || audio.wanted, running: audio.enabled });
+    if (soundPill.hidden === !show) return;
+    soundPill.hidden = !show;
+  }
+  /** Any tap or key while the pill shows turns sound on (the Sound button itself is left to its own click). */
+  async function unlockSound(/** @type {Event} */ e) {
+    if (soundPill.hidden || audio.enabled) return;
+    const t = /** @type {Element | null} */ (e.target instanceof Element ? e.target : null);
+    if (t?.closest('[data-t=sound]')) return;
+    try { await audio.enable(); } catch { /* still needs a tap */ }
+    renderChips();
+    renderSoundPrompt();
+  }
+  for (const ev of ['pointerdown', 'pointerup', 'keydown']) document.addEventListener(ev, unlockSound, true);
   async function toggleFull() {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -326,15 +356,28 @@ export function mountScreen(root, opts) {
     renderChips();
   }
   async function acquireWake() {
-    try {
-      if (!wakeWanted) { await wake?.release(); wake = null; return; }
-      if (wake) return;
-      wake = await navigator.wakeLock.request('screen');
-      wake.addEventListener('release', () => { wake = null; renderChips(); });
-    } catch { wake = null; }
+    if (!wakeWanted) {
+      wakeFailed = false;
+      const w = wake;
+      wake = null;
+      try { await w?.release(); } catch { /* already gone */ }
+      return;
+    }
+    if (wake || wakePending || !wakeSupported) return;
+    wakePending = true;
+    const r = await requestWake(navigator);
+    wakePending = false;
+    if (r.state === 'unsupported') { wakeSupported = false; return; }
+    if (r.state === 'failed') { wakeFailed = true; return; }
+    wakeFailed = false;
+    const sentinel = r.sentinel;
+    if (!wakeWanted) { try { await sentinel.release(); } catch { /* already gone */ } return; } // turned off meanwhile
+    wake = sentinel;
+    sentinel.addEventListener('release', () => { if (wake === sentinel) wake = null; renderChips(); });
   }
   async function toggleWake() {
     wakeWanted = !wakeWanted;
+    settings.set('wake', wakeWanted);
     await acquireWake();
     renderChips();
   }
@@ -346,6 +389,7 @@ export function mountScreen(root, opts) {
       if (lastStatus === 'open') downSince = Date.now();
       lastStatus = s;
     }
+    renderSoundPrompt();
     const b = linkBanner({ status: s, downSince, lastStateAt, now: Date.now() });
     banner.el.hidden = !b.show;
     if (!b.show) { delete banner.el.dataset.kind; return; }
@@ -511,12 +555,19 @@ export function mountScreen(root, opts) {
   addEventListener('resize', refill);
   document.addEventListener('visibilitychange', async () => {
     refill();
-    if (document.visibilityState === 'visible' && wake === null && wakeWanted) await acquireWake();
+    if (document.visibilityState === 'visible' && wake === null && wakeWanted) { await acquireWake(); renderChips(); }
   });
   // laptop lid opened, tab shown, Wi-Fi back: check the socket at once instead of waiting out a half-open one or the
   // backoff (RoomClient.wake ignores a full or expired room); a sound context the browser suspended is resumed
-  watchWake(client, { doc: document, win: window, onVisible: () => { audio.resume(); } });
-  document.addEventListener('fullscreenchange', renderChips);
+  // (a browser that refuses without a tap gets the "tap anywhere" pill)
+  watchWake(client, { doc: document, win: window, onVisible: async () => { await audio.resume(); renderChips(); renderSoundPrompt(); } });
+  document.addEventListener('fullscreenchange', async () => {
+    renderChips();
+    if (wake === null && wakeWanted) { await acquireWake(); renderChips(); }
+  });
+  // a device that asked to stay awake asks again on load (no tap needed)
+  if (wakeWanted) acquireWake().then(renderChips);
+  renderSoundPrompt();
   // the frame loop's tick only runs on the monitor view with a state; the banner must also work on the defib screen,
   // before the first state and while the page shows a frozen picture
   setInterval(renderBanner, TICK_MS);
