@@ -239,3 +239,103 @@ test('scenario strip: waiting and paused change the labels and the key, the coun
   const c = scenarioBar({ ...run, waiting: false, nextAt: 5000 }, { tab: 'vitals', line: '0:04' });
   assert.ok(a.show && c.show && a.key === c.key, 'a ticking countdown does not rebuild the buttons');
 });
+
+// ---- offline banner and toast (feedback.js) ----------------------------------------------------------------------
+async function fakeFeedback() {
+  const { createFeedback, LOAD_GRACE_MS, RECONNECTED_MS, TOAST_MS } = await import('../src/controller/feedback.js');
+  let t = 1000;
+  /** @type {Map<number, { fn: () => void, at: number }>} */
+  const timers = new Map();
+  let id = 0;
+  let changes = 0;
+  const fb = createFeedback({
+    now: () => t,
+    setTimer: (fn, ms) => { timers.set(++id, { fn, at: t + ms }); return id; },
+    clearTimer: (k) => { timers.delete(k); },
+    onChange: () => { changes++; },
+  });
+  /** advance the clock, running due timers in order @param {number} ms */
+  const tick = (ms) => {
+    const end = t + ms;
+    for (;;) {
+      const due = [...timers].filter(([, v]) => v.at <= end).sort((a, b) => a[1].at - b[1].at)[0];
+      if (!due) break;
+      timers.delete(due[0]);
+      t = due[1].at;
+      due[1].fn();
+    }
+    t = end;
+  };
+  return { fb, tick, changes: () => changes, LOAD_GRACE_MS, RECONNECTED_MS, TOAST_MS };
+}
+
+test('offline banner: quiet during a normal load, hidden when open, Reconnecting when the link drops, Reconnected then hidden', async () => {
+  const { fb, tick, LOAD_GRACE_MS, RECONNECTED_MS } = await fakeFeedback();
+  assert.equal(fb.banner().show, false, 'no flash while the page first connects');
+  fb.status('open');
+  assert.equal(fb.banner().show, false, 'hidden when open');
+  fb.status('reconnecting');
+  const b = fb.banner();
+  assert.ok(b.show && b.kind === 'wait' && /Reconnecting/.test(b.text) && /kept/.test(b.text) && !b.reload);
+  tick(10_000);
+  fb.status('open');
+  const ok = fb.banner();
+  assert.ok(ok.show && ok.kind === 'ok' && ok.text === 'Reconnected');
+  tick(RECONNECTED_MS - 1);
+  assert.equal(fb.banner().show, true);
+  tick(1);
+  assert.equal(fb.banner().show, false, 'Reconnected hides after 3 s');
+  // a slow first connection shows the banner after the grace, and opening then just hides it
+  const slow = await fakeFeedback();
+  slow.tick(LOAD_GRACE_MS - 1);
+  assert.equal(slow.fb.banner().show, false);
+  const before = slow.changes();
+  slow.tick(1);
+  assert.ok(slow.changes() > before, 'the grace timer asks for a repaint');
+  assert.equal(slow.fb.banner().show && slow.fb.banner().kind, 'wait');
+  slow.fb.status('open');
+  assert.equal(slow.fb.banner().show, false);
+});
+
+test('offline banner: full and expired are red with Reload at once; closed by the page shows nothing', async () => {
+  const { fb } = await fakeFeedback();
+  fb.status('expired');
+  assert.deepEqual(fb.banner(), { show: true, kind: 'expired', text: 'Room expired', reload: true });
+  fb.status('full');
+  assert.deepEqual(fb.banner(), { show: true, kind: 'full', text: 'Room full', reload: true });
+  fb.status('closed');
+  assert.equal(fb.banner().show, false);
+});
+
+test('toast: one line, replaced by the next, cleared after 5 s; server errors read "Refused: ..." except schema', async () => {
+  const { errorText } = await import('../src/controller/feedback.js');
+  const { fb, tick, TOAST_MS } = await fakeFeedback();
+  fb.say('Not connected: that was not sent.');
+  tick(2000);
+  fb.say(errorText({ code: 'bad_patch', msg: 'pads are off' }) ?? '');
+  assert.equal(fb.toast(), 'Refused: pads are off');
+  tick(TOAST_MS - 1);
+  assert.equal(fb.toast(), 'Refused: pads are off', 'the newer line gets its own 5 s');
+  tick(1);
+  assert.equal(fb.toast(), '');
+  assert.equal(errorText({ code: 'schema', msg: 'update needed' }), null);
+  assert.equal(errorText({ code: 'rate', msg: 'too many messages' }), 'Refused: too many messages');
+});
+
+test('Apply while offline: the label says so, the send fails, the pending changes stay', async () => {
+  const { applyLabel } = await import('../src/controller/feedback.js');
+  assert.equal(applyLabel(2, 'open'), 'Apply 2 changes');
+  assert.equal(applyLabel(1, 'open'), 'Apply 1 change');
+  assert.equal(applyLabel(2, 'reconnecting'), 'Apply when connected');
+  // the controller sends through act; a closed socket returns false and nothing is queued for a resend
+  FakeWS.all = [];
+  const c = new RoomClient({ url: 'wss://x/ws/ABC234?role=controller&id=c-1', WebSocketCtor: FakeWS, now: () => 1000, setTimer: () => 0, clearTimer: () => {} });
+  c.connect();
+  const p = pt();
+  const pending = { hr: 120 };
+  const { act } = makeActions(c, () => p.id);
+  const patch = buildPatch(pending, p, DEFAULT_UNITS);
+  assert.equal(act(patch ?? {}, 0, p.id), false, 'not sent while connecting');
+  assert.equal(FakeWS.all[0].sent.length, 0);
+  assert.equal(pendingCount(pending, p, DEFAULT_UNITS), 1, 'the pending edit is still there');
+});

@@ -16,6 +16,7 @@ import { qrSvgLow } from '../share/qr.js';
 import { PresetStore, runPreset, presetFromPatient } from './presets.js';
 import { Recorder } from './recorder.js';
 import { scenarioBar } from './scnbar.js';
+import { applyLabel, createFeedback, errorText } from './feedback.js';
 import { Settings, browserStorage } from './settings.js';
 import {
   paramList, LIMIT_PARAMS, NIBP_INTERVALS, TOF_INTERVALS, hasModule, buildPatch, pendingCount, stepPercent, clampDisplay,
@@ -55,7 +56,7 @@ export function mountController(root, opts) {
     scr: '', // screen the per-screen theme panel is open for
     /** speed set on single pending changes, per patient id then field */
     own: /** @type {Record<string, Record<string, number>>} */ ({}),
-    qMode: /** @type {'after' | 'tap'} */ ('after'), qSec: 10, qNote: '', qName: '',
+    qMode: /** @type {'after' | 'tap'} */ ('after'), qSec: 10, qName: '',
     /** recording a scenario (sim-train S2): every change sent for one bed becomes a step */
     rec: /** @type {Recorder | null} */ (null), recName: '',
     /** share panel (sim-train S3): the link, its QR (null = too big) and a note; `taking` = waiting for the room's library */
@@ -63,7 +64,7 @@ export function mountController(root, opts) {
     /** scenario being edited: `orig` = saved name it replaces (null = not saved yet), the rest is the draft */
     ed: /** @type {{ orig: string | null, name: string, objectives: string, steps: any[], note: string } | null} */ (null),
   };
-  const actions = makeActions(client, () => ui.p);
+  const actions = makeActions({ send: (m) => send(m) }, () => ui.p);
 
   // Theme for every monitor in the room: a theme sent here replaces what each monitor without its own choice shows.
   const roomTheme = () => loadTheme(state()?.theme === 'custom' ? state()?.themeJson : undefined).theme;
@@ -147,6 +148,10 @@ export function mountController(root, opts) {
       <span class="code">Room <b id="code"></b></span>
       <button type="button" class="small mark" data-act="mark" data-testid="mark" aria-label="Bookmark this moment in the log">Mark</button>
     </header>
+    <div id="offline" class="offline" data-testid="offline-banner" role="status" aria-live="polite" hidden>
+      <span id="offline-text"></span>
+      <span id="offline-btns" class="offline-btns" hidden><button type="button" data-act="reload" data-testid="offline-reload">Reload</button><a href="../" class="btn" data-testid="offline-home">Home</a></span>
+    </div>
     <nav id="beds" class="beds" aria-label="Patients"></nav>
     <section id="view" class="view" aria-live="off"></section>
     <footer class="dock">
@@ -155,12 +160,35 @@ export function mountController(root, opts) {
       <div id="tempo" class="glide tempo" hidden></div>
       <div id="progress" class="progress" hidden><div id="bar"></div><span id="left"></span></div>
       <div id="apply" class="applybar" hidden></div>
+      <p id="toast" class="toast" data-testid="toast" role="status" aria-live="polite"></p>
       <nav class="tabs" id="tabs">${TABS.map(([id, l]) => `<button type="button" data-tab="${id}" data-testid="tab-${id}">${l}</button>`).join('')}</nav>
     </footer>`;
   const $ = (/** @type {string} */ id) => /** @type {HTMLElement} */ (root.querySelector(`#${id}`));
   $('code').textContent = opts.code;
+  // offline banner + toast line: every change that does not reach the room is explained on screen, on any tab
+  const fb = createFeedback({ now: () => Date.now(), setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (id) => clearTimeout(id), onChange: () => renderFeedback() });
+  /** One toast line above the tabs. @param {string} text */
+  const say = (text) => fb.say(text);
+  /** Send a message; when it cannot go, say so (a more specific `say` after this replaces the line). Never resent. @param {object} msg */
+  const send = (msg) => {
+    const ok = client.send(msg);
+    if (!ok) say('Not connected: that was not sent. Try again when connected.');
+    return ok;
+  };
 
   // ---- rendering -------------------------------------------------------------------------------------------------
+  function renderFeedback() {
+    const b = fb.banner();
+    const el = $('offline');
+    el.hidden = !b.show;
+    el.dataset.kind = b.show ? b.kind : '';
+    $('offline-text').textContent = b.show ? b.text : '';
+    $('offline-btns').hidden = !(b.show && b.reload);
+    const t = $('toast');
+    if (t.textContent !== fb.toast()) t.textContent = fb.toast();
+    if ($('apply').dataset.off !== String(client.status !== 'open')) renderDock(); // Apply's label follows the link
+  }
+
   function renderStatus() {
     const st = client.status;
     const pr = client.presence;
@@ -435,7 +463,8 @@ export function mountController(root, opts) {
     if (!library.scenarios.length && !library.drugs.length) { ui.libNote = 'Nothing saved on this phone to offer: record or import a scenario first.'; renderView(); return; }
     const file = library.exportJson();
     if (file.length > MAX_FILE_CHARS) { ui.libNote = `Your saved library is over ${MAX_FILE_CHARS / 1024} KB; delete some scenarios first.`; renderView(); return; }
-    ui.libNote = client.send({ t: 'libraryOffer', library: JSON.parse(file) }) ? 'Offered to this room.' : 'Not connected: nothing was offered.';
+    if (!client.send({ t: 'libraryOffer', library: JSON.parse(file) })) { say('Not connected: nothing was offered.'); return; }
+    ui.libNote = 'Offered to this room.';
     renderView();
   }
 
@@ -537,7 +566,7 @@ export function mountController(root, opts) {
   function startRecording() {
     const pt = patient();
     if (!pt || ui.rec) return;
-    if (client.status !== 'open') { ui.libNote = 'Not connected: recording did not start.'; renderView(); return; }
+    if (client.status !== 'open') { say('Not connected: recording did not start.'); return; }
     ui.rec = new Recorder(pt.id, Date.now());
     ui.recName = '';
     render();
@@ -703,12 +732,14 @@ export function mountController(root, opts) {
     const bar = $('apply');
     bar.hidden = n === 0;
     if (n && root.ownerDocument.activeElement?.id === 'q-sec') return;
-    bar.innerHTML = n ? `<button type="button" class="apply" data-act="apply" data-testid="apply">Apply ${n} change${n === 1 ? '' : 's'}</button>
+    const off = client.status !== 'open';
+    bar.dataset.off = String(off);
+    bar.innerHTML = n ? `<button type="button" class="apply" data-act="apply" data-testid="apply"${off ? ' aria-disabled="true"' : ''}>${applyLabel(n, client.status)}</button>
       <button type="button" class="cancel" data-act="cancel" data-testid="cancel">Cancel</button>
       <div class="qrow"><button type="button" class="queue" data-act="queue-add" data-testid="queue-add">Add to queue</button>
         <label class="spd"><select id="q-mode" data-testid="q-mode" aria-label="Queue timing"><option value="after"${ui.qMode === 'after' ? ' selected' : ''}>after</option><option value="tap"${ui.qMode === 'tap' ? ' selected' : ''}>on tap</option></select></label>
         ${ui.qMode === 'after' ? `<label class="spd"><input type="number" id="q-sec" min="0" max="3600" value="${ui.qSec}" aria-label="Seconds after the previous step" data-testid="q-sec"> s</label>` : ''}</div>
-      ${ui.qNote ? `<p class="hint">${esc(ui.qNote)}</p>` : ''}` : '';
+` : '';
   }
 
   /** Queue panel, tempo row (shown while a glide, queue or scenario runs). */
@@ -829,7 +860,7 @@ export function mountController(root, opts) {
     if (!pt) return;
     const patch = buildPatch(pend(), pt, units());
     const tm = timingFor(patch, ui.glideMs, ui.own[pt.id], pt);
-    if (patch && !act(patch, tm.glideMs, pt.id, tm.glideMsBy)) { ui.note = 'Not connected: your changes are kept. Apply again when connected.'; $('status').title = ui.note; return; }
+    if (patch && !act(patch, tm.glideMs, pt.id, tm.glideMsBy)) { say('Not connected: your changes are kept. Apply again when connected.'); return; }
     clearPending(pt.id);
     render();
   }
@@ -851,8 +882,7 @@ export function mountController(root, opts) {
     const qs = /** @type {HTMLInputElement | null} */ (root.querySelector('#q-sec'));
     if (qs) ui.qSec = Number(qs.value) || 0;
     const step = { ...(ui.qMode === 'tap' ? { onTap: true } : { atSec: Math.max(0, Math.min(3600, Math.round(ui.qSec))) }), patch, ...tm };
-    if (!actions.queueAdd(step, pt.id, replace)) { ui.qNote = 'Not connected: your changes are kept.'; renderDock(); return; }
-    ui.qNote = '';
+    if (!actions.queueAdd(step, pt.id, replace)) { say('Not connected: not queued; your changes are kept.'); return; }
     clearPending(pt.id);
     render();
   }
@@ -894,7 +924,7 @@ export function mountController(root, opts) {
     const pt = patient();
     const pr = presets.all().find((x) => x.name === name);
     if (!pt || !pr) return;
-    if (client.status !== 'open') { ui.note = 'Not connected: preset not applied.'; renderView(); return; }
+    if (client.status !== 'open') { say('Not connected: preset not applied.'); return; }
     scenario?.cancel();
     // a preset's own glide time wins; a step with glideMs 0 still means "instant"
     scenario = runPreset(pr, act, pt.id);
@@ -909,12 +939,13 @@ export function mountController(root, opts) {
     const s = state();
     const pt = patient();
     if (d.tab) { ui.tab = d.tab; ui.forceView = true; render(); return; }
+    if (d.act === 'reload') { window.location.reload(); return; }
     if (d.act === 'scnbar-cue') { const open = t.classList.toggle('open'); t.setAttribute('aria-expanded', String(open)); return; }
     if (d.bed) { ui.p = d.bed; ui.forceView = true; render(); return; }
     if (d.act === 'mark' || d.act === 'mark-text') {
       const input = /** @type {HTMLInputElement | null} */ (root.querySelector('#marktext'));
       const text = d.act === 'mark-text' ? (input?.value ?? '').trim().slice(0, 200) : '';
-      if (!client.send({ t: 'mark', ...(ui.p ? { p: ui.p } : {}), ...(text ? { text } : {}) })) { ui.markNote = 'Not connected: bookmark not saved.'; }
+      if (!client.send({ t: 'mark', ...(ui.p ? { p: ui.p } : {}), ...(text ? { text } : {}) })) { ui.markNote = ''; say('Not connected: bookmark not saved.'); }
       else { ui.markNote = `Bookmarked at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`; if (input) input.value = ''; }
       t.dataset.done = 'true';
       const note = root.querySelector('[data-testid=mark-note]');
@@ -948,12 +979,12 @@ export function mountController(root, opts) {
     if (d.del) { presets.remove(d.del); renderView(); return; }
     if (d.scn !== undefined) {
       const sc = library.allScenarios()[Number(d.scn)];
-      if (sc && !actions.scenarioStart(sc, pt.id)) { ui.libNote = 'Not connected: the scenario did not start.'; renderView(); } else delete ui.pending[pt.id];
+      if (sc && !actions.scenarioStart(sc, pt.id)) say('Not connected: the scenario did not start.'); else delete ui.pending[pt.id];
       return;
     }
     if (d.drug !== undefined) {
       const dr = library.allDrugs()[Number(d.drug)];
-      if (dr && !actions.drug(dr, pt.id)) { ui.libNote = 'Not connected: the drug was not given.'; renderView(); } else {
+      if (dr && !actions.drug(dr, pt.id)) say('Not connected: the drug was not given.'); else {
         if (dr && ui.rec) ui.rec.add({ patient: drugPatch(pt, dr.effects) }, pt.id, Date.now(), dr.glideMs);
         delete ui.pending[pt.id];
       }
@@ -1012,7 +1043,7 @@ export function mountController(root, opts) {
       case 'scn-next': actions.scenarioControl('scenarioNext'); break;
       case 'scn-stop': actions.scenarioControl('scenarioStop'); break;
       case 'lib-offer': offerLibrary(); break;
-      case 'lib-take': ui.taking = true; if (!client.send({ t: 'libraryGet' })) { ui.taking = false; ui.libNote = 'Not connected.'; renderView(); } break;
+      case 'lib-take': ui.taking = true; if (!client.send({ t: 'libraryGet' })) { ui.taking = false; say('Not connected: the room\'s library was not fetched.'); } break;
       case 'share-close': ui.share = null; renderView(); break;
       case 'share-copy': copyLink(); break;
       case 'lib-export': ui.lib = library.exportJson(); ui.libNote = 'Copy this text, or paste a library file here and tap Import.'; renderView(); break;
@@ -1042,9 +1073,9 @@ export function mountController(root, opts) {
       if (name && name !== sc.name) setScreen(id, { name });
       /** @type {HTMLElement} */ (root.ownerDocument.activeElement)?.blur?.();
       renderView();
-    } else if (what === 'identify') client.send({ t: 'identify', s: id });
-    else if (what === 'forget') { if (window.confirm(`Forget ${sc.name}? Its settings go; that monitor asks for a name again.`)) client.send({ t: 'forgetScreen', s: id }); }
-    else if (what === 'clear-theme' || what === 'clear-p') client.send({ t: 'clearDevice', s: id, what: what.slice(6) });
+    } else if (what === 'identify') send({ t: 'identify', s: id });
+    else if (what === 'forget') { if (window.confirm(`Forget ${sc.name}? Its settings go; that monitor asks for a name again.`)) send({ t: 'forgetScreen', s: id }); }
+    else if (what === 'clear-theme' || what === 'clear-p') send({ t: 'clearDevice', s: id, what: what.slice(6) });
     else if (what === 'theme-import') openScreenPanel(id);
   }
 
@@ -1165,11 +1196,12 @@ export function mountController(root, opts) {
     ui.taking = false;
     importLibrary(JSON.stringify(m.library));
   });
-  client.on('status', renderStatus);
+  client.on('status', (st) => { renderStatus(); fb.status(st); });
   client.on('presence', () => { renderStatus(); if (ui.tab === 'screens' && !ui.dragging) render(); });
   client.on('state', () => { render(); if (themePanel.isOpen) themePanel.refresh(); if (screenPanel?.isOpen) screenPanel.refresh(); });
   client.on('error', (e) => {
-    $('status').title = e?.msg ?? '';
+    const text = errorText(e);
+    if (text) say(text);
     if (ui.taking && e?.code === 'bad_patch') { ui.taking = false; ui.libNote = `Refused: ${e.msg}`; renderView(); }
     if (e?.code === 'schema') $('view').innerHTML = '<p class="hint">Update needed: reload this page.</p>';
   });
@@ -1179,7 +1211,7 @@ export function mountController(root, opts) {
   window.addEventListener('pageshow', wake);
   window.addEventListener('online', wake);
   const close = client.close.bind(client);
-  client.close = () => { clearInterval(progressTimer); scenario?.cancel(); document.removeEventListener('visibilitychange', wake); close(); };
+  client.close = () => { clearInterval(progressTimer); fb.stop(); scenario?.cancel(); document.removeEventListener('visibilitychange', wake); close(); };
 
   render();
   client.connect();

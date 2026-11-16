@@ -38,6 +38,7 @@ try {
   await phone.getByTestId('rng-hr').waitFor();
   check(/1 monitor/.test((await phone.locator('#status').textContent()) ?? ''), 'connection chip shows 1 monitor');
   check(await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no horizontal scroll at 390 px');
+  check(await phone.getByTestId('offline-banner').isHidden(), 'offline banner hidden while connected');
 
   // pending edits stay local until Apply, then go out together over the chosen glide time
   await phone.getByTestId('glide-30000').click();
@@ -120,6 +121,8 @@ try {
   await phone.locator('#status[data-status="open"]').waitFor({ timeout: 10000 });
   await phone.locator('[data-testid="val-hr"]', { hasText: '61' }).waitFor({ timeout: 5000 });
   check(true, 'phone reconnects after being offline and shows the latest state');
+  await phone.getByTestId('offline-banner').waitFor({ state: 'hidden', timeout: 6000 });
+  check(true, 'offline banner gone again after reconnecting');
   sock.close();
 } finally {
   await browser.close();
