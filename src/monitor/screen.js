@@ -1,7 +1,7 @@
 // @ts-check
 // The monitor screen: joins a room's state to the view. One frame loop draws the waves; a 250 ms tick updates numerics,
 // alarms and the alarm tone. Waves run on the display clock (seconds), glide / silence / NIBP on the server clock (ms).
-import { AlarmTracker, burstDue, evaluateAlarms, PRIORITY_NAME } from '../engine/alarms.js';
+import { ALARM_DELAY_MS, AlarmDelay, AlarmTracker, burstDue, evaluateAlarms, PRIORITY_NAME } from '../engine/alarms.js';
 import { displayed } from '../engine/glide.js';
 import { macFraction } from '../engine/gas.js';
 import { jittered } from '../engine/jitter.js';
@@ -28,6 +28,8 @@ import { linkBanner, watchWake } from './link.js';
 import { NIBP_INTERVALS, intervalLabel } from '../controller/params.js';
 
 const TICK_MS = 250;
+const DELAY_TITLE = `Realistic alarm delay (this device): a limit alarm must last ${ALARM_DELAY_MS.limit / 1000} s`
+  + ` (SpO2 ${ALARM_DELAY_MS.spo2 / 1000} s, apnoea ${ALARM_DELAY_MS.apnea / 1000} s) before it shows; lethal rhythms stay immediate`;
 /** @param {unknown} x @param {number} fallback a device setting is only used when it is a positive number */
 const positive = (x, fallback) => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : fallback);
 
@@ -47,6 +49,7 @@ export function mountScreen(root, opts) {
   registerBuiltinModules(modules);
   const src = new WaveSource(7);
   const tracker = new AlarmTracker();
+  const delay = new AlarmDelay();
   const burstSt = { lastAt: 0, lastPriority: 0 };
   let brokeSent = 0; // the silence this monitor last told the room it saw broken by a new alarm
   let theme = resolveTheme(undefined).theme;
@@ -84,6 +87,8 @@ export function mountScreen(root, opts) {
   let wakeFailed = false;
   let wakePending = false;
   let soundIntent = settings.get('sound', /** @type {unknown} */ (false)) === true;
+  // Realistic alarm delay, per device (setting `alarmDelay`, off by default): limit alarms wait ALARM_DELAY_MS first
+  let delayOn = settings.get('alarmDelay', /** @type {unknown} */ (false)) === true;
   /** @type {import('../shared/schema.js').Screen | null} this monitor's named screen (set from the phone) */
   let screen = null;
   let pick = opts.pick ?? null; // bed chosen on this device (`?p=`)
@@ -236,6 +241,7 @@ export function mountScreen(root, opts) {
       onSound: toggleSound,
       onFull: toggleFull,
       onWake: toggleWake,
+      onDelay: () => { delayOn = !delayOn; settings.set('alarmDelay', delayOn); renderChips(); },
       onTheme: () => (panel.isOpen ? panel.close() : panel.open()),
       onTrends: toggleTrends,
       keys: keysShown(),
@@ -322,6 +328,9 @@ export function mountScreen(root, opts) {
     view.wakeBtn.textContent = wl.text;
     if (wl.title) view.wakeBtn.title = wl.title;
     else view.wakeBtn.removeAttribute('title');
+    view.delayBtn.textContent = delayOn ? 'Alarm delay on' : 'Alarm delay';
+    view.delayBtn.setAttribute('aria-pressed', String(delayOn));
+    view.delayBtn.title = DELAY_TITLE;
     view.fullBtn.textContent = document.fullscreenElement ? 'Exit full screen' : 'Full screen';
   }
 
@@ -445,7 +454,9 @@ export function mountScreen(root, opts) {
       etagMac: (s.fiag ?? 0) > 0 || (s.etag ?? 0) > 0 ? mac : null,
       bis: s.bis === null ? null : Math.round(s.bis),
     }, nowMs);
-    const av = tracker.update(alarms, { enabled: state.alarms.enabled, silencedUntil: state.alarms.silencedUntil }, nowMs);
+    // the delay counts on this monitor's own clock and only filters what it shows: room state and replays never see it
+    const active = delay.filter(alarms, delayOn, perfNow);
+    const av = tracker.update(active, { enabled: state.alarms.enabled, silencedUntil: state.alarms.silencedUntil }, nowMs);
     if (av.broke && av.broke !== brokeSent) {
       // a new alarm broke the silence: sound at once, and end the room's silence so the phone and other screens agree
       brokeSent = av.broke;

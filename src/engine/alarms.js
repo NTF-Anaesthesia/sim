@@ -174,6 +174,76 @@ export class AlarmTracker {
 }
 
 /**
+ * Realistic alarm delay (per-device option, off by default): how long a condition must last, without a break, before it
+ * becomes an alarm. Wall time on this monitor, so it never touches the room. Every number lives here.
+ */
+export const ALARM_DELAY_MS = Object.freeze({
+  /** HR, EtCO2, RR, NIBP, temp, ABP, ABP2, CVP, FiO2, Et agent and BIS limits */
+  limit: 5000,
+  /** SpO2 limits (low, high and the critical band) */
+  spo2: 8000,
+  /** RR 0 (`APNEA`) */
+  apnea: 20000,
+});
+
+/**
+ * The delay one alarm gets when the option is on. Lethal rhythms (asystole, VF, VT, torsades) and technical notices
+ * (leads off, no pulse, NIBP overdue) stay immediate; only limit alarms and apnoea wait.
+ * @param {Alarm} a
+ * @returns {number} ms
+ */
+export function alarmDelayMs(a) {
+  if (a.id === 'apnea') return ALARM_DELAY_MS.apnea;
+  if (a.id.startsWith('rhythm-') || a.priority <= PRIORITY.low) return 0;
+  const isLimit = /-(low|high)$/.test(a.id) || a.id === 'fio2-hypoxic';
+  if (!isLimit) return 0;
+  return a.param === 'spo2' ? ALARM_DELAY_MS.spo2 : ALARM_DELAY_MS.limit;
+}
+
+/**
+ * Holds back each delayed condition until it has lasted its delay. A condition that clears before then never shows;
+ * its return starts the wait again. Keyed by alarm id, so a change of priority (SpO2 low medium -> high) keeps the wait
+ * already served. Off: the alarms pass through untouched (the same array). Turning it on does not hide an alarm already
+ * showing.
+ */
+export class AlarmDelay {
+  constructor() {
+    /** @type {Map<string, number>} condition id -> wall ms it was first seen in the current unbroken run */
+    this.since = new Map();
+    this.on = false;
+  }
+
+  /**
+   * @param {Alarm[]} alarms from evaluateAlarms
+   * @param {boolean} on the device option
+   * @param {number} wallMs this monitor's clock (performance.now()), not the server clock
+   * @returns {Alarm[]} the alarms that are active now
+   */
+  filter(alarms, on, wallMs) {
+    if (!on) {
+      this.on = false;
+      this.since.clear();
+      return alarms;
+    }
+    const seed = !this.on; // just turned on: what is already alarming stays shown
+    this.on = true;
+    /** @type {Map<string, number>} */
+    const next = new Map();
+    /** @type {Alarm[]} */
+    const out = [];
+    for (const a of alarms) {
+      const d = alarmDelayMs(a);
+      if (d <= 0) { out.push(a); continue; }
+      const t0 = this.since.get(a.id) ?? (seed ? -Infinity : wallMs);
+      next.set(a.id, t0);
+      if (wallMs - t0 >= d) out.push(a);
+    }
+    this.since = next;
+    return out;
+  }
+}
+
+/**
  * Should a tone burst start now? Repeats while active, starts at once for a higher priority than the last burst.
  * @param {number} priority active priority (0 = none)
  * @param {boolean} silenced
