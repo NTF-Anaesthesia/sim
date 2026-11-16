@@ -138,3 +138,13 @@
 .ctl .scnbar[data-waiting="true"] .scnbar-next { background: #d9a300; border-color: #d9a300; color: #000; font-weight: 700; }
 @keyframes scnbar-pulse { 0%, 100% { background: #1a1608; } 50% { background: #4a3c08; } }
 @media (prefers-reduced-motion: reduce) { .ctl .scnbar[data-waiting="true"] { animation: none; background: #3a3008; } }
+/* Offline banner under the header (stays in view while scrolling) and the one toast line above the tabs */
+.ctl .offline { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin: 6px -10px 0; padding: 8px 12px; font-weight: 600; font-size: .9rem; background: #2a2208; color: #ffd000; border-block: 1px solid #5a4a10; }
+.ctl .offline[hidden] { display: none; }
+.ctl .offline[data-kind="full"], .ctl .offline[data-kind="expired"] { background: #2a0a0a; color: #ff6060; border-color: #6a1a1a; }
+.ctl .offline[data-kind="ok"] { background: #0a200a; color: var(--ok); border-color: #1a4a1a; }
+.ctl .offline-btns { display: flex; gap: 8px; }
+.ctl .offline-btns[hidden] { display: none; }
+.ctl .apply[aria-disabled="true"] { background: #333; color: #bbb; }
+.ctl .toast { margin: 0; padding: 6px 12px; font-size: .85rem; color: var(--warn); background: #1a1608; border-top: 1px solid #3a3210; overflow-wrap: anywhere; }
+.ctl .toast:empty { display: none; }

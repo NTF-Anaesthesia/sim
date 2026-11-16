@@ -275,6 +275,10 @@ Rules:
 - Clients reconnect with backoff 0.5, 1, 2, 4, 8 s (max 8 s), then keep trying; on reconnect the server's `state` replaces
   local state. The monitor keeps drawing from the last state while disconnected and shows a small "reconnecting"
   chip after 3 s.
+- The phone (`src/controller/feedback.js`) shows a banner under the header while offline ("Reconnecting… your changes
+  are kept"; red "Room full" / "Room expired" with Reload), "Reconnected" for 3 s after, and one toast line above the
+  tabs for every change that was not sent and every server `error` ("Refused: …", except `schema`). Nothing is resent
+  automatically: a drug's relative change would double. Apply reads "Apply when connected" while offline.
 - Target delay: controller change reaches every monitor in under 1 s on normal Wi-Fi.
 - Hibernation: the Room uses `ctx.acceptWebSocket` and the `webSocketMessage`/`webSocketClose` handlers; state is read
   from SQLite on wake (a memory copy is only a cache); client ids and roles are kept with `serializeAttachment`.
