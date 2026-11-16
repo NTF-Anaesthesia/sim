@@ -21,7 +21,7 @@ export function registerBuiltinWaves(registry) {
   });
   registry.register({
     id: 'spo2',
-    sample: (src, t, ctx) => shockPleth(src, t) ?? plethSample(src, t, ctx.patient.spo2Quality),
+    sample: (src, t, ctx) => shockPleth(src, t) ?? plethSample(src, t, ctx.patient.spo2Quality, ctx.patient.ppv ?? 0),
     range: (gain) => [-0.1 / gain, 1.4 / gain],
     blank: ({ patient }) => !!patient.off?.spo2 || patient.spo2Quality === 'none',
   });
