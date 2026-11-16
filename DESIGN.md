@@ -370,8 +370,18 @@ Evaluated **on each monitor** from glided values and `alarms.limits`; the contro
 - The phone's header has Silence on every tab: `Silence`, then `Silenced m:ss` (tap to cancel), or `Alarms off`
   (tap opens the Alarms tab). The Alarms tab's button agrees (`Cancel silence (N s left)` while silenced).
 - Master off (`alarms.enabled = false`): no bar, no flashing, no sound.
+- **Realistic alarm delay** (per device, off by default; the monitor's `Alarm delay` button, setting `sim.settings.alarmDelay`):
+  a limit alarm must last without a break before it becomes active (bar, flashing, tone, silence break). Physiological
+  limits (HR, EtCO2, RR, NIBP, temp, ABP, ABP2, CVP, FiO2 including the hypoxic mixture, Et agent, BIS) wait 5 s, SpO2
+  limits 8 s, `APNEA` (RR 0) 20 s; the numbers are the one table `ALARM_DELAY_MS` in `src/engine/alarms.js`. Asystole,
+  VF, VT, torsades and technical alarms (leads or line off, no pulse, NIBP overdue, poor signal) stay immediate. A value
+  that recovers before its delay ends never alarms; its return starts the wait again. The wait is per alarm id, so a
+  rise in priority (SpO2 low medium -> high) keeps the wait already served. It counts on the monitor's own clock
+  (`performance.now()`), only filters what that monitor shows, and never changes room state or replays; so two monitors
+  with different settings can disagree for those few seconds. Turning it on keeps an alarm already showing; turning it
+  off shows any waiting alarm at once. Off, the alarms are exactly as before.
 - Alarm state is not stored on the server and not shared; each monitor derives it, so all monitors agree because their
-  inputs agree.
+  inputs agree (the realistic alarm delay, a device option, can hold one back for a few seconds).
 
 ## 8. Theme JSON schema v1
 
@@ -449,7 +459,7 @@ Modules register themselves (`src/monitor/modules.js`, waves in `src/waves/regis
 - Installable but never prompted: the pages have a manifest and a pass-through service worker (offline mode is Later); each page calls
   `event.preventDefault()` on `beforeinstallprompt` and shows no install UI.
 - New options are **off by default** and **per device** (localStorage keys `sim.opt.*`), e.g. sound, wake lock, show
-  controller log, theme override.
+  controller log, theme override, realistic alarm delay (`sim.settings.alarmDelay`).
 - Wake lock and full screen: buttons on the monitor (`navigator.wakeLock`, `requestFullscreen`), never automatic.
 - No analytics, no third-party scripts, no external fonts. Neutral wording in all text.
 - CI: lint/type-check (`tsc --noEmit`), unit tests (node --test, workerd via `@cloudflare/vitest-pool-workers` is **not**
