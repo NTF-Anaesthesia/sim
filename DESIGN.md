@@ -239,7 +239,7 @@ Client to server:
 | `mark` | `p?`, `text?` | bookmark in the event log (`kind: "bookmark"`, text up to 200 chars) for debriefs; the phone's Mark button (header) and Trends tab send it. `rev` +1. |
 | `history` | `range?` (ms, default 4 h, max 24 h), `all?` | asks for the full log (section 5a); the sender gets `history`. Not stored, `rev` unchanged. |
 | `tof` | `p?`, `after?` | take a TOF reading now (see Gas and TOF); a stale `after` is ignored (several monitors, one reading). |
-| `silence` | optional `cancel: true` | `alarms.silencedUntil` = now + 120000; with `cancel: true`, 0 (alarms sound again at once). |
+| `silence` | optional `cancel: true`, or `broken: true` + `until` | `alarms.silencedUntil` = now + 120000; with `cancel: true`, 0 (alarms sound again at once). `broken: true` comes from a monitor whose silence a new alarm broke: 0 only while `until` still equals `silencedUntil` (not expired), else ignored with no reply (a second monitor or a late report after a fresh silence changes nothing). |
 | `ping` | `n` | server replies `pong` with same `n`; used to measure delay and keep the connection alive. |
 | `addScreen` | `name?`, `kind?` | adds a named screen (section 4a; id `s<n>`, name default `Screen <n>`); the sender gets `screenAdded`. `rev` +1. |
 | `forgetScreen` | `s` | deletes screen `s`. `rev` +1. |
@@ -360,8 +360,13 @@ Evaluated **on each monitor** from glided values and `alarms.limits`; the contro
   low 2 pulses; repeated while active. Audio starts only after a tap on the monitor ("enable sound" button) because of
   browser autoplay rules; sound is off per device until then.
 - Silence: `silence` message sets `silencedUntil = now + 120000`; while silenced, tones are off and the bar shows a
-  silence icon with remaining time; flashing continues. A **new** alarm of higher priority than anything active when
-  silenced ends the silence on the monitor.
+  silence icon with remaining time; flashing continues. The monitor remembers the alarm conditions (ids) active when the
+  silence began. Any **new** condition, at any priority, ends the silence at once and the tone sounds straight away; so
+  does a remembered condition rising to a higher priority (HR low medium -> high). A condition that clears during the
+  silence is forgotten, so its return counts as new. Remembered conditions stay silent for the full 2 min. The monitor
+  that sees the break sends `silence` with `broken: true, until: <silencedUntil>`, so the room clears `silencedUntil`
+  (event `silence broken`): the phone drops `Silenced m:ss` and every screen in the room sounds again (the silence is
+  one room-wide setting).
 - The phone's header has Silence on every tab: `Silence`, then `Silenced m:ss` (tap to cancel), or `Alarms off`
   (tap opens the Alarms tab). The Alarms tab's button agrees (`Cancel silence (N s left)` while silenced).
 - Master off (`alarms.enabled = false`): no bar, no flashing, no sound.
@@ -496,11 +501,11 @@ Answers to questions a fresh reader asked; they override anything looser above.
 - **Size.** A custom `themeJson` inside a room is at most 12 KB (the 16 KB frame limit); the 32 KB limit is for a theme file
   elsewhere. "Under 4 KB" state size excludes a custom theme.
 - **Alarm criticals.** High priority applies when the parameter is outside its limits AND: SpO2 < low limit - 5, HR < 40,
-  or HR > 150; plus asystole, VF, VT regardless of limits. Silencing is per monitor (its own `silencedUntil` is shared, but
-  a "higher priority ends the silence" is evaluated locally), so monitors may differ for a moment. "Similar notices" for
+  or HR > 150; plus asystole, VF, VT regardless of limits. Silencing is room-wide (`silencedUntil` is shared); a "new alarm ends
+  the silence" is evaluated on each monitor, which then ends it for the room, so monitors may differ for a moment. "Similar notices" for
   low priority: "NIBP not measured > 10 min" only in v1 (never raised if no reading has been taken yet).
 - **Events** carry `kind` (`set`, `rhythm`, `nibp`, `patient`, `alarm`, `silence`, `bookmark`, `shock`, `scenario`, `drug`, `test`; `alarm` and `shock` are reserved for later features), the patient id `p` when one applies, and a short `what`. Only the last 20 are kept in the state; a longer log can later move to SQLite rows in the Room (rooms expire in 24 h, so no migration is needed).
-- **Event text** is `set <top-level keys>`, `nibp`, `add <id>`, `remove <id>`, `mark[ text]`, `silence`, `test`. `baseRev` is accepted and ignored in v1.
+- **Event text** is `set <top-level keys>`, `nibp`, `add <id>`, `remove <id>`, `mark[ text]`, `silence`, `silence off`, `silence broken`, `test`. `baseRev` is accepted and ignored in v1.
 - **Clock offset:** ping on open and every 10 s; keep the sample with the smallest round trip.
 - **Defaults (new room)** are exactly `defaultState()` in `src/shared/schema.js`.
 - **Patients.** `p` on `set`/`nibp` names a patient; an unknown `p` is `bad_patch`; no `p` means the first. New ids are the

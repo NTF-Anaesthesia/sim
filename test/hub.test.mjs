@@ -85,6 +85,27 @@ test('silence cancel: silencedUntil back to 0 and a "silence off" event; plain s
   assert.equal(again.broadcast.state.alarms.silencedUntil, clock.t + 120000, 'only cancel: true cancels');
 });
 
+test('silence broken by a monitor: ends that silence for the room ("silence broken" event); stale reports change nothing', async () => {
+  const { hub, clock } = makeHub();
+  const s1 = await hub.onMessage('c-1', msg({ t: 'silence' }));
+  const until = s1.broadcast.state.alarms.silencedUntil;
+  clock.t += 10000;
+  assert.deepEqual(await hub.onMessage('m-1', msg({ t: 'silence', broken: true, until: until - 1 })), {}, 'another silence: ignored');
+  assert.deepEqual(await hub.onMessage('m-1', msg({ t: 'silence', broken: true })), {}, 'no until: ignored');
+  const r = await hub.onMessage('m-1', msg({ t: 'silence', broken: true, until }));
+  assert.equal(r.broadcast.state.alarms.silencedUntil, 0, 'the phone stops showing "Silenced m:ss"');
+  assert.deepEqual(await hub.onMessage('m-2', msg({ t: 'silence', broken: true, until })), {}, 'a second monitor reporting the same break: no-op');
+  const ev = (await hub.state()).events.filter((e) => e.kind === 'silence');
+  assert.deepEqual(ev.map((e) => e.what), ['silence', 'silence broken']);
+  // a report that arrives after a fresh silence leaves the fresh one alone
+  const s2 = await hub.onMessage('c-1', msg({ t: 'silence' }));
+  assert.deepEqual(await hub.onMessage('m-1', msg({ t: 'silence', broken: true, until })), {});
+  assert.equal((await hub.state()).alarms.silencedUntil, s2.broadcast.state.alarms.silencedUntil);
+  // an expired silence is not "broken"
+  clock.t += 200000;
+  assert.deepEqual(await hub.onMessage('m-1', msg({ t: 'silence', broken: true, until: s2.broadcast.state.alarms.silencedUntil })), {});
+});
+
 test('glide: a change records a glide from the values shown at that moment', async () => {
   const { hub, clock } = makeHub();
   await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { hr: 180 } }, glideMs: 10000 }));

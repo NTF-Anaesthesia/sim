@@ -1,6 +1,6 @@
 // @ts-check
 // Alarm model (DESIGN.md section 7): evaluated on each monitor from the shown values and `alarms.limits`. Pure except
-// `AlarmTracker`, which only remembers the silence it saw. Priorities follow the IEC 60601-1-8 idea: high (red),
+// `AlarmTracker`, which only remembers the silence it saw and what was alarming then. Priorities follow the IEC 60601-1-8 idea: high (red),
 // medium (yellow), low (cyan, technical notice).
 
 import { BIS_MIN_SQI } from '../shared/schema.js';
@@ -116,15 +116,20 @@ export function evaluateAlarms(p, state, v, now) {
 /**
  * @typedef {{
  *   master: boolean, alarms: Alarm[], top: Alarm | null, priority: number, silenced: boolean, silenceLeftMs: number,
- *   flashParams: Set<string>
- * }} AlarmView
+ *   flashParams: Set<string>, broke: number
+ * }} AlarmView `broke`: the `silencedUntil` of the silence this monitor saw broken by a new alarm, else 0
  */
 
-/** Remembers which silence the monitor saw and the highest priority active at that moment. */
+/**
+ * Remembers which silence the monitor saw and the alarm conditions active at that moment (id -> priority). While that
+ * silence lasts, any condition not in that set sounds again (a NEW alarm, at any priority), and so does one already in it
+ * that rises to a higher priority. A condition that clears during the silence leaves the set, so its return is new.
+ */
 export class AlarmTracker {
   constructor() {
     this.sil = 0;
-    this.floor = 0;
+    /** @type {Map<string, number>} conditions silenced, with the priority they had */
+    this.held = new Map();
     this.broken = false;
   }
 
@@ -136,7 +141,7 @@ export class AlarmTracker {
    */
   update(alarms, cfg, now) {
     if (!cfg.enabled) {
-      return { master: false, alarms: [], top: null, priority: 0, silenced: false, silenceLeftMs: 0, flashParams: new Set() };
+      return { master: false, alarms: [], top: null, priority: 0, silenced: false, silenceLeftMs: 0, flashParams: new Set(), broke: 0 };
     }
     const sorted = [...alarms].sort((a, b) => b.priority - a.priority);
     const priority = sorted[0]?.priority ?? 0;
@@ -145,18 +150,21 @@ export class AlarmTracker {
     if (cfg.silencedUntil > now) {
       if (cfg.silencedUntil !== this.sil) {
         this.sil = cfg.silencedUntil;
-        this.floor = priority;
+        this.held = new Map(sorted.map((a) => [a.id, a.priority]));
         this.broken = false;
-      } else if (priority > this.floor) {
-        this.broken = true;
+      } else if (!this.broken) {
+        for (const id of [...this.held.keys()]) if (!sorted.some((a) => a.id === id)) this.held.delete(id);
+        this.broken = sorted.some((a) => !this.held.has(a.id) || a.priority > /** @type {number} */ (this.held.get(a.id)));
       }
       silenced = !this.broken;
       silenceLeftMs = silenced ? cfg.silencedUntil - now : 0;
     } else {
       this.sil = 0;
+      this.broken = false;
     }
     const flashParams = new Set(sorted.filter((a) => a.priority >= PRIORITY.medium).map((a) => a.param));
-    return { master: true, alarms: sorted, top: sorted[0] ?? null, priority, silenced, silenceLeftMs, flashParams };
+    const broke = this.broken ? this.sil : 0;
+    return { master: true, alarms: sorted, top: sorted[0] ?? null, priority, silenced, silenceLeftMs, flashParams, broke };
   }
 }
 

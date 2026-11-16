@@ -131,6 +131,54 @@ test('alarms: limits give medium, lethal rhythms high, sensor off low, silence f
   assert.equal(c.update(med, cfg(3000 + SILENCE_MS), 3000).silenced, true, 'a new silence works after a cancel');
 });
 
+test('silence: any NEW alarm condition breaks it (same priority too); ones silenced stay silent; higher priority still breaks', () => {
+  const { st, p } = world();
+  const until = 1000 + SILENCE_MS;
+  const cfg = { enabled: true, silencedUntil: until };
+  const hrLow = evaluateAlarms(p, st, vals({ hr: 45 }), 1000);
+  assert.deepEqual(hrLow.map((a) => [a.id, a.priority]), [['hr-low', 2]]);
+  const both = evaluateAlarms(p, st, vals({ hr: 45, spo2: 88 }), 1000);
+  assert.deepEqual(both.map((a) => [a.id, a.priority]), [['hr-low', 2], ['spo2-low', 2]]);
+
+  // HR low silenced, then SpO2 low at the same (medium) priority sounds
+  const t = new AlarmTracker();
+  assert.equal(t.update(hrLow, cfg, 1000).silenced, true);
+  assert.equal(t.update(hrLow, cfg, 30000).silenced, true, 'the same condition stays silent');
+  assert.equal(t.update(hrLow, cfg, 30000).broke, 0);
+  const v = t.update(both, cfg, 31000);
+  assert.equal(v.silenced, false, 'a new condition at the same priority breaks the silence');
+  assert.equal(v.silenceLeftMs, 0);
+  assert.equal(v.broke, until, 'names the silence it broke, for the room');
+  assert.equal(burstDue(v.priority, v.silenced, { lastAt: 0, lastPriority: 0 }, 31000), true, 'tones play again');
+  assert.equal(t.update(hrLow, cfg, 32000).silenced, false, 'stays broken when the new one clears');
+
+  // a low-priority new condition breaks it too
+  const lowNew = new AlarmTracker();
+  lowNew.update(hrLow, cfg, 1000);
+  assert.equal(lowNew.update([...hrLow, ...evaluateAlarms({ ...p, off: { ecg: false, spo2: true } }, st, vals({ hr: 45 }), 1000).filter((a) => a.id === 'spo2-off')], cfg, 2000).silenced, false);
+
+  // a condition that clears and comes back during the silence counts as new
+  const back = new AlarmTracker();
+  back.update(hrLow, cfg, 1000);
+  assert.equal(back.update([], cfg, 5000).silenced, true);
+  assert.equal(back.update(hrLow, cfg, 9000).silenced, false, 'HR low again after clearing sounds');
+
+  // the same condition rising to a higher priority (HR 45 -> 35) still breaks it
+  const up = new AlarmTracker();
+  up.update(hrLow, cfg, 1000);
+  const hrHigh = evaluateAlarms(p, st, vals({ hr: 35 }), 1000);
+  assert.deepEqual(hrHigh.map((a) => [a.id, a.priority]), [['hr-low', 3]]);
+  assert.equal(up.update(hrHigh, cfg, 2000).silenced, false, 'higher priority breaks the silence');
+  // falling back to a lower priority of a silenced condition does not
+  const down = new AlarmTracker();
+  down.update(hrHigh, cfg, 1000);
+  assert.equal(down.update(hrLow, cfg, 2000).silenced, true);
+
+  // a fresh silence after a break holds again for what is active then
+  assert.equal(t.update(both, { enabled: true, silencedUntil: 40000 + SILENCE_MS }, 40000).silenced, true);
+  assert.equal(t.update(both, { enabled: true, silencedUntil: 40000 + SILENCE_MS }, 41000).broke, 0);
+});
+
 test('tone bursts repeat by priority and restart for a higher one', () => {
   assert.equal(burstDue(0, false, { lastAt: 0, lastPriority: 0 }, 1e6), false);
   assert.equal(burstDue(2, true, { lastAt: 0, lastPriority: 0 }, 1e6), false);
