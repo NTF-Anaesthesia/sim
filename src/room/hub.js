@@ -5,7 +5,7 @@ import {
   DEVICE_CHOICES, MAX_PATIENTS, MAX_SCREENS, SCHEMA_VERSION, SCREEN_ID, SCREEN_KINDS, SHOCK_JOULES, TARGETS, validatePace, numericsOf, defaultPatient,
   defaultState, fillDefaults, screenName, validateIam, validatePatch,
 } from '../shared/schema.js';
-import { displayed, restartGlide, startGlide, remainingMs, GLIDE_FIELDS } from '../engine/glide.js';
+import { displayed, startGlide, remainingMs, GLIDE_FIELDS } from '../engine/glide.js';
 import { MAX_LOG_ROWS, makeLog } from './log.js';
 import { nibpJitter } from '../engine/nibp.js';
 import {
@@ -324,17 +324,21 @@ export class RoomHub {
         if (!b.ok) throw new BadPatch(b.msg);
         by = b.by;
       }
-      if (!by && !before.glide.glideMsBy) pt.glide = restartGlide(before, now, ms);
-      else {
-        // per-field times: a changed field takes its own time (else `ms`); a field not in this patch keeps the time it
-        // still had left, so a slow SpO2 glide is not cut short by an unrelated change
-        const left = remainingMs(before, now);
-        const patient = /** @type {Record<string, any>} */ (p.patient);
-        /** @type {Record<string, number>} */
-        const times = {};
-        for (const k of GLIDE_FIELDS) times[k] = k in patient ? by?.[k] ?? ms : left[k];
-        pt.glide = startGlide(before, now, times);
+      // per-field times: a changed field takes its own time (else `ms`); a field not in this patch keeps the time it
+      // still had left, so a slow SpO2 glide is not cut short by an unrelated change. A field already showing its
+      // target (landed, or never moved) shows the same value whatever its time: it takes `ms` too, which keeps the
+      // record plain (no glideMsBy) when nothing else is still moving.
+      const left = remainingMs(before, now);
+      const shown = /** @type {Record<string, any>} */ (displayed(before, now));
+      const target = /** @type {Record<string, any>} */ (numericsOf(before));
+      const patient = /** @type {Record<string, any>} */ (p.patient);
+      /** @type {Record<string, number>} */
+      const times = {};
+      for (const k of GLIDE_FIELDS) {
+        const moving = left[k] > 0 && JSON.stringify(shown[k]) !== JSON.stringify(target[k]);
+        times[k] = k in patient ? by?.[k] ?? ms : moving ? left[k] : ms;
       }
+      pt.glide = startGlide(before, now, times);
     }
     return { kind: p.patient && 'rhythm' in p.patient ? 'rhythm' : 'set', what: `set ${Object.keys(p).join(',')}`, p: pt.id };
   }

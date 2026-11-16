@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeHub, msg } from './fake.mjs';
 import { IDLE_MS, MAX_PER_SECOND } from '../src/room/hub.js';
+import { displayed } from '../src/engine/glide.js';
 
 test('a new client gets the current state (late joiner)', async () => {
   const { hub } = makeHub();
@@ -207,4 +208,54 @@ test('theme: a custom theme reaches every monitor; "default" clears it; a bad th
   const c = await hub.onMessage('c-1', msg({ t: 'set', patch: { theme: 'default' } }));
   assert.equal(c.broadcast.state.theme, 'default');
   assert.equal('themeJson' in c.broadcast.state, false);
+});
+
+test('glide: a change to one vital keeps the time the others still had left', async () => {
+  const { hub, clock } = makeHub();
+  const s0 = (await hub.state()).patients[0];
+  const start = s0.spo2;
+  await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { hr: 120, spo2: 85 } }, glideMs: 60000 }));
+  clock.t += 10000;
+  const r = await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { temp: 38.5 } }, glideMs: 2000 }));
+  const pt = r.broadcast.state.patients[0];
+  assert.ok(Math.abs(pt.glide.glideMsBy.spo2 - 50000) <= 1, `spo2 left ${pt.glide.glideMsBy.spo2}`);
+  assert.ok(Math.abs(pt.glide.glideMsBy.hr - 50000) <= 1);
+  assert.equal(pt.glide.glideMsBy.temp, 2000);
+  assert.ok(Math.abs(pt.glide.durationMs - 50000) <= 1);
+  clock.t += 20000;
+  const shown = displayed(pt, clock.t).spo2;
+  assert.ok(shown < start && shown > 85, `spo2 shown ${shown} at +30 s should be mid-glide`);
+  assert.equal(displayed(pt, clock.t).temp, 38.5);
+});
+
+test('glide: a field in the new patch takes the new time, from the value shown, even mid-glide', async () => {
+  const { hub, clock } = makeHub();
+  await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { hr: 180, spo2: 85 } }, glideMs: 10000 }));
+  clock.t += 5000;
+  const mid = displayed((await hub.state()).patients[0], clock.t).hr;
+  const r = await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { hr: 60 } }, glideMs: 20000 }));
+  const g = r.broadcast.state.patients[0].glide;
+  assert.equal(g.glideMsBy.hr, 20000);
+  assert.ok(Math.abs(g.glideMsBy.spo2 - 5000) <= 1);
+  assert.equal(g.durationMs, 20000);
+  assert.ok(Math.abs(g.from.hr - mid) < 0.5);
+});
+
+test('glide: with nothing mid-glide, a uniform set stays a plain record', async () => {
+  const { hub } = makeHub();
+  const r = await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { hr: 100 } }, glideMs: 7000 }));
+  const g = r.broadcast.state.patients[0].glide;
+  assert.equal(g.glideMsBy, undefined);
+  assert.equal(g.durationMs, 7000);
+});
+
+test('glide: an NIBP-only change keeps a running HR glide', async () => {
+  const { hub, clock } = makeHub();
+  await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { hr: 150 } }, glideMs: 60000 }));
+  clock.t += 15000;
+  const r = await hub.onMessage('c-1', msg({ t: 'set', patch: { patient: { nibp: { sys: 80, dia: 45 } } }, glideMs: 3000 }));
+  const pt = r.broadcast.state.patients[0];
+  assert.equal(pt.glide.glideMsBy.nibp, 3000);
+  assert.ok(Math.abs(pt.glide.glideMsBy.hr - 45000) <= 1);
+  assert.deepEqual(displayed(pt, clock.t + 3000).nibp, { sys: 80, dia: 45 });
 });
